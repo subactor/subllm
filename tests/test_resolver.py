@@ -22,6 +22,15 @@ def test_direct_zai_is_selected_when_both_credentials_exist() -> None:
     assert route.wire_model == "glm-5.2"
 
 
+def test_zai_signature_may_contain_dots_after_the_key_id_separator() -> None:
+    route = resolve(
+        "doctor-agent",
+        "repair-proposal",
+        environ={"ZAI_API_KEY": "key-id.signature.part"},
+    )
+    assert route.provider == "zai"
+
+
 def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:
     route = resolve(
         "repair-agent",
