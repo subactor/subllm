@@ -26,7 +26,7 @@ def _policy_file(
     path.write_text(
         "\n".join(
             (
-                "schema_version = 1",
+                "schema_version = 2",
                 "",
                 "[providers.zai]",
                 f"enabled = {str(zai_enabled).lower()}",
@@ -37,6 +37,30 @@ def _policy_file(
                 f"enabled = {str(openrouter_enabled).lower()}",
                 f"priority = {openrouter_priority}",
                 f'default_model = "{openrouter_model}"',
+                "",
+                '[applications.doctor-agent]',
+                'name = "doctor-agent"',
+                'url = "https://github.com/subactor/doctor-agent"',
+                "",
+                '[applications.repair-agent]',
+                'name = "repair-agent"',
+                'url = "https://github.com/subactor/repair-agent"',
+                "",
+                '[applications.validator-agent]',
+                'name = "validator-agent"',
+                'url = "https://github.com/subactor/validator-agent"',
+                "",
+                '[applications.skills-agent]',
+                'name = "skills-agent"',
+                'url = "https://github.com/subactor/skills-agent"',
+                "",
+                '[applications.onedev-agent]',
+                'name = "onedev-agent"',
+                'url = "https://github.com/subactor/onedev-agent"',
+                "",
+                '[applications.platform]',
+                'name = "Subactor Platform"',
+                'url = "https://github.com/subactor/platform"',
                 "",
             )
         ),
@@ -52,6 +76,7 @@ def test_repository_policy_file_is_discovered() -> None:
     policy = load_policy_config(cwd=path.parent)
     assert policy.providers["zai"].priority == 10
     assert policy.providers["openrouter"].default_model == "glm-5.2"
+    assert policy.applications["platform"].name == "Subactor Platform"
 
 
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -128,6 +153,53 @@ def test_invalid_provider_configuration_fails_closed(
     message: str,
 ) -> None:
     policy = _policy_file(tmp_path / "subllm.toml", **kwargs)
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    with pytest.raises(InvalidPolicyError, match=message):
+        load_policy_config()
+
+
+def test_application_name_and_url_control_openrouter_attribution(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _policy_file(tmp_path / "subllm.toml")
+    text = policy.read_text(encoding="utf-8").replace(
+        'name = "doctor-agent"\nurl = "https://github.com/subactor/doctor-agent"',
+        'name = "Subactor Doctor"\nurl = "https://subactor.com/doctor"',
+    )
+    policy.write_text(text, encoding="utf-8")
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    route = configured_routes("doctor-agent", "repair-proposal")[1]
+    assert route.application == "doctor-agent"
+    assert route.application_name == "Subactor Doctor"
+    assert route.extra_headers == {
+        "HTTP-Referer": "https://subactor.com/doctor",
+        "X-OpenRouter-Title": "Subactor Doctor",
+    }
+
+
+@pytest.mark.parametrize(
+    ("old", "new", "message"),
+    (
+        ('name = "doctor-agent"', 'name = ""', "name must be"),
+        (
+            'url = "https://github.com/subactor/doctor-agent"',
+            'url = "http://localhost/doctor"',
+            "public HTTPS URL",
+        ),
+    ),
+)
+def test_invalid_application_identity_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    old: str,
+    new: str,
+    message: str,
+) -> None:
+    policy = _policy_file(tmp_path / "subllm.toml")
+    policy.write_text(policy.read_text(encoding="utf-8").replace(old, new, 1), encoding="utf-8")
     monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
 
     with pytest.raises(InvalidPolicyError, match=message):

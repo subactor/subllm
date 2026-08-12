@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 import pytest
 
 from subllm import (
@@ -43,6 +45,43 @@ def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:
     assert route.provider == "openrouter"
     assert route.litellm_model == "openrouter/z-ai/glm-5.2"
     assert route.extra_headers["X-OpenRouter-Title"] == "repair-agent"
+
+
+def test_openrouter_request_carries_application_identity() -> None:
+    route = resolve(
+        "validator-agent",
+        "patch-review",
+        environ={"OPENROUTER_API_KEY": "openrouter-secret"},
+    )
+    kwargs = route.litellm_kwargs()
+
+    assert route.application_name == "validator-agent"
+    assert route.application_url == "https://github.com/subactor/validator-agent"
+    assert kwargs["user"] == "validator-agent"
+    assert kwargs["extra_headers"] == {
+        "HTTP-Referer": "https://github.com/subactor/validator-agent",
+        "X-OpenRouter-Title": "validator-agent",
+    }
+
+
+def test_zai_request_carries_application_identity_and_unique_request_id() -> None:
+    route = resolve("doctor-agent", "repair-proposal", environ={"ZAI_API_KEY": "id.secret"})
+    first = route.provider_request_fields()
+    second = route.provider_request_fields()
+
+    assert first["user_id"] == "doctor-agent"
+    assert first["request_id"] != second["request_id"]
+    assert re.fullmatch(r"doctor-agent-repair-proposal-[0-9a-f]{32}", first["request_id"])
+    assert route.litellm_kwargs(request_id="doctor-request-123")["extra_body"] == {
+        "request_id": "doctor-request-123",
+        "user_id": "doctor-agent",
+    }
+
+
+def test_zai_rejects_invalid_custom_request_id_length() -> None:
+    route = configured_route("doctor-agent", "repair-proposal", provider="zai")
+    with pytest.raises(ValueError, match="6 to 64"):
+        route.provider_request_fields(request_id="short")
 
 
 def test_available_routes_preserves_explicit_priority() -> None:

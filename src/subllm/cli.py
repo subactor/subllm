@@ -19,6 +19,7 @@ def _parser() -> argparse.ArgumentParser:
     subparsers.add_parser("check", help="validate the effective policy")
     subparsers.add_parser("list", help="list application/function routes")
     subparsers.add_parser("providers", help="show enabled state, priority and default model")
+    subparsers.add_parser("applications", help="show application IDs, names and attribution URLs")
     env_parser = subparsers.add_parser("env", help="inspect or initialize the shared local credential file")
     env_subparsers = env_parser.add_subparsers(dest="env_command", required=True)
     env_subparsers.add_parser("path", help="print the detected credential file path")
@@ -37,7 +38,17 @@ def _parser() -> argparse.ArgumentParser:
     )
     resolve_parser.add_argument(
         "--field",
-        choices=("provider", "model", "priority", "api-base", "api-key-env", "litellm-model", "wire-model"),
+        choices=(
+            "application-name",
+            "application-url",
+            "provider",
+            "model",
+            "priority",
+            "api-base",
+            "api-key-env",
+            "litellm-model",
+            "wire-model",
+        ),
     )
     return parser
 
@@ -70,6 +81,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             payload = {
                 "source": str(policy.source) if policy.source is not None else "built-in defaults",
                 "providers": {name: asdict(settings) for name, settings in policy.providers.items()},
+            }
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        if args.command == "applications":
+            policy = load_policy_config()
+            payload = {
+                "source": str(policy.source) if policy.source is not None else "built-in defaults",
+                "applications": {name: asdict(settings) for name, settings in policy.applications.items()},
             }
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0

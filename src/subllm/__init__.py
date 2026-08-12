@@ -16,6 +16,7 @@ from .errors import (
 from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
 from .policy_config import (
     SUBLLM_POLICY_FILE,
+    ApplicationPolicyConfig,
     ProviderPolicyConfig,
     RuntimePolicyConfig,
     find_policy_file,
@@ -46,6 +47,7 @@ __all__ = [
     "PROVIDERS",
     "ROUTES",
     "ApplicationSpec",
+    "ApplicationPolicyConfig",
     "ConfiguredRoute",
     "CredentialFileError",
     "InvalidPolicyError",

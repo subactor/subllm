@@ -30,6 +30,25 @@ def test_configured_field(capsys) -> None:
     assert capsys.readouterr().out == "openrouter/z-ai/glm-5.2\n"
 
 
+def test_configured_application_name_field(capsys) -> None:
+    assert (
+        main(
+            [
+                "resolve",
+                "platform",
+                "interactive",
+                "--configured",
+                "--provider",
+                "openrouter",
+                "--field",
+                "application-name",
+            ]
+        )
+        == 0
+    )
+    assert capsys.readouterr().out == "Subactor Platform\n"
+
+
 def test_resolve_output_never_contains_credential(monkeypatch, capsys) -> None:
     monkeypatch.setenv("ZAI_API_KEY", "id.cli-secret")
     assert main(["resolve", "repair-agent", "repair-plan"]) == 0
@@ -60,3 +79,12 @@ def test_providers_reports_effective_public_settings(capsys) -> None:
         "priority": 10,
     }
     assert payload["providers"]["openrouter"]["priority"] == 20
+
+
+def test_applications_reports_public_request_identity(capsys) -> None:
+    assert main(["applications"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["applications"]["doctor-agent"] == {
+        "name": "doctor-agent",
+        "url": "https://github.com/subactor/doctor-agent",
+    }

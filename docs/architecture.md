@@ -12,7 +12,8 @@ The library owns four immutable catalogs and one operator policy:
 - models: logical identity and exact provider-specific model names,
 - applications: stable identity and attribution URL,
 - routes: ordered candidates for one application/function pair.
-- `subllm.toml`: provider enablement, base priority and default logical model.
+- `subllm.toml`: provider enablement, base priority, default logical model and
+  application display identity.
 
 For a normal local call, resolution merges the ignored workspace
 `subllm/.env` with the process environment. The process environment has higher
@@ -51,6 +52,16 @@ configured candidate. `available_routes()` returns every configured candidate
 in priority order for a caller that implements bounded provider failover.
 Subllm never retries a paid request by itself, avoiding duplicate side effects
 and hidden cost.
+
+## Provider-visible application identity
+
+The application table key is the stable machine ID. OpenRouter receives it as
+`user`, while its configured display name and HTTPS URL are sent using the
+official attribution headers. Z.AI receives the stable ID as `user_id`.
+Native HTTP and SubLLM-managed LiteLLM requests also receive a unique 6–64
+character `request_id` prefixed by the application and function. This makes
+requests attributable without putting credentials or personal data in
+provider logs.
 
 ## Model safety
 

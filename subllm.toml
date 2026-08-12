@@ -1,4 +1,4 @@
-schema_version = 1
+schema_version = 2
 
 # Lower priority wins. Set enabled = false to remove a provider from every
 # route. default_model is the logical model ID from src/subllm/policy.py.
@@ -14,3 +14,29 @@ default_model = "glm-5.2"
 enabled = true
 priority = 20
 default_model = "glm-5.2"
+
+# The table key is the stable application ID sent as user/user_id. name is the
+# display name used by OpenRouter; url is its attribution identifier.
+[applications.doctor-agent]
+name = "doctor-agent"
+url = "https://github.com/subactor/doctor-agent"
+
+[applications.repair-agent]
+name = "repair-agent"
+url = "https://github.com/subactor/repair-agent"
+
+[applications.validator-agent]
+name = "validator-agent"
+url = "https://github.com/subactor/validator-agent"
+
+[applications.skills-agent]
+name = "skills-agent"
+url = "https://github.com/subactor/skills-agent"
+
+[applications.onedev-agent]
+name = "onedev-agent"
+url = "https://github.com/subactor/onedev-agent"
+
+[applications.platform]
+name = "Subactor Platform"
+url = "https://github.com/subactor/platform"

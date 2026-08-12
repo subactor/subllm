@@ -27,6 +27,27 @@ model. Gemini 3.1 Pro Preview is blocked in the catalog.
 Provider, model, application and route definitions live only in
 `src/subllm/policy.py`.
 
+## Application identity in provider logs
+
+Every application has one stable ID plus an operator-controlled display name
+and public attribution URL in [`subllm.toml`](subllm.toml):
+
+```toml
+[applications.doctor-agent]
+name = "doctor-agent"
+url = "https://github.com/subactor/doctor-agent"
+```
+
+OpenRouter requests carry the URL in `HTTP-Referer`, the configured name in
+`X-OpenRouter-Title`, and the stable application ID in `user`. Z.AI requests
+carry the stable ID in `user_id`. Native HTTP and SubLLM-managed LiteLLM calls
+also carry a unique `request_id` prefixed with the application and function,
+for example `doctor-agent-repair-proposal-...`. These values contain no
+credential or end-user personal data.
+
+`ResolvedRoute.litellm_kwargs()` adds the provider-specific fields
+automatically. Direct HTTP clients use `route.provider_request_fields()`.
+
 ## Provider priority and default models
 
 Edit the tracked [`subllm.toml`](subllm.toml) file to control both providers:
@@ -119,6 +140,7 @@ The CLI prints only public configuration:
 subllm check
 subllm list
 subllm providers
+subllm applications
 subllm env path
 subllm env check
 subllm resolve validator-agent patch-review --configured

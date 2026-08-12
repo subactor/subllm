@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any, Literal
+from uuid import uuid4
 
 Transport = Literal["openai-compatible"]
 
@@ -53,6 +54,8 @@ class RoutePolicy:
 @dataclass(frozen=True)
 class ConfiguredRoute:
     application: str
+    application_name: str
+    application_url: str
     function: str
     provider: str
     model: str
@@ -66,6 +69,8 @@ class ConfiguredRoute:
     def public_dict(self) -> dict[str, Any]:
         return {
             "application": self.application,
+            "application_name": self.application_name,
+            "application_url": self.application_url,
             "function": self.function,
             "provider": self.provider,
             "model": self.model,
@@ -77,12 +82,38 @@ class ConfiguredRoute:
             "extra_headers": dict(self.extra_headers),
         }
 
+    def provider_request_fields(self, *, request_id: str | None = None) -> dict[str, str]:
+        """Return non-secret application identity fields for one provider request."""
+        if self.provider == "openrouter":
+            return {"user": self.application}
+        if self.provider == "zai":
+            value = request_id or self._new_request_id()
+            if not 6 <= len(value) <= 64:
+                raise ValueError("Z.AI request_id must contain 6 to 64 characters")
+            return {"request_id": value, "user_id": self.application}
+        return {}
+
+    def litellm_attribution_kwargs(self) -> dict[str, Any]:
+        """Return stable app attribution suitable for clients such as Aider."""
+        if self.provider == "openrouter":
+            return {
+                "user": self.application,
+                "extra_headers": dict(self.extra_headers),
+            }
+        if self.provider == "zai":
+            return {"extra_body": {"user_id": self.application}}
+        return {}
+
+    def _new_request_id(self) -> str:
+        prefix = f"{self.application}-{self.function}"[:31].rstrip("-_")
+        return f"{prefix}-{uuid4().hex}"
+
 
 @dataclass(frozen=True)
 class ResolvedRoute(ConfiguredRoute):
     api_key: str = field(repr=False)
 
-    def litellm_kwargs(self) -> dict[str, Any]:
+    def litellm_kwargs(self, *, request_id: str | None = None) -> dict[str, Any]:
         result: dict[str, Any] = {
             "model": self.litellm_model,
             "api_key": self.api_key,
@@ -90,4 +121,9 @@ class ResolvedRoute(ConfiguredRoute):
         }
         if self.extra_headers:
             result["extra_headers"] = dict(self.extra_headers)
+        fields = self.provider_request_fields(request_id=request_id)
+        if self.provider == "zai":
+            result["extra_body"] = fields
+        else:
+            result.update(fields)
         return result

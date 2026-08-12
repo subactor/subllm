@@ -45,7 +45,7 @@ def _configured(
     candidate: RouteCandidate,
     runtime_policy: RuntimePolicyConfig,
 ) -> ConfiguredRoute:
-    app = APPLICATIONS[application]
+    app = runtime_policy.applications[application]
     provider = PROVIDERS[candidate.provider]
     provider_policy = runtime_policy.providers[provider.id]
     model_id = candidate.model or provider_policy.default_model
@@ -58,9 +58,11 @@ def _configured(
         raise InvalidPolicyError(f"model {model.id} is unavailable through provider {provider.id}") from exc
     headers: dict[str, str] = {}
     if provider.attribution_headers:
-        headers = {"HTTP-Referer": app.url, "X-OpenRouter-Title": app.title}
+        headers = {"HTTP-Referer": app.url, "X-OpenRouter-Title": app.name}
     return ConfiguredRoute(
         application=application,
+        application_name=app.name,
+        application_url=app.url,
         function=function,
         provider=provider.id,
         model=model.id,
