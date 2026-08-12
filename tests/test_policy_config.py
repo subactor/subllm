@@ -1,0 +1,134 @@
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from subllm import (
+    InvalidPolicyError,
+    configured_routes,
+    find_policy_file,
+    load_policy_config,
+    resolve,
+)
+
+
+def _policy_file(
+    path: Path,
+    *,
+    zai_enabled: bool = True,
+    zai_priority: int = 10,
+    zai_model: str = "glm-5.2",
+    openrouter_enabled: bool = True,
+    openrouter_priority: int = 20,
+    openrouter_model: str = "glm-5.2",
+) -> Path:
+    path.write_text(
+        "\n".join(
+            (
+                "schema_version = 1",
+                "",
+                "[providers.zai]",
+                f"enabled = {str(zai_enabled).lower()}",
+                f"priority = {zai_priority}",
+                f'default_model = "{zai_model}"',
+                "",
+                "[providers.openrouter]",
+                f"enabled = {str(openrouter_enabled).lower()}",
+                f"priority = {openrouter_priority}",
+                f'default_model = "{openrouter_model}"',
+                "",
+            )
+        ),
+        encoding="utf-8",
+    )
+    return path
+
+
+def test_repository_policy_file_is_discovered() -> None:
+    path = find_policy_file(cwd=Path(__file__).resolve().parents[1])
+    assert path is not None
+    assert path.name == "subllm.toml"
+    policy = load_policy_config(cwd=path.parent)
+    assert policy.providers["zai"].priority == 10
+    assert policy.providers["openrouter"].default_model == "glm-5.2"
+
+
+def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    policy = _policy_file(tmp_path / "subllm.toml", zai_priority=20, openrouter_priority=10)
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    route = resolve(
+        "doctor-agent",
+        "repair-proposal",
+        environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "or-key"},
+    )
+    assert route.provider == "openrouter"
+    assert route.priority == 10
+
+
+def test_provider_can_be_disabled_and_default_model_changed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _policy_file(
+        tmp_path / "subllm.toml",
+        zai_enabled=False,
+        openrouter_model="grok-4.5",
+    )
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    route = resolve(
+        "repair-agent",
+        "repair-plan",
+        environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "or-key"},
+    )
+    assert route.provider == "openrouter"
+    assert route.model == "grok-4.5"
+    assert route.litellm_model == "openrouter/x-ai/grok-4.5"
+
+
+def test_default_model_deduplicates_the_same_explicit_fallback(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _policy_file(tmp_path / "subllm.toml", openrouter_model="deepseek-v4-pro")
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    routes = configured_routes("repair-agent", "repair-plan")
+    assert [(route.provider, route.model) for route in routes].count(
+        ("openrouter", "deepseek-v4-pro")
+    ) == 1
+
+
+def test_all_providers_disabled_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    policy = _policy_file(
+        tmp_path / "subllm.toml",
+        zai_enabled=False,
+        openrouter_enabled=False,
+    )
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    with pytest.raises(InvalidPolicyError, match="no enabled candidate"):
+        configured_routes("doctor-agent", "repair-proposal")
+
+
+@pytest.mark.parametrize(
+    ("kwargs", "message"),
+    (
+        ({"openrouter_model": "gemini-3.1-pro-preview"}, "forbidden default model"),
+        ({"zai_model": "grok-4.5"}, "unavailable through provider zai"),
+        ({"zai_priority": 20, "openrouter_priority": 20}, "unique priorities"),
+    ),
+)
+def test_invalid_provider_configuration_fails_closed(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    kwargs: dict[str, object],
+    message: str,
+) -> None:
+    policy = _policy_file(tmp_path / "subllm.toml", **kwargs)
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    with pytest.raises(InvalidPolicyError, match=message):
+        load_policy_config()

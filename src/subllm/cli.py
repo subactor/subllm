@@ -3,19 +3,22 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Sequence
+from dataclasses import asdict
 from pathlib import Path
 
 from .credential_env import credential_names, find_env_file, import_credentials, load_env_file
 from .errors import SubLLMError
 from .policy import ROUTES
+from .policy_config import load_policy_config
 from .resolver import configured_route, configured_routes, resolve, validate_policy
 
 
 def _parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(prog="subllm", description="Inspect the central Subactor LLM policy.")
     subparsers = parser.add_subparsers(dest="command", required=True)
-    subparsers.add_parser("check", help="validate the built-in policy")
+    subparsers.add_parser("check", help="validate the effective policy")
     subparsers.add_parser("list", help="list application/function routes")
+    subparsers.add_parser("providers", help="show enabled state, priority and default model")
     env_parser = subparsers.add_parser("env", help="inspect or initialize the shared local credential file")
     env_subparsers = env_parser.add_subparsers(dest="env_command", required=True)
     env_subparsers.add_parser("path", help="print the detected credential file path")
@@ -60,6 +63,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                         "candidates": [route.public_dict() for route in configured_routes(application, function)],
                     }
                 )
+            print(json.dumps(payload, indent=2, sort_keys=True))
+            return 0
+        if args.command == "providers":
+            policy = load_policy_config()
+            payload = {
+                "source": str(policy.source) if policy.source is not None else "built-in defaults",
+                "providers": {name: asdict(settings) for name, settings in policy.providers.items()},
+            }
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
         if args.command == "env":

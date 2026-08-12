@@ -129,8 +129,8 @@ APPLICATIONS = MappingProxyType(
 )
 
 _GLM = (
-    RouteCandidate(provider="zai", model="glm-5.2", priority=10),
-    RouteCandidate(provider="openrouter", model="glm-5.2", priority=20),
+    RouteCandidate(provider="zai"),
+    RouteCandidate(provider="openrouter"),
 )
 
 _ROUTE_VALUES = (
@@ -138,12 +138,12 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "repair-agent",
         "repair-plan",
-        _GLM + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority=30),),
+        _GLM + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=10),),
     ),
     RoutePolicy(
         "validator-agent",
         "patch-review",
-        _GLM + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority=30),),
+        _GLM + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
     ),
     RoutePolicy("validator-agent", "direct-pr-review", _GLM),
     RoutePolicy("skills-agent", "developer", _GLM),
@@ -154,11 +154,10 @@ _ROUTE_VALUES = (
         "interactive",
         _GLM
         + (
-            RouteCandidate(provider="openrouter", model="grok-4.5", priority=30),
-            RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority=40),
+            RouteCandidate(provider="openrouter", model="grok-4.5", priority_offset=10),
+            RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})
-

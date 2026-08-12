@@ -49,3 +49,14 @@ def test_env_check_reports_names_without_values(tmp_path: Path, monkeypatch, cap
     output = capsys.readouterr().out
     assert output == "ZAI_API_KEY: configured\nOPENROUTER_API_KEY: missing\n"
     assert "cli-secret" not in output
+
+
+def test_providers_reports_effective_public_settings(capsys) -> None:
+    assert main(["providers"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["providers"]["zai"] == {
+        "default_model": "glm-5.2",
+        "enabled": True,
+        "priority": 10,
+    }
+    assert payload["providers"]["openrouter"]["priority"] == 20

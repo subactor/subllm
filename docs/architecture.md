@@ -6,12 +6,13 @@
 credential vault, persist conversations, decide mutations or validate an
 agent's domain-specific response.
 
-The library owns four immutable catalogs:
+The library owns four immutable catalogs and one operator policy:
 
 - providers: API base, credential environment name and transport metadata,
 - models: logical identity and exact provider-specific model names,
 - applications: stable identity and attribution URL,
 - routes: ordered candidates for one application/function pair.
+- `subllm.toml`: provider enablement, base priority and default logical model.
 
 For a normal local call, resolution merges the ignored workspace
 `subllm/.env` with the process environment. The process environment has higher
@@ -28,20 +29,19 @@ and CLI output.
 ## Flow
 
 ```text
-application + function       subllm/.env < process environment
-          |
-          v
-central route policy -- ordered candidates --> credential availability
-          |                                      |
-          +--------------------------------------+
-                          |
-                          v
-               resolved provider/model/base
-                          |
-                +---------+----------+
-                |                    |
-                v                    v
-           LiteLLM kwargs      native HTTP/Aider
+application + function -----> central route catalog
+                                      |
+subllm.toml ----------------> enabled/priority/default model
+                                      |
+subllm/.env < process env ---> credential availability
+                                      |
+                                      v
+                         resolved provider/model/base
+                                      |
+                           +----------+----------+
+                           |                     |
+                           v                     v
+                      LiteLLM kwargs       native HTTP/Aider
 ```
 
 ## Provider failover

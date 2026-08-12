@@ -39,8 +39,8 @@ class ApplicationSpec:
 @dataclass(frozen=True)
 class RouteCandidate:
     provider: str
-    model: str
-    priority: int
+    model: str | None = None
+    priority_offset: int = 0
 
 
 @dataclass(frozen=True)

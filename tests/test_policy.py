@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 import subllm.resolver as resolver
-from subllm import MODELS, ROUTES, InvalidPolicyError, validate_policy
+from subllm import MODELS, ROUTES, InvalidPolicyError, configured_routes, validate_policy
 from subllm.types import RouteCandidate, RoutePolicy
 
 
@@ -30,9 +30,6 @@ def test_invalid_policy_rejects_forbidden_model(monkeypatch: pytest.MonkeyPatch)
 
 def test_direct_zai_precedes_openrouter_for_every_glm_route() -> None:
     for route in ROUTES.values():
-        glm = sorted(
-            (candidate for candidate in route.candidates if candidate.model == "glm-5.2"),
-            key=lambda item: item.priority,
-        )
-        if glm:
-            assert [candidate.provider for candidate in glm] == ["zai", "openrouter"]
+        configured = configured_routes(route.application, route.function)
+        assert configured[0].provider == "zai"
+        assert next(item for item in configured if item.provider == "openrouter").priority == 20

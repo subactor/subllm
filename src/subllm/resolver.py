@@ -9,6 +9,7 @@ from .errors import (
     UnknownRouteError,
 )
 from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
+from .policy_config import RuntimePolicyConfig, load_policy_config
 from .types import ConfiguredRoute, ResolvedRoute, RouteCandidate, RoutePolicy
 
 _PLACEHOLDER_PARTS = (
@@ -38,10 +39,17 @@ def route_policy(application: str, function: str) -> RoutePolicy:
         raise UnknownRouteError(f"unknown SubLLM route: {application}/{function}") from exc
 
 
-def _configured(application: str, function: str, candidate: RouteCandidate) -> ConfiguredRoute:
+def _configured(
+    application: str,
+    function: str,
+    candidate: RouteCandidate,
+    runtime_policy: RuntimePolicyConfig,
+) -> ConfiguredRoute:
     app = APPLICATIONS[application]
     provider = PROVIDERS[candidate.provider]
-    model = MODELS[candidate.model]
+    provider_policy = runtime_policy.providers[provider.id]
+    model_id = candidate.model or provider_policy.default_model
+    model = MODELS[model_id]
     if model.forbidden:
         raise InvalidPolicyError(f"forbidden model in route: {model.id}")
     try:
@@ -56,7 +64,7 @@ def _configured(application: str, function: str, candidate: RouteCandidate) -> C
         function=function,
         provider=provider.id,
         model=model.id,
-        priority=candidate.priority,
+        priority=provider_policy.priority + candidate.priority_offset,
         api_base=provider.api_base,
         api_key_env=provider.api_key_env,
         litellm_model=provider_model.litellm_model,
@@ -67,8 +75,26 @@ def _configured(application: str, function: str, candidate: RouteCandidate) -> C
 
 def configured_routes(application: str, function: str) -> tuple[ConfiguredRoute, ...]:
     policy = route_policy(application, function)
-    ordered = sorted(policy.candidates, key=lambda item: item.priority)
-    return tuple(_configured(application, function, item) for item in ordered)
+    runtime_policy = load_policy_config()
+    candidates = (
+        _configured(application, function, item, runtime_policy)
+        for item in policy.candidates
+        if runtime_policy.providers[item.provider].enabled
+    )
+    ordered = sorted(candidates, key=lambda item: item.priority)
+    if not ordered:
+        raise InvalidPolicyError(f"no enabled candidate for route: {application}/{function}")
+    priorities = [route.priority for route in ordered]
+    if len(priorities) != len(set(priorities)):
+        raise InvalidPolicyError(f"duplicate effective priority in route: {application}/{function}")
+    unique: list[ConfiguredRoute] = []
+    seen: set[tuple[str, str]] = set()
+    for route in ordered:
+        key = (route.provider, route.model)
+        if key not in seen:
+            unique.append(route)
+            seen.add(key)
+    return tuple(unique)
 
 
 def configured_route(application: str, function: str, *, provider: str | None = None) -> ConfiguredRoute:
@@ -123,23 +149,25 @@ def resolve(
 
 
 def validate_policy() -> None:
+    runtime_policy = load_policy_config()
     for key, route in ROUTES.items():
         if key != (route.application, route.function):
             raise InvalidPolicyError(f"route key mismatch: {key}")
         if route.application not in APPLICATIONS:
             raise InvalidPolicyError(f"unknown application in route: {route.application}")
-        priorities = [candidate.priority for candidate in route.candidates]
-        if len(priorities) != len(set(priorities)):
-            raise InvalidPolicyError(f"duplicate priority in route: {route.application}/{route.function}")
         for candidate in route.candidates:
             if candidate.provider not in PROVIDERS:
                 raise InvalidPolicyError(f"unknown provider in route: {candidate.provider}")
-            if candidate.model not in MODELS:
+            if candidate.priority_offset < 0:
+                raise InvalidPolicyError(f"negative priority offset in route: {route.application}/{route.function}")
+            model_id = candidate.model or runtime_policy.providers[candidate.provider].default_model
+            if model_id not in MODELS:
                 raise InvalidPolicyError(f"unknown model in route: {candidate.model}")
-            model = MODELS[candidate.model]
+            model = MODELS[model_id]
             if model.forbidden:
-                raise InvalidPolicyError(f"forbidden model in route: {candidate.model}")
+                raise InvalidPolicyError(f"forbidden model in route: {model_id}")
             if candidate.provider not in model.providers:
                 raise InvalidPolicyError(
-                    f"model {candidate.model} is unavailable through provider {candidate.provider}"
+                    f"model {model_id} is unavailable through provider {candidate.provider}"
                 )
+        configured_routes(route.application, route.function)

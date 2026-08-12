@@ -27,6 +27,36 @@ model. Gemini 3.1 Pro Preview is blocked in the catalog.
 Provider, model, application and route definitions live only in
 `src/subllm/policy.py`.
 
+## Provider priority and default models
+
+Edit the tracked [`subllm.toml`](subllm.toml) file to control both providers:
+
+```toml
+[providers.zai]
+enabled = true
+priority = 10
+default_model = "glm-5.2"
+
+[providers.openrouter]
+enabled = true
+priority = 20
+default_model = "glm-5.2"
+```
+
+Lower priority wins. Set `enabled = false` to remove a provider from every
+route. `default_model` is a logical ID from the model catalog; SubLLM rejects
+unknown, forbidden or provider-incompatible values. Explicit additional models
+declared by a route remain later candidates and their offsets are added to the
+provider priority.
+
+Sibling projects discover this file automatically. Set `SUBLLM_POLICY_FILE`
+for another layout. When no file is available, such as an isolated CI install,
+the package uses the same built-in defaults shipped with that release.
+
+This ordering controls selection before a request. It does not automatically
+repeat a failed paid request through another provider; callers that implement
+bounded runtime failover use `available_routes()` in this order.
+
 ## One local credential file
 
 Create the private file once in this repository:
@@ -88,6 +118,7 @@ The CLI prints only public configuration:
 ```bash
 subllm check
 subllm list
+subllm providers
 subllm env path
 subllm env check
 subllm resolve validator-agent patch-review --configured

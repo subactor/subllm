@@ -1,0 +1,16 @@
+schema_version = 1
+
+# Lower priority wins. Set enabled = false to remove a provider from every
+# route. default_model is the logical model ID from src/subllm/policy.py.
+# Z.AI: glm-5.2
+# OpenRouter: glm-5.2, grok-4.5, gemini-3.6-flash, deepseek-v4-pro,
+#             qwen3.7-plus
+[providers.zai]
+enabled = true
+priority = 10
+default_model = "glm-5.2"
+
+[providers.openrouter]
+enabled = true
+priority = 20
+default_model = "glm-5.2"
