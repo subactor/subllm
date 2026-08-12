@@ -13,15 +13,22 @@ The library owns four immutable catalogs:
 - applications: stable identity and attribution URL,
 - routes: ordered candidates for one application/function pair.
 
-The application supplies an environment mapping or explicit provider
-credentials. Resolution selects only candidates whose credential passes the
-provider's shape check. The selected value is held in a `repr=False` field and
-is omitted from public serialization and CLI output.
+For a normal local call, resolution merges the ignored workspace
+`subllm/.env` with the process environment. The process environment has higher
+precedence, so CI and deployment secret injection stay authoritative. A caller
+can instead supply an explicit environment mapping or provider credentials;
+an explicit mapping is hermetic and disables local-file discovery.
+
+Only known provider credential names are loaded. The shared file must be a
+regular non-symlink file with POSIX mode `0600`. Resolution selects only
+candidates whose credential passes the provider's shape check. The selected
+value is held in a `repr=False` field and is omitted from public serialization
+and CLI output.
 
 ## Flow
 
 ```text
-application + function
+application + function       subllm/.env < process environment
           |
           v
 central route policy -- ordered candidates --> credential availability
@@ -51,4 +58,3 @@ Routes list allowed logical models explicitly. A provider may expose the same
 logical model under a different wire name. Forbidden models remain in the
 catalog only so validation can reject them deterministically; no route may
 reference one.
-

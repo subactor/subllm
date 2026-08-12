@@ -1,9 +1,20 @@
-from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
-from .resolver import (
+from .credential_env import (
+    SUBLLM_ENV_FILE,
+    credential_names,
+    find_env_file,
+    import_credentials,
+    load_env_file,
+    load_shared_environment,
+)
+from .errors import (
+    CredentialFileError,
     InvalidPolicyError,
     MissingCredentialError,
     SubLLMError,
     UnknownRouteError,
+)
+from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
+from .resolver import (
     available_routes,
     configured_route,
     configured_routes,
@@ -29,6 +40,7 @@ __all__ = [
     "ROUTES",
     "ApplicationSpec",
     "ConfiguredRoute",
+    "CredentialFileError",
     "InvalidPolicyError",
     "MissingCredentialError",
     "ModelSpec",
@@ -38,12 +50,17 @@ __all__ = [
     "RouteCandidate",
     "RoutePolicy",
     "SubLLMError",
+    "SUBLLM_ENV_FILE",
     "UnknownRouteError",
     "available_routes",
+    "credential_names",
     "configured_route",
     "configured_routes",
+    "find_env_file",
+    "import_credentials",
+    "load_env_file",
+    "load_shared_environment",
     "resolve",
     "route_policy",
     "validate_policy",
 ]
-

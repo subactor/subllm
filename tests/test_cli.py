@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 from subllm.cli import main
 
@@ -37,3 +38,14 @@ def test_resolve_output_never_contains_credential(monkeypatch, capsys) -> None:
     assert payload["provider"] == "zai"
     assert "cli-secret" not in output
 
+
+def test_env_check_reports_names_without_values(tmp_path: Path, monkeypatch, capsys) -> None:
+    env_file = tmp_path / ".env"
+    env_file.write_text("ZAI_API_KEY=id.cli-secret\nOPENROUTER_API_KEY=\n", encoding="utf-8")
+    env_file.chmod(0o600)
+    monkeypatch.setenv("SUBLLM_ENV_FILE", str(env_file))
+
+    assert main(["env", "check"]) == 0
+    output = capsys.readouterr().out
+    assert output == "ZAI_API_KEY: configured\nOPENROUTER_API_KEY: missing\n"
+    assert "cli-secret" not in output

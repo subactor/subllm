@@ -1,27 +1,15 @@
 from __future__ import annotations
 
-import os
 from collections.abc import Mapping
 
+from .credential_env import merged_environment
+from .errors import (
+    InvalidPolicyError,
+    MissingCredentialError,
+    UnknownRouteError,
+)
 from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
 from .types import ConfiguredRoute, ResolvedRoute, RouteCandidate, RoutePolicy
-
-
-class SubLLMError(RuntimeError):
-    """Base error for deterministic policy or credential resolution failures."""
-
-
-class UnknownRouteError(SubLLMError):
-    pass
-
-
-class InvalidPolicyError(SubLLMError):
-    pass
-
-
-class MissingCredentialError(SubLLMError):
-    pass
-
 
 _PLACEHOLDER_PARTS = (
     "ADD_SIGNATURE_SECRET",
@@ -100,7 +88,7 @@ def available_routes(
     environ: Mapping[str, str] | None = None,
     credentials: Mapping[str, str] | None = None,
 ) -> tuple[ResolvedRoute, ...]:
-    environment = os.environ if environ is None else environ
+    environment = merged_environment(environ=environ)
     explicit = credentials or {}
     resolved: list[ResolvedRoute] = []
     for route in configured_routes(application, function):
@@ -157,4 +145,3 @@ def validate_policy() -> None:
                 raise InvalidPolicyError(
                     f"model {candidate.model} is unavailable through provider {candidate.provider}"
                 )
-

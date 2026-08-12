@@ -6,9 +6,10 @@ and import package are `subllm`; the distribution is named
 `subactor-subllm` because the unscoped `subllm` distribution name is already in
 use.
 
-The package stores policy, never credentials. Applications keep secrets in
-their environment or credential vault and ask `subllm` to select the first
-configured candidate for an exact application and function.
+The repository never tracks credentials. For local development, all SubLLM
+consumers in one sibling-project workspace can read provider keys from the
+single ignored `subllm/.env` file. In CI and deployments, process environment
+variables or a credential vault remain the source and override that file.
 
 ## Policy
 
@@ -25,6 +26,30 @@ model. Gemini 3.1 Pro Preview is blocked in the catalog.
 
 Provider, model, application and route definitions live only in
 `src/subllm/policy.py`.
+
+## One local credential file
+
+Create the private file once in this repository:
+
+```bash
+cp .env.example .env
+chmod 600 .env
+```
+
+Set complete provider values there:
+
+```dotenv
+ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
+OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
+```
+
+When an application is a sibling of this repository, `resolve()` discovers
+`subllm/.env` automatically. For another layout, set `SUBLLM_ENV_FILE` to an
+absolute path or to a path relative to the process working directory. An
+explicit process variable wins over the corresponding value in the file.
+
+Only credential variables declared by providers in `policy.py` are accepted.
+The file must be a regular, non-symlink file with mode `0600` on POSIX.
 
 ## Python API
 
@@ -63,12 +88,21 @@ The CLI prints only public configuration:
 ```bash
 subllm check
 subllm list
+subllm env path
+subllm env check
 subllm resolve validator-agent patch-review --configured
 subllm resolve onedev-agent code-edit --provider openrouter --field litellm-model
 ```
 
+Existing local agent files can be imported without printing their values:
+
+```bash
+subllm env import ../doctor-agent/.env ../repair-agent/.env --target .env
+```
+
 Without `--configured`, `resolve` requires a valid credential for the selected
-provider. It never prints that credential.
+provider. The CLI reports only configured variable names and never prints a
+credential.
 
 ## Development
 
@@ -80,4 +114,3 @@ python -m pip install -e '.[test]'
 ```
 
 See `docs/architecture.md` for the trust boundary and migration rules.
-

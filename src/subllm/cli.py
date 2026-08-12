@@ -3,9 +3,12 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Sequence
+from pathlib import Path
 
+from .credential_env import credential_names, find_env_file, import_credentials, load_env_file
+from .errors import SubLLMError
 from .policy import ROUTES
-from .resolver import SubLLMError, configured_route, configured_routes, resolve, validate_policy
+from .resolver import configured_route, configured_routes, resolve, validate_policy
 
 
 def _parser() -> argparse.ArgumentParser:
@@ -13,6 +16,13 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("check", help="validate the built-in policy")
     subparsers.add_parser("list", help="list application/function routes")
+    env_parser = subparsers.add_parser("env", help="inspect or initialize the shared local credential file")
+    env_subparsers = env_parser.add_subparsers(dest="env_command", required=True)
+    env_subparsers.add_parser("path", help="print the detected credential file path")
+    env_subparsers.add_parser("check", help="validate the file and print configured variable names")
+    import_parser = env_subparsers.add_parser("import", help="import credentials from existing .env files")
+    import_parser.add_argument("sources", nargs="+", type=Path)
+    import_parser.add_argument("--target", type=Path, default=Path(".env"))
     resolve_parser = subparsers.add_parser("resolve", help="resolve one application/function route")
     resolve_parser.add_argument("application")
     resolve_parser.add_argument("function")
@@ -52,6 +62,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 )
             print(json.dumps(payload, indent=2, sort_keys=True))
             return 0
+        if args.command == "env":
+            if args.env_command == "import":
+                names = import_credentials(args.sources, args.target)
+                print(f"Imported {', '.join(names)} into {args.target.resolve(strict=False)}")
+                return 0
+            path = find_env_file()
+            if path is None:
+                raise SubLLMError("shared credential file not found; create subllm/.env from .env.example")
+            if args.env_command == "path":
+                print(path)
+                return 0
+            configured = load_env_file(path)
+            for name in credential_names():
+                state = "configured" if configured.get(name) else "missing"
+                print(f"{name}: {state}")
+            return 0
         if args.configured:
             route = configured_route(args.application, args.function, provider=args.provider)
         else:
@@ -68,4 +94,3 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
