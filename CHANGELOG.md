@@ -2,6 +2,15 @@
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-12
+
+### Added
+
+- Added the `todo2code/semantic` route with direct Z.AI GLM 5.2 preferred
+  before the OpenRouter GLM 5.2 fallback.
+- Added the public `todo2code` application identity used for provider-visible
+  request attribution.
+
 ## [0.4.1] - 2026-08-12
 
 ### Fixed

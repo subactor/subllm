@@ -145,6 +145,7 @@ subllm applications
 subllm env path
 subllm env check
 subllm resolve validator-agent patch-review --configured
+subllm resolve todo2code semantic
 subllm resolve onedev-agent code-edit --provider openrouter --field litellm-model
 ```
 

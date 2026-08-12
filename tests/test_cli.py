@@ -88,3 +88,7 @@ def test_applications_reports_public_request_identity(capsys) -> None:
         "name": "doctor-agent",
         "url": "https://github.com/subactor/doctor-agent",
     }
+    assert payload["applications"]["todo2code"] == {
+        "name": "todo2code",
+        "url": "https://github.com/semcod/todo2code",
+    }

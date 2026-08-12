@@ -120,6 +120,11 @@ APPLICATIONS = MappingProxyType(
             title="onedev-agent",
             url="https://github.com/subactor/onedev-agent",
         ),
+        "todo2code": ApplicationSpec(
+            id="todo2code",
+            title="todo2code",
+            url="https://github.com/semcod/todo2code",
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
@@ -149,6 +154,7 @@ _ROUTE_VALUES = (
     RoutePolicy("skills-agent", "developer", _GLM),
     RoutePolicy("skills-agent", "validator", _GLM),
     RoutePolicy("onedev-agent", "code-edit", _GLM),
+    RoutePolicy("todo2code", "semantic", _GLM),
     RoutePolicy(
         "platform",
         "interactive",

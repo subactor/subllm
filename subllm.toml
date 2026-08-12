@@ -37,6 +37,10 @@ url = "https://github.com/subactor/skills-agent"
 name = "onedev-agent"
 url = "https://github.com/subactor/onedev-agent"
 
+[applications.todo2code]
+name = "todo2code"
+url = "https://github.com/semcod/todo2code"
+
 [applications.platform]
 name = "Subactor Platform"
 url = "https://github.com/subactor/platform"
