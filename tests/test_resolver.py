@@ -81,6 +81,19 @@ def test_zai_request_carries_application_identity_and_unique_request_id() -> Non
     }
 
 
+def test_todo2code_semantic_route_uses_direct_zai_identity() -> None:
+    route = resolve("todo2code", "semantic", environ={"ZAI_API_KEY": "id.secret"})
+    fields = route.provider_request_fields(request_id="todo2code-semantic-live-123")
+
+    assert route.provider == "zai"
+    assert route.wire_model == "glm-5.2"
+    assert route.application_url == "https://github.com/semcod/todo2code"
+    assert fields == {
+        "request_id": "todo2code-semantic-live-123",
+        "user_id": "todo2code",
+    }
+
+
 def test_zai_rejects_invalid_custom_request_id_length() -> None:
     route = configured_route("doctor-agent", "repair-proposal", provider="zai")
     with pytest.raises(ValueError, match="6 to 64"):
