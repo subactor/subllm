@@ -167,3 +167,7 @@ python -m pip install -e '.[test]'
 ```
 
 See `docs/architecture.md` for the trust boundary and migration rules.
+See the
+[`SubLLM operator guide`](https://github.com/subactor/subllm/blob/main/docs/operations.md)
+for the complete provider, application naming, credential and provider-log
+runbook.

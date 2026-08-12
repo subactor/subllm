@@ -69,3 +69,6 @@ Routes list allowed logical models explicitly. A provider may expose the same
 logical model under a different wire name. Forbidden models remain in the
 catalog only so validation can reject them deterministically; no route may
 reference one.
+
+See the [operator guide](operations.md) for the editable policy, credential
+location, safe inspection commands and the current application/function map.

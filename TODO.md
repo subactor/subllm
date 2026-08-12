@@ -4,6 +4,5 @@
   route policy or exposing leased values.
 - [ ] Add provider health receipts so runtime failover can distinguish missing
   credentials from a transient provider outage.
-- [ ] Publish `subactor-subllm` only after package ownership and trusted
-  publishing are configured.
-
+- [ ] Configure trusted PyPI publishing before distributing
+  `subactor-subllm` outside immutable Git commit dependencies.
