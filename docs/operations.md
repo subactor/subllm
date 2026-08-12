@@ -51,6 +51,12 @@ automatically repeat that paid request through OpenRouter. A caller that needs
 bounded runtime failover must explicitly iterate `available_routes()` and own
 the duplicate-cost and duplicate-side-effect policy.
 
+The fleet uses the Z.AI GLM Coding Plan endpoint
+`https://api.z.ai/api/coding/paas/v4`. The same credential can authenticate at
+the general endpoint while still receiving provider error `1113` when the
+account has a Coding Plan but no pay-as-you-go balance; do not use that result
+as evidence that the Coding Plan is unavailable.
+
 ## Application names and provider logs
 
 Every route uses a stable application ID. Its display name and public URL are
@@ -109,9 +115,9 @@ ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
 ```
 
-The Z.AI value is split at the first dot. The ID, separator and signature must
-all be present; the signature itself may contain further dots. Never commit
-the file or print its values in diagnostics.
+The Z.AI value must contain exactly one dot: the API Key ID before it and the
+signature secret after it. `ID.ID.secret` is malformed. Never commit the file
+or print its values in diagnostics.
 
 ## Safe inspection
 

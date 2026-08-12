@@ -29,3 +29,13 @@ operational metadata and must never contain secrets or personal data.
 
 Provider ordering is a pre-request decision. The library does not
 automatically replay a failed paid request through another provider.
+
+## 2026-08-12 — Z.AI GLM Coding Plan endpoint
+
+The direct Z.AI provider uses `https://api.z.ai/api/coding/paas/v4`. A live
+probe authenticated the configured key, returned HTTP 200 and identified the
+served model as `glm-5.2`; the general endpoint instead returned provider code
+1113 because the account has no separate pay-as-you-go balance. Z.AI keys must
+contain exactly one `API Key ID.signature secret` separator so an accidentally
+duplicated ID fails before a request and permits pre-request OpenRouter
+selection.

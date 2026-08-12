@@ -33,3 +33,9 @@ def test_direct_zai_precedes_openrouter_for_every_glm_route() -> None:
         configured = configured_routes(route.application, route.function)
         assert configured[0].provider == "zai"
         assert next(item for item in configured if item.provider == "openrouter").priority == 20
+
+
+def test_zai_uses_the_coding_plan_endpoint() -> None:
+    route = configured_routes("skills-agent", "developer")[0]
+    assert route.provider == "zai"
+    assert route.api_base == "https://api.z.ai/api/coding/paas/v4"

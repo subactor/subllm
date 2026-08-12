@@ -16,7 +16,8 @@ variables or a credential vault remain the source and override that file.
 The initial fleet policy uses the same logical GLM 5.2 model through two
 providers:
 
-1. direct Z.AI (`ZAI_API_KEY`, `https://api.z.ai/api/paas/v4`),
+1. direct Z.AI GLM Coding Plan
+   (`ZAI_API_KEY`, `https://api.z.ai/api/coding/paas/v4`),
 2. OpenRouter (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`).
 
 Direct Z.AI is preferred when its complete `API_KEY_ID.signature_secret` value

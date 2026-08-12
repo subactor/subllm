@@ -24,13 +24,16 @@ def test_direct_zai_is_selected_when_both_credentials_exist() -> None:
     assert route.wire_model == "glm-5.2"
 
 
-def test_zai_signature_may_contain_dots_after_the_key_id_separator() -> None:
+def test_zai_key_with_duplicate_id_falls_back_to_openrouter() -> None:
     route = resolve(
         "doctor-agent",
         "repair-proposal",
-        environ={"ZAI_API_KEY": "key-id.signature.part"},
+        environ={
+            "ZAI_API_KEY": "key-id.key-id.signature",
+            "OPENROUTER_API_KEY": "openrouter-secret",
+        },
     )
-    assert route.provider == "zai"
+    assert route.provider == "openrouter"
 
 
 def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:

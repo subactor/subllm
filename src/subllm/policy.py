@@ -20,7 +20,7 @@ PROVIDERS = MappingProxyType(
     {
         "zai": ProviderSpec(
             id="zai",
-            api_base="https://api.z.ai/api/paas/v4",
+            api_base="https://api.z.ai/api/coding/paas/v4",
             api_key_env="ZAI_API_KEY",
         ),
         "openrouter": ProviderSpec(

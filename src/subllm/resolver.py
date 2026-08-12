@@ -27,8 +27,10 @@ def _credential_is_valid(provider: str, value: str | None) -> bool:
     if not candidate or any(part in candidate.upper() for part in _PLACEHOLDER_PARTS):
         return False
     if provider == "zai":
-        key_id, separator, signature_secret = candidate.partition(".")
-        return bool(key_id and separator and signature_secret)
+        if candidate.count(".") != 1:
+            return False
+        key_id, signature_secret = candidate.split(".", 1)
+        return bool(key_id and signature_secret)
     return True
 
 
