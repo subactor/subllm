@@ -47,3 +47,10 @@ in the ignored workspace `.env` and exposes it through the same loader used
 for Z.AI and OpenRouter. It is not a LiteLLM routing provider: Cursor agents
 are not an OpenAI-compatible chat-completions backend in this catalog.
 
+`SUBLLM_PROVIDER_ORDER` is the operator-controlled fallback chain. When the
+Cursor key is present the default is `cursor,zai,openrouter`. When it is
+absent the default stays `zai,openrouter`. An explicit list overrides the
+default and unknown ids fail closed. `provider_order()` and
+`available_provider_order()` expose that chain; `resolve()` still selects
+only `zai` or `openrouter`.
+

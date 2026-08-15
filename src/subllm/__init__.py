@@ -1,5 +1,8 @@
 from .credential_env import (
+    POLICY_ENV_NAMES,
     SUBLLM_ENV_FILE,
+    allowed_env_names,
+    credential_is_valid,
     credential_names,
     credential_value,
     cursor_api_key,
@@ -16,7 +19,16 @@ from .errors import (
     SubLLMError,
     UnknownRouteError,
 )
-from .policy import APPLICATIONS, CURSOR_API_KEY_ENV, EXTRA_CREDENTIAL_ENV, MODELS, PROVIDERS, ROUTES
+from .policy import (
+    APPLICATIONS,
+    CURSOR_API_KEY_ENV,
+    EXTRA_CREDENTIAL_ENV,
+    MODELS,
+    ORDERABLE_PROVIDER_IDS,
+    PROVIDERS,
+    ROUTES,
+    SUBLLM_PROVIDER_ORDER,
+)
 from .policy_config import (
     SUBLLM_POLICY_FILE,
     ApplicationPolicyConfig,
@@ -24,6 +36,11 @@ from .policy_config import (
     RuntimePolicyConfig,
     find_policy_file,
     load_policy_config,
+)
+from .provider_order import (
+    available_provider_order,
+    parse_provider_order,
+    provider_order,
 )
 from .resolver import (
     available_routes,
@@ -49,6 +66,8 @@ __all__ = [
     "CURSOR_API_KEY_ENV",
     "EXTRA_CREDENTIAL_ENV",
     "MODELS",
+    "ORDERABLE_PROVIDER_IDS",
+    "POLICY_ENV_NAMES",
     "PROVIDERS",
     "ROUTES",
     "ApplicationSpec",
@@ -68,8 +87,12 @@ __all__ = [
     "SubLLMError",
     "SUBLLM_ENV_FILE",
     "SUBLLM_POLICY_FILE",
+    "SUBLLM_PROVIDER_ORDER",
     "UnknownRouteError",
+    "allowed_env_names",
+    "available_provider_order",
     "available_routes",
+    "credential_is_valid",
     "credential_names",
     "credential_value",
     "configured_route",
@@ -82,6 +105,8 @@ __all__ = [
     "load_policy_config",
     "load_shared_environment",
     "merged_environment",
+    "parse_provider_order",
+    "provider_order",
     "resolve",
     "route_policy",
     "validate_policy",

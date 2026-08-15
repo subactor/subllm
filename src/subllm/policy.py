@@ -37,6 +37,11 @@ PROVIDERS = MappingProxyType(
 CURSOR_API_KEY_ENV = "CURSOR_API_KEY"
 EXTRA_CREDENTIAL_ENV = (CURSOR_API_KEY_ENV,)
 
+# Comma-separated fallback chain. cursor is the Cursor SDK backend; zai and
+# openrouter are the LiteLLM routing providers. Unknown names fail closed.
+SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
+ORDERABLE_PROVIDER_IDS = ("cursor",) + tuple(PROVIDERS)
+
 MODELS = MappingProxyType(
     {
         "glm-5.2": ModelSpec(

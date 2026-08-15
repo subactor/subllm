@@ -9,6 +9,7 @@
   such as `CURSOR_API_KEY` belong in that file, not in tracked docs.
 - A new provider needs credential-shape tests and a fixed HTTPS API base.
 - A new route needs an exact application/function pair and deterministic
-  priority ordering.
+  priority ordering. `SUBLLM_PROVIDER_ORDER` is a comma-separated allowlist
+  (`cursor,zai,openrouter`); unknown names fail closed.
 - Never silently fall back to a model that the route does not list.
 - Run `./scripts/verify` before completing a change.

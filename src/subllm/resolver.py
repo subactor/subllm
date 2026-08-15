@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 
-from .credential_env import merged_environment
+from .credential_env import credential_is_valid, merged_environment
 from .errors import (
     InvalidPolicyError,
     MissingCredentialError,
@@ -10,28 +11,8 @@ from .errors import (
 )
 from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
 from .policy_config import RuntimePolicyConfig, load_policy_config
+from .provider_order import routing_provider_order
 from .types import ConfiguredRoute, ResolvedRoute, RouteCandidate, RoutePolicy
-
-_PLACEHOLDER_PARTS = (
-    "ADD_SIGNATURE_SECRET",
-    "SIGNATURE_SECRET",
-    "CHANGEME",
-    "PLACEHOLDER",
-    "<",
-    ">",
-)
-
-
-def _credential_is_valid(provider: str, value: str | None) -> bool:
-    candidate = (value or "").strip()
-    if not candidate or any(part in candidate.upper() for part in _PLACEHOLDER_PARTS):
-        return False
-    if provider == "zai":
-        if candidate.count(".") != 1:
-            return False
-        key_id, signature_secret = candidate.split(".", 1)
-        return bool(key_id and signature_secret)
-    return True
 
 
 def route_policy(application: str, function: str) -> RoutePolicy:
@@ -46,6 +27,8 @@ def _configured(
     function: str,
     candidate: RouteCandidate,
     runtime_policy: RuntimePolicyConfig,
+    *,
+    order: tuple[str, ...] | None,
 ) -> ConfiguredRoute:
     app = runtime_policy.applications[application]
     provider = PROVIDERS[candidate.provider]
@@ -61,6 +44,10 @@ def _configured(
     headers: dict[str, str] = {}
     if provider.attribution_headers:
         headers = {"HTTP-Referer": app.url, "X-OpenRouter-Title": app.name}
+    if order is None:
+        priority = provider_policy.priority + candidate.priority_offset
+    else:
+        priority = order.index(provider.id) * 10 + candidate.priority_offset
     return ConfiguredRoute(
         application=application,
         application_name=app.name,
@@ -68,7 +55,7 @@ def _configured(
         function=function,
         provider=provider.id,
         model=model.id,
-        priority=provider_policy.priority + candidate.priority_offset,
+        priority=priority,
         api_base=provider.api_base,
         api_key_env=provider.api_key_env,
         litellm_model=provider_model.litellm_model,
@@ -77,13 +64,20 @@ def _configured(
     )
 
 
-def configured_routes(application: str, function: str) -> tuple[ConfiguredRoute, ...]:
+def configured_routes(
+    application: str,
+    function: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[ConfiguredRoute, ...]:
     policy = route_policy(application, function)
     runtime_policy = load_policy_config()
+    order_environ = environ if environ is not None else os.environ
+    order = routing_provider_order(environ=order_environ)
     candidates = (
-        _configured(application, function, item, runtime_policy)
+        _configured(application, function, item, runtime_policy, order=order)
         for item in policy.candidates
-        if runtime_policy.providers[item.provider].enabled
+        if runtime_policy.providers[item.provider].enabled and (order is None or item.provider in order)
     )
     ordered = sorted(candidates, key=lambda item: item.priority)
     if not ordered:
@@ -101,8 +95,14 @@ def configured_routes(application: str, function: str) -> tuple[ConfiguredRoute,
     return tuple(unique)
 
 
-def configured_route(application: str, function: str, *, provider: str | None = None) -> ConfiguredRoute:
-    routes = configured_routes(application, function)
+def configured_route(
+    application: str,
+    function: str,
+    *,
+    provider: str | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> ConfiguredRoute:
+    routes = configured_routes(application, function, environ=environ)
     for route in routes:
         if provider is None or route.provider == provider:
             return route
@@ -119,9 +119,9 @@ def available_routes(
     environment = merged_environment(environ=environ)
     explicit = credentials or {}
     resolved: list[ResolvedRoute] = []
-    for route in configured_routes(application, function):
+    for route in configured_routes(application, function, environ=environment):
         api_key = explicit.get(route.provider, environment.get(route.api_key_env, ""))
-        if not _credential_is_valid(route.provider, api_key):
+        if not credential_is_valid(route.provider, api_key):
             continue
         resolved.append(
             ResolvedRoute(
@@ -140,10 +140,11 @@ def resolve(
     environ: Mapping[str, str] | None = None,
     credentials: Mapping[str, str] | None = None,
 ) -> ResolvedRoute:
-    for route in available_routes(application, function, environ=environ, credentials=credentials):
+    environment = merged_environment(environ=environ)
+    for route in available_routes(application, function, environ=environment, credentials=credentials):
         if provider is None or route.provider == provider:
             return route
-    configured = configured_routes(application, function)
+    configured = configured_routes(application, function, environ=environment)
     if provider is not None and not any(route.provider == provider for route in configured):
         raise UnknownRouteError(f"route {application}/{function} does not allow provider {provider}")
     required = sorted({route.api_key_env for route in configured if provider is None or route.provider == provider})

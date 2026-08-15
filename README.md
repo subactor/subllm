@@ -79,6 +79,21 @@ This ordering controls selection before a request. It does not automatically
 repeat a failed paid request through another provider; callers that implement
 bounded runtime failover use `available_routes()` in this order.
 
+## Fallback chain
+
+`SUBLLM_PROVIDER_ORDER` is a comma-separated allowlist of backend ids:
+`cursor`, `zai`, `openrouter`. Empty or unset uses the default:
+
+- `cursor,zai,openrouter` when `CURSOR_API_KEY` is set,
+- `zai,openrouter` when it is absent.
+
+Unknown names fail closed. Set it in the process environment or in the
+shared `.env`. `provider_order()` returns the configured chain;
+`available_provider_order()` drops backends without a valid credential.
+`resolve()` never returns `cursor` — that id is the Cursor SDK, not a
+LiteLLM route. An explicit list such as `openrouter,zai` also reorders
+those LiteLLM candidates.
+
 ## One local credential file
 
 Create the private file once in this repository:
@@ -95,6 +110,7 @@ Set complete provider values there. `CURSOR_API_KEY` is the Cursor SDK name
 ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
 CURSOR_API_KEY=
+SUBLLM_PROVIDER_ORDER=
 ```
 
 When an application is a sibling of this repository, `resolve()` discovers
@@ -102,10 +118,11 @@ When an application is a sibling of this repository, `resolve()` discovers
 absolute path or to a path relative to the process working directory. An
 explicit process variable wins over the corresponding value in the file.
 
-Only credential variables declared in `policy.py` are accepted: routing
-provider keys plus extra SDK names such as `CURSOR_API_KEY`. The file must be
-a regular, non-symlink file with mode `0600` on POSIX. `cursor_api_key()`
-reads the same merged file and process environment that `resolve()` uses.
+Only names declared in `policy.py` are accepted: routing provider keys, extra
+SDK names such as `CURSOR_API_KEY`, and the optional `SUBLLM_PROVIDER_ORDER`
+chain. The file must be a regular, non-symlink file with mode `0600` on POSIX.
+`cursor_api_key()` reads the same merged file and process environment that
+`resolve()` uses.
 
 ## Python API
 
@@ -138,12 +155,15 @@ print(route.litellm_model)
 ```
 
 Cursor SDK consumers read the same shared file. Pass the value explicitly
-instead of relying on ambient process state:
+instead of relying on ambient process state. Check the fallback chain before
+calling `resolve()` when Cursor should win:
 
 ```python
-from subllm import cursor_api_key
+from subllm import available_provider_order, cursor_api_key
 
-api_key = cursor_api_key()
+backends = available_provider_order()
+if backends and backends[0] == "cursor":
+    api_key = cursor_api_key()
 ```
 
 ## CLI

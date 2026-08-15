@@ -7,6 +7,10 @@
 - Accept `CURSOR_API_KEY` from the shared ignored `.env` so Cursor SDK
   consumers can use the same workspace credential file. The name matches the
   Cursor SDK (`@cursor/sdk` / `cursor-sdk`). An empty value remains missing.
+- Add `SUBLLM_PROVIDER_ORDER` for the pre-request fallback chain. Known ids
+  are `cursor`, `zai` and `openrouter`. The default is `cursor,zai,openrouter`
+  when `CURSOR_API_KEY` is set, otherwise `zai,openrouter`. Unknown names
+  fail closed. `resolve()` still returns only LiteLLM routes.
 
 ## [0.5.0] - 2026-08-12
 

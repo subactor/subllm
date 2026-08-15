@@ -81,6 +81,13 @@ def test_providers_reports_effective_public_settings(capsys) -> None:
     assert payload["providers"]["openrouter"]["priority"] == 20
 
 
+def test_providers_reports_explicit_order(monkeypatch, capsys) -> None:
+    monkeypatch.setenv("SUBLLM_PROVIDER_ORDER", "openrouter,cursor,zai")
+    assert main(["providers"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["order"] == ["openrouter", "cursor", "zai"]
+
+
 def test_applications_reports_public_request_identity(capsys) -> None:
     assert main(["applications"]) == 0
     payload = json.loads(capsys.readouterr().out)

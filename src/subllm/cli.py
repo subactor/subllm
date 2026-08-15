@@ -10,6 +10,7 @@ from .credential_env import credential_names, find_env_file, import_credentials,
 from .errors import SubLLMError
 from .policy import ROUTES
 from .policy_config import load_policy_config
+from .provider_order import provider_order
 from .resolver import configured_route, configured_routes, resolve, validate_policy
 
 
@@ -80,6 +81,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             policy = load_policy_config()
             payload = {
                 "source": str(policy.source) if policy.source is not None else "built-in defaults",
+                "order": list(provider_order()),
                 "providers": {name: asdict(settings) for name, settings in policy.providers.items()},
             }
             print(json.dumps(payload, indent=2, sort_keys=True))

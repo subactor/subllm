@@ -114,6 +114,7 @@ def test_env_example_declares_empty_cursor_api_key() -> None:
         name, value = stripped.split("=", 1)
         assignments[name] = value
     assert assignments[CURSOR_API_KEY_ENV] == ""
+    assert assignments["SUBLLM_PROVIDER_ORDER"] == ""
     assert all(not value.startswith("cursor_") for value in assignments.values())
 
 
@@ -142,6 +143,17 @@ def test_missing_cursor_api_key_is_reported(tmp_path: Path, monkeypatch: pytest.
     with pytest.raises(MissingCredentialError, match="CURSOR_API_KEY"):
         cursor_api_key()
     assert load_env_file(shared).get(CURSOR_API_KEY_ENV) == ""
+
+
+def test_shared_file_accepts_provider_order(tmp_path: Path) -> None:
+    path = _private_file(
+        tmp_path / "order.env",
+        "ZAI_API_KEY=id.secret\nSUBLLM_PROVIDER_ORDER=openrouter,zai\n",
+    )
+    assert load_env_file(path) == {
+        "ZAI_API_KEY": "id.secret",
+        "SUBLLM_PROVIDER_ORDER": "openrouter,zai",
+    }
 
 
 def test_import_accepts_cursor_api_key(tmp_path: Path) -> None:

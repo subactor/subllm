@@ -37,6 +37,12 @@ Lower numeric priority wins. Set `enabled = false` to remove a provider from
 every route. Each enabled provider must have a unique priority. The configured
 default model must exist, be allowed and be available through that provider.
 
+`SUBLLM_PROVIDER_ORDER` is the high-level fallback chain. Known ids are
+`cursor`, `zai` and `openrouter`. The default is `cursor,zai,openrouter`
+when `CURSOR_API_KEY` is set and `zai,openrouter` when it is not. An
+explicit list overrides that default; unknown names fail closed. `cursor`
+is the Cursor SDK backend and is not returned by `resolve()`.
+
 Selection happens before an API request:
 
 1. load and validate the complete policy;
@@ -114,6 +120,7 @@ Its accepted names are:
 ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
 CURSOR_API_KEY=
+SUBLLM_PROVIDER_ORDER=
 ```
 
 The Z.AI value must contain exactly one dot: the API Key ID before it and the

@@ -9,10 +9,19 @@ from contextlib import suppress
 from pathlib import Path
 
 from .errors import CredentialFileError, MissingCredentialError
-from .policy import CURSOR_API_KEY_ENV, EXTRA_CREDENTIAL_ENV, PROVIDERS
+from .policy import CURSOR_API_KEY_ENV, EXTRA_CREDENTIAL_ENV, PROVIDERS, SUBLLM_PROVIDER_ORDER
 
 SUBLLM_ENV_FILE = "SUBLLM_ENV_FILE"
+POLICY_ENV_NAMES = (SUBLLM_PROVIDER_ORDER,)
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_PLACEHOLDER_PARTS = (
+    "ADD_SIGNATURE_SECRET",
+    "SIGNATURE_SECRET",
+    "CHANGEME",
+    "PLACEHOLDER",
+    "<",
+    ">",
+)
 
 
 def credential_names() -> tuple[str, ...]:
@@ -24,6 +33,22 @@ def credential_names() -> tuple[str, ...]:
             )
         )
     )
+
+
+def allowed_env_names() -> tuple[str, ...]:
+    return tuple(dict.fromkeys((*credential_names(), *POLICY_ENV_NAMES)))
+
+
+def credential_is_valid(provider: str, value: str | None) -> bool:
+    candidate = (value or "").strip()
+    if not candidate or any(part in candidate.upper() for part in _PLACEHOLDER_PARTS):
+        return False
+    if provider == "zai":
+        if candidate.count(".") != 1:
+            return False
+        key_id, signature_secret = candidate.split(".", 1)
+        return bool(key_id and signature_secret)
+    return True
 
 
 def credential_value(
@@ -97,7 +122,7 @@ def _unquote(value: str, *, path: Path, line_number: int) -> str:
 def load_env_file(path: Path, *, allow_other_names: bool = False) -> dict[str, str]:
     path = path.absolute()
     _validate_file(path)
-    allowed = set(credential_names())
+    allowed = set(allowed_env_names())
     credentials: dict[str, str] = {}
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -159,7 +184,7 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
             if current is not None and current != value:
                 raise CredentialFileError(f"conflicting values for {name}; source credentials were not changed")
             imported[name] = value
-    if not imported:
+    if not any(name in imported for name in credential_names()):
         raise CredentialFileError("no provider credentials found in the source files")
 
     target.parent.mkdir(parents=True, exist_ok=True)
@@ -175,7 +200,7 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
             temporary_name = temporary.name
             os.fchmod(temporary.fileno(), 0o600)
             temporary.write("# Local provider credentials. Never commit this file.\n")
-            for name in credential_names():
+            for name in allowed_env_names():
                 if name in imported:
                     temporary.write(f"{name}={imported[name]}\n")
             temporary.flush()
@@ -189,4 +214,4 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
         if temporary_name is not None:
             with suppress(FileNotFoundError):
                 Path(temporary_name).unlink()
-    return tuple(name for name in credential_names() if name in imported)
+    return tuple(name for name in allowed_env_names() if name in imported)
