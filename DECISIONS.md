@@ -39,3 +39,11 @@ served model as `glm-5.2`; the general endpoint instead returned provider code
 contain exactly one `API Key ID.signature secret` separator so an accidentally
 duplicated ID fails before a request and permits pre-request OpenRouter
 selection.
+
+## 2026-08-15 — Cursor API key is a shared credential, not a route provider
+
+`CURSOR_API_KEY` is the name documented by the Cursor SDK. SubLLM accepts it
+in the ignored workspace `.env` and exposes it through the same loader used
+for Z.AI and OpenRouter. It is not a LiteLLM routing provider: Cursor agents
+are not an OpenAI-compatible chat-completions backend in this catalog.
+

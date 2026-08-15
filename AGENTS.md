@@ -5,7 +5,8 @@
   priority, default models and application display identity in the root
   `subllm.toml`; consumers must not grow private copies.
 - Never commit API keys, key IDs, secret fragments, tokens or `.env` files. The ignored local
-  `subllm/.env` is the workspace credential source and must stay mode `0600`.
+  `subllm/.env` is the workspace credential source and must stay mode `0600`. Extra SDK names
+  such as `CURSOR_API_KEY` belong in that file, not in tracked docs.
 - A new provider needs credential-shape tests and a fixed HTTPS API base.
 - A new route needs an exact application/function pair and deterministic
   priority ordering.

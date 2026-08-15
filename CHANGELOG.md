@@ -2,6 +2,12 @@
 
 ## [Unreleased]
 
+### Added
+
+- Accept `CURSOR_API_KEY` from the shared ignored `.env` so Cursor SDK
+  consumers can use the same workspace credential file. The name matches the
+  Cursor SDK (`@cursor/sdk` / `cursor-sdk`). An empty value remains missing.
+
 ## [0.5.0] - 2026-08-12
 
 ### Added

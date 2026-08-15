@@ -88,11 +88,13 @@ cp .env.example .env
 chmod 600 .env
 ```
 
-Set complete provider values there:
+Set complete provider values there. `CURSOR_API_KEY` is the Cursor SDK name
+(`@cursor/sdk` / `cursor-sdk`); leave it empty when unused:
 
 ```dotenv
 ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
+CURSOR_API_KEY=
 ```
 
 When an application is a sibling of this repository, `resolve()` discovers
@@ -100,8 +102,10 @@ When an application is a sibling of this repository, `resolve()` discovers
 absolute path or to a path relative to the process working directory. An
 explicit process variable wins over the corresponding value in the file.
 
-Only credential variables declared by providers in `policy.py` are accepted.
-The file must be a regular, non-symlink file with mode `0600` on POSIX.
+Only credential variables declared in `policy.py` are accepted: routing
+provider keys plus extra SDK names such as `CURSOR_API_KEY`. The file must be
+a regular, non-symlink file with mode `0600` on POSIX. `cursor_api_key()`
+reads the same merged file and process environment that `resolve()` uses.
 
 ## Python API
 
@@ -131,6 +135,15 @@ from subllm import configured_route
 
 route = configured_route("onedev-agent", "code-edit", provider="openrouter")
 print(route.litellm_model)
+```
+
+Cursor SDK consumers read the same shared file. Pass the value explicitly
+instead of relying on ambient process state:
+
+```python
+from subllm import cursor_api_key
+
+api_key = cursor_api_key()
 ```
 
 ## CLI

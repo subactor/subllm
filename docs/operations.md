@@ -10,7 +10,7 @@ Python application that uses `subllm`. It contains no credential values.
 | Provider enabled state, priority and default model | [`subllm/subllm.toml`](../subllm.toml) | Yes |
 | Application display name and attribution URL | [`subllm/subllm.toml`](../subllm.toml) | Yes |
 | Provider/model catalog and application/function route membership | `subllm/src/subllm/policy.py` | Yes |
-| Local Z.AI and OpenRouter credentials | `subllm/.env` | No; mode `0600` |
+| Local Z.AI, OpenRouter and Cursor credentials | `subllm/.env` | No; mode `0600` |
 | CI/deployment credentials | Process environment or credential vault | No |
 
 Process credentials override the shared local `.env`. `SUBLLM_ENV_FILE` and
@@ -113,11 +113,14 @@ Its accepted names are:
 ```dotenv
 ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
 OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
+CURSOR_API_KEY=
 ```
 
 The Z.AI value must contain exactly one dot: the API Key ID before it and the
-signature secret after it. `ID.ID.secret` is malformed. Never commit the file
-or print its values in diagnostics.
+signature secret after it. `ID.ID.secret` is malformed. `CURSOR_API_KEY` is
+the name documented by the Cursor SDK; mint it from Cursor Dashboard →
+Integrations and pass it explicitly to the SDK, or export it in the process
+environment. Never commit the file or print its values in diagnostics.
 
 ## Safe inspection
 

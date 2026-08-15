@@ -66,7 +66,7 @@ def test_env_check_reports_names_without_values(tmp_path: Path, monkeypatch, cap
 
     assert main(["env", "check"]) == 0
     output = capsys.readouterr().out
-    assert output == "ZAI_API_KEY: configured\nOPENROUTER_API_KEY: missing\n"
+    assert output == "ZAI_API_KEY: configured\nOPENROUTER_API_KEY: missing\nCURSOR_API_KEY: missing\n"
     assert "cli-secret" not in output
 
 

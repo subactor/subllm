@@ -32,6 +32,11 @@ PROVIDERS = MappingProxyType(
     }
 )
 
+# Shared .env names that are not LiteLLM routing providers. CURSOR_API_KEY is
+# the name documented by the Cursor SDK (@cursor/sdk / cursor-sdk).
+CURSOR_API_KEY_ENV = "CURSOR_API_KEY"
+EXTRA_CREDENTIAL_ENV = (CURSOR_API_KEY_ENV,)
+
 MODELS = MappingProxyType(
     {
         "glm-5.2": ModelSpec(

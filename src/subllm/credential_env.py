@@ -8,15 +8,45 @@ from collections.abc import Iterable, Mapping
 from contextlib import suppress
 from pathlib import Path
 
-from .errors import CredentialFileError
-from .policy import PROVIDERS
+from .errors import CredentialFileError, MissingCredentialError
+from .policy import CURSOR_API_KEY_ENV, EXTRA_CREDENTIAL_ENV, PROVIDERS
 
 SUBLLM_ENV_FILE = "SUBLLM_ENV_FILE"
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 def credential_names() -> tuple[str, ...]:
-    return tuple(dict.fromkeys(provider.api_key_env for provider in PROVIDERS.values()))
+    return tuple(
+        dict.fromkeys(
+            (
+                *(provider.api_key_env for provider in PROVIDERS.values()),
+                *EXTRA_CREDENTIAL_ENV,
+            )
+        )
+    )
+
+
+def credential_value(
+    name: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+    cwd: Path | None = None,
+) -> str | None:
+    if name not in credential_names():
+        raise CredentialFileError(f"unsupported variable {name}")
+    value = merged_environment(environ=environ, cwd=cwd).get(name, "").strip()
+    return value or None
+
+
+def cursor_api_key(
+    *,
+    environ: Mapping[str, str] | None = None,
+    cwd: Path | None = None,
+) -> str:
+    value = credential_value(CURSOR_API_KEY_ENV, environ=environ, cwd=cwd)
+    if value is None:
+        raise MissingCredentialError(f"no valid credential; configure {CURSOR_API_KEY_ENV}")
+    return value
 
 
 def find_env_file(

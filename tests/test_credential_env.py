@@ -6,8 +6,11 @@ from pathlib import Path
 import pytest
 
 from subllm import (
+    CURSOR_API_KEY_ENV,
     CredentialFileError,
     MissingCredentialError,
+    credential_names,
+    cursor_api_key,
     find_env_file,
     import_credentials,
     load_env_file,
@@ -93,6 +96,60 @@ def test_import_rejects_conflicting_sources_without_creating_target(tmp_path: Pa
     with pytest.raises(CredentialFileError, match="conflicting values"):
         import_credentials([source_a, source_b], target)
     assert not target.exists()
+
+
+def test_credential_names_include_cursor_sdk_key() -> None:
+    assert credential_names() == ("ZAI_API_KEY", "OPENROUTER_API_KEY", CURSOR_API_KEY_ENV)
+    assert CURSOR_API_KEY_ENV == "CURSOR_API_KEY"
+
+
+def test_env_example_declares_empty_cursor_api_key() -> None:
+    example = Path(__file__).resolve().parents[1] / ".env.example"
+    assert example.is_file()
+    assignments = {}
+    for line in example.read_text(encoding="utf-8").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#") or "=" not in stripped:
+            continue
+        name, value = stripped.split("=", 1)
+        assignments[name] = value
+    assert assignments[CURSOR_API_KEY_ENV] == ""
+    assert all(not value.startswith("cursor_") for value in assignments.values())
+
+
+def test_dotenv_is_gitignored() -> None:
+    gitignore = Path(__file__).resolve().parents[1] / ".gitignore"
+    names = {line.strip() for line in gitignore.read_text(encoding="utf-8").splitlines() if line.strip()}
+    assert ".env" in names
+
+
+def test_cursor_api_key_loads_from_shared_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    shared = tmp_path / "subllm" / ".env"
+    shared.parent.mkdir()
+    _private_file(shared, "CURSOR_API_KEY=cursor_test-not-a-secret\nZAI_API_KEY=id.secret\n")
+    monkeypatch.chdir(tmp_path / "subllm")
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+
+    assert load_env_file(shared)[CURSOR_API_KEY_ENV] == "cursor_test-not-a-secret"
+    assert cursor_api_key() == "cursor_test-not-a-secret"
+
+
+def test_missing_cursor_api_key_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    shared = _private_file(tmp_path / ".env", "ZAI_API_KEY=id.secret\nCURSOR_API_KEY=\n")
+    monkeypatch.setenv("SUBLLM_ENV_FILE", str(shared))
+    monkeypatch.delenv("CURSOR_API_KEY", raising=False)
+
+    with pytest.raises(MissingCredentialError, match="CURSOR_API_KEY"):
+        cursor_api_key()
+    assert load_env_file(shared).get(CURSOR_API_KEY_ENV) == ""
+
+
+def test_import_accepts_cursor_api_key(tmp_path: Path) -> None:
+    source = _private_file(tmp_path / "cursor.env", "CURSOR_API_KEY=cursor_test-not-a-secret\n")
+    target = tmp_path / "subllm.env"
+
+    assert import_credentials([source], target) == (CURSOR_API_KEY_ENV,)
+    assert load_env_file(target) == {CURSOR_API_KEY_ENV: "cursor_test-not-a-secret"}
 
 
 def stat_mode(path: Path) -> int:

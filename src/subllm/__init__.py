@@ -1,10 +1,13 @@
 from .credential_env import (
     SUBLLM_ENV_FILE,
     credential_names,
+    credential_value,
+    cursor_api_key,
     find_env_file,
     import_credentials,
     load_env_file,
     load_shared_environment,
+    merged_environment,
 )
 from .errors import (
     CredentialFileError,
@@ -13,7 +16,7 @@ from .errors import (
     SubLLMError,
     UnknownRouteError,
 )
-from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
+from .policy import APPLICATIONS, CURSOR_API_KEY_ENV, EXTRA_CREDENTIAL_ENV, MODELS, PROVIDERS, ROUTES
 from .policy_config import (
     SUBLLM_POLICY_FILE,
     ApplicationPolicyConfig,
@@ -43,6 +46,8 @@ from .types import (
 
 __all__ = [
     "APPLICATIONS",
+    "CURSOR_API_KEY_ENV",
+    "EXTRA_CREDENTIAL_ENV",
     "MODELS",
     "PROVIDERS",
     "ROUTES",
@@ -66,14 +71,17 @@ __all__ = [
     "UnknownRouteError",
     "available_routes",
     "credential_names",
+    "credential_value",
     "configured_route",
     "configured_routes",
+    "cursor_api_key",
     "find_env_file",
     "find_policy_file",
     "import_credentials",
     "load_env_file",
     "load_policy_config",
     "load_shared_environment",
+    "merged_environment",
     "resolve",
     "route_policy",
     "validate_policy",

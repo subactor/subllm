@@ -21,11 +21,11 @@ precedence, so CI and deployment secret injection stay authoritative. A caller
 can instead supply an explicit environment mapping or provider credentials;
 an explicit mapping is hermetic and disables local-file discovery.
 
-Only known provider credential names are loaded. The shared file must be a
-regular non-symlink file with POSIX mode `0600`. Resolution selects only
-candidates whose credential passes the provider's shape check. The selected
-value is held in a `repr=False` field and is omitted from public serialization
-and CLI output.
+Only known credential names are loaded: routing provider keys plus extra SDK
+names such as `CURSOR_API_KEY`. The shared file must be a regular non-symlink
+file with POSIX mode `0600`. Resolution selects only candidates whose
+credential passes the provider's shape check. The selected value is held in a
+`repr=False` field and is omitted from public serialization and CLI output.
 
 ## Flow
 
