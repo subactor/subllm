@@ -6,9 +6,12 @@ onto OpenRouter. Standards HOME: `wellmanifest/{policy-dsl,env-dsl}` profile
 
 | Credential | Strategy | Transport | Default model | Notes |
 | --- | --- | --- | --- | --- |
-| `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` | Sol never becomes `openai/gpt-5.6-sol` |
+| `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` | Fallback peer: `grok-4.6`. Never OpenRouter wire ids |
 | `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.2` | Coding Plan base URL |
 | `OPENROUTER_API_KEY` | `openrouter` | OpenAI-compatible | `glm-5.2` | Allowlisted OpenRouter models only |
+
+Cursor fallback order (same credential): **`gpt-5.6-sol` then `grok-4.6`**.
+Exact Cursor SDK slugs confirmed via `Cursor.models.list()`.
 
 ## Force Cursor Sol
 
@@ -20,6 +23,9 @@ onto OpenRouter. Standards HOME: `wellmanifest/{policy-dsl,env-dsl}` profile
    `transport=cursor-sdk`, `wire_model=gpt-5.6-sol`.
 4. Use `route.cursor_sdk_kwargs()` with `@cursor/sdk`; do **not** call
    `litellm_kwargs()` for cursor.
+5. For Grok 4.6 on Cursor, take the second cursor candidate from
+   `available_routes()` / `configured_routes()` (`wire_model=grok-4.6`).
+   `resolve()` keeps Sol as the default.
 
 ## Force Z.AI or OpenRouter
 

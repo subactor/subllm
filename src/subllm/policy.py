@@ -59,6 +59,16 @@ MODELS = MappingProxyType(
                 )
             ),
         ),
+        # Cursor SDK slug confirmed via Cursor.models.list(); not an OpenRouter wire id.
+        "grok-4.6": ModelSpec(
+            id="grok-4.6",
+            providers=_provider_models(
+                cursor=ProviderModelSpec(
+                    litellm_model="cursor/grok-4.6",
+                    wire_model="grok-4.6",
+                )
+            ),
+        ),
         "glm-5.2": ModelSpec(
             id="glm-5.2",
             providers=_provider_models(
@@ -158,9 +168,11 @@ APPLICATIONS = MappingProxyType(
     }
 )
 
-# Prefer Cursor Sol when CURSOR_API_KEY is valid; otherwise Z.AI then OpenRouter.
+# Prefer Cursor Sol, then Cursor Grok 4.6, when CURSOR_API_KEY is valid;
+# otherwise Z.AI then OpenRouter. Both Cursor models use cursor-sdk transport.
 _DEFAULT = (
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
+    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="zai"),
     RouteCandidate(provider="openrouter"),
 )

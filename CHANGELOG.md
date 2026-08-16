@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.6.1] - 2026-08-16
+
+### Added
+
+- Cursor allowlist peer `grok-4.6` (exact SDK slug). Fleet fallback order on
+  Cursor: `gpt-5.6-sol` then `grok-4.6`; `resolve()` still defaults to Sol.
+
+### Fixed
+
+- Autouse pytest fixture clears live `CURSOR_API_KEY` / Z.AI / OpenRouter
+  process env so workspace discovery tests stay hermetic.
+
 ## [0.6.0] - 2026-08-16
 
 ### Changed

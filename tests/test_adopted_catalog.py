@@ -28,10 +28,14 @@ def test_adopted_env_declares_sol_not_on_openrouter() -> None:
     text = (ADOPTED / "credential-strategies.env").read_text(encoding="utf-8")
     assert "CURSOR_DEFAULT_MODEL=gpt-5.6-sol" in text
     assert "OPENROUTER_DEFAULT_MODEL=glm-5.2" in text
-    assert "CURSOR_ONLY_MODELS=gpt-5.6-sol" in text
+    assert "CURSOR_FALLBACK_ORDER=gpt-5.6-sol,grok-4.6" in text
+    assert "CURSOR_ONLY_MODELS=gpt-5.6-sol,grok-4.6" in text
     assert "openai/gpt-5.6-sol" not in text
 
 
 def test_python_catalog_keeps_sol_off_openrouter() -> None:
     assert "openrouter" not in MODELS["gpt-5.6-sol"].providers
     assert "cursor" in MODELS["gpt-5.6-sol"].providers
+    assert "openrouter" not in MODELS["grok-4.6"].providers
+    assert "cursor" in MODELS["grok-4.6"].providers
+    assert MODELS["grok-4.6"].providers["cursor"].wire_model == "grok-4.6"

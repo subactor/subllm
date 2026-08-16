@@ -160,10 +160,52 @@ def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
     )
     assert [(route.provider, route.model) for route in routes] == [
         ("cursor", "gpt-5.6-sol"),
+        ("cursor", "grok-4.6"),
         ("zai", "glm-5.2"),
         ("openrouter", "glm-5.2"),
         ("openrouter", "qwen3.7-plus"),
     ]
+
+
+def test_credential_source_matrix_selects_expected_provider_model() -> None:
+    """Z.AI / OpenRouter / Cursor key isolation → optimal model per source."""
+    cases = (
+        ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.2"),
+        ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.2"),
+        ({"CURSOR_API_KEY": "cursor_test-not-a-secret"}, "cursor", "gpt-5.6-sol"),
+        (
+            {
+                "CURSOR_API_KEY": "cursor_test-not-a-secret",
+                "ZAI_API_KEY": "key-id.signature",
+                "OPENROUTER_API_KEY": "openrouter-secret",
+            },
+            "cursor",
+            "gpt-5.6-sol",
+        ),
+    )
+    for environ, provider, model in cases:
+        route = resolve("repair-agent", "repair-plan", environ=environ)
+        assert route.provider == provider
+        assert route.model == model
+        if provider == "openrouter":
+            assert "gpt-5.6-sol" not in route.wire_model
+            assert "gpt-5.6-sol" not in route.litellm_model
+        if provider == "cursor":
+            assert route.transport == "cursor-sdk"
+            assert route.wire_model == "gpt-5.6-sol"
+
+
+def test_cursor_grok_is_second_candidate_not_openrouter() -> None:
+    routes = available_routes(
+        "doctor-agent",
+        "repair-proposal",
+        environ={"CURSOR_API_KEY": "cursor_test-not-a-secret"},
+    )
+    assert [(r.provider, r.model, r.wire_model) for r in routes] == [
+        ("cursor", "gpt-5.6-sol", "gpt-5.6-sol"),
+        ("cursor", "grok-4.6", "grok-4.6"),
+    ]
+    assert "openrouter" not in MODELS["grok-4.6"].providers
 
 
 def test_explicit_credentials_do_not_need_environment_variable_names() -> None:

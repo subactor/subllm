@@ -3,10 +3,10 @@ schema_version = 2
 # Lower priority wins. Set enabled = false to remove a provider from every
 # route. default_model is the logical model ID from src/subllm/policy.py.
 # Credential strategies (ADOPT wellmanifest policy-dsl / env-dsl):
-#   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol
+#   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol (then grok-4.6)
 #   ZAI_API_KEY        → zai                    → glm-5.2
 #   OPENROUTER_API_KEY → openrouter             → glm-5.2 (+ route extras)
-# Cursor Sol is never an OpenRouter wire id.
+# Cursor Sol / Grok are never OpenRouter wire ids.
 [providers.cursor]
 enabled = true
 priority = 0

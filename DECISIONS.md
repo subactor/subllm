@@ -61,9 +61,13 @@ Fleet defaults:
 
 | Credential | Provider | Priority | Default model |
 | --- | --- | --- | --- |
-| `CURSOR_API_KEY` | `cursor` | 0 | `gpt-5.6-sol` |
+| `CURSOR_API_KEY` | `cursor` | 0 | `gpt-5.6-sol` (peer `grok-4.6` at +5) |
 | `ZAI_API_KEY` | `zai` | 10 | `glm-5.2` |
 | `OPENROUTER_API_KEY` | `openrouter` | 20 | `glm-5.2` |
+
+Cursor SDK slugs (live `Cursor.models.list()`): prefer **`gpt-5.6-sol`**,
+then **`grok-4.6`**. `resolve()` returns Sol when the Cursor key is valid;
+Grok remains an allowlisted cursor-sdk candidate on the same credential.
 
 `resolve()` returns `cursor` when the route lists that candidate and the
 Cursor key is valid. Callers use `cursor_sdk_kwargs()`; `litellm_kwargs()`

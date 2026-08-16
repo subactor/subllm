@@ -8,8 +8,9 @@
       "transport": "cursor-sdk",
       "apiBase": "https://api.cursor.com",
       "defaultModel": "gpt-5.6-sol",
-      "allowedModels": ["gpt-5.6-sol"],
-      "notes": "Cursor SDK / @cursor/sdk. Sol and peers are never OpenRouter wire ids."
+      "allowedModels": ["gpt-5.6-sol", "grok-4.6"],
+      "fallbackOrder": ["gpt-5.6-sol", "grok-4.6"],
+      "notes": "Cursor SDK / @cursor/sdk. Prefer Sol then Grok 4.6. Never OpenRouter wire ids."
     },
     {
       "id": "zai",
