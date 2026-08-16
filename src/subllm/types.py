@@ -42,6 +42,7 @@ class RouteCandidate:
     provider: str
     model: str | None = None
     priority_offset: int = 0
+    model_parameters: Mapping[str, str] = field(default_factory=dict, kw_only=True)
 
 
 @dataclass(frozen=True)
@@ -66,6 +67,7 @@ class ConfiguredRoute:
     wire_model: str
     extra_headers: Mapping[str, str]
     transport: Transport
+    model_parameters: Mapping[str, str] = field(default_factory=dict, kw_only=True)
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -82,6 +84,7 @@ class ConfiguredRoute:
             "wire_model": self.wire_model,
             "extra_headers": dict(self.extra_headers),
             "transport": self.transport,
+            "model_parameters": dict(self.model_parameters),
         }
 
     def provider_request_fields(self, *, request_id: str | None = None) -> dict[str, str]:
@@ -112,7 +115,16 @@ class ConfiguredRoute:
         """Return non-secret fields for Cursor SDK Agent.create / Agent.prompt."""
         if self.transport != "cursor-sdk":
             raise ValueError(f"provider {self.provider} is not cursor-sdk transport")
-        return {"model": self.wire_model, "api_key_env": self.api_key_env}
+        model: str | dict[str, Any] = self.wire_model
+        if self.model_parameters:
+            model = {
+                "id": self.wire_model,
+                "params": [
+                    {"id": parameter, "value": value}
+                    for parameter, value in self.model_parameters.items()
+                ],
+            }
+        return {"model": model, "api_key_env": self.api_key_env}
 
     def _new_request_id(self) -> str:
         prefix = f"{self.application}-{self.function}"[:31].rstrip("-_")

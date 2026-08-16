@@ -129,6 +129,40 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
     assert fields["user_id"] == "todo2code"
 
 
+@pytest.mark.parametrize("function", ("planning-assistant", "queue-executor"))
+def test_koru_routes_require_cursor_grok_xhigh(function: str) -> None:
+    route = resolve(
+        "koru-agent",
+        function,
+        environ={
+            "CURSOR_API_KEY": "cursor_test-not-a-secret",
+            "OPENROUTER_API_KEY": "openrouter-secret",
+        },
+    )
+
+    assert route.provider == "cursor"
+    assert route.model == "grok-4.6"
+    assert route.transport == "cursor-sdk"
+    assert route.application_name == "Koru"
+    assert route.application_url == "https://github.com/semcod/koru"
+    assert route.cursor_sdk_kwargs()["model"] == {
+        "id": "grok-4.6",
+        "params": [
+            {"id": "effort", "value": "xhigh"},
+            {"id": "fast", "value": "false"},
+        ],
+    }
+
+
+def test_koru_routes_fail_closed_without_cursor_credential() -> None:
+    with pytest.raises(MissingCredentialError, match="CURSOR_API_KEY"):
+        resolve(
+            "koru-agent",
+            "planning-assistant",
+            environ={"OPENROUTER_API_KEY": "openrouter-secret"},
+        )
+
+
 def test_zai_rejects_invalid_custom_request_id_length() -> None:
     route = configured_route("doctor-agent", "repair-proposal", provider="zai")
     with pytest.raises(ValueError, match="6 to 64"):

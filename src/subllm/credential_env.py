@@ -89,7 +89,10 @@ def find_env_file(
         return path.absolute()
 
     for root in (working_directory, *working_directory.parents):
-        candidates = [root / "subllm" / ".env"]
+        candidates = [
+            root / "subllm" / ".env",
+            root / "subactor" / "subllm" / ".env",
+        ]
         if root.name == "subllm":
             candidates.insert(0, root / ".env")
         for candidate in candidates:

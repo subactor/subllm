@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subactor-subllm"
-version = "0.6.1"
+version = "0.7.0"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,6 +21,9 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+cursor = [
+  "cursor-sdk>=1.0.28,<2",
+]
 test = [
   "build>=1.2,<2",
   "pytest>=8,<10",

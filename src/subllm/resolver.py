@@ -62,6 +62,7 @@ def _configured(
         wire_model=provider_model.wire_model,
         extra_headers=headers,
         transport=provider.transport,
+        model_parameters=candidate.model_parameters,
     )
 
 

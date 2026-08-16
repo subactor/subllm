@@ -160,6 +160,11 @@ APPLICATIONS = MappingProxyType(
             title="todo2code",
             url="https://github.com/semcod/todo2code",
         ),
+        "koru-agent": ApplicationSpec(
+            id="koru-agent",
+            title="Koru",
+            url="https://github.com/semcod/koru",
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
@@ -194,6 +199,28 @@ _ROUTE_VALUES = (
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     RoutePolicy("onedev-agent", "code-edit", _DEFAULT),
     RoutePolicy("todo2code", "semantic", _DEFAULT),
+    RoutePolicy(
+        "koru-agent",
+        "planning-assistant",
+        (
+            RouteCandidate(
+                provider="cursor",
+                model="grok-4.6",
+                model_parameters={"effort": "xhigh", "fast": "false"},
+            ),
+        ),
+    ),
+    RoutePolicy(
+        "koru-agent",
+        "queue-executor",
+        (
+            RouteCandidate(
+                provider="cursor",
+                model="grok-4.6",
+                model_parameters={"effort": "xhigh", "fast": "false"},
+            ),
+        ),
+    ),
     RoutePolicy(
         "platform",
         "interactive",

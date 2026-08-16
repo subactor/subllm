@@ -27,6 +27,11 @@ LLM strategies are assigned by **API-key source** (ADOPT
 `openai/gpt-5.6-sol`. Missing keys fail closed for that strategy; routes then
 continue with later candidates.
 
+Koru is intentionally stricter than the shared default route. Its
+`planning-assistant` and `queue-executor` routes allow only Cursor
+`grok-4.6` with `effort=xhigh` and `fast=false`; they do not fall back to
+OpenRouter, Z.AI, Sol, or a different Cursor preset.
+
 Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
 and route definitions live in `src/subllm/policy.py`. See
 [`docs/credential-strategies.md`](docs/credential-strategies.md).

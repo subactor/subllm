@@ -39,6 +39,16 @@ def test_workspace_discovery_and_process_precedence(tmp_path: Path, monkeypatch:
     assert route.api_key == "id.from-file"
 
 
+def test_subactor_workspace_discovery_from_sibling_project(tmp_path: Path) -> None:
+    shared = tmp_path / "subactor" / "subllm" / ".env"
+    shared.parent.mkdir(parents=True)
+    _private_file(shared, "CURSOR_API_KEY=cursor-workspace-key\n")
+    project = tmp_path / "semcod" / "koru"
+    project.mkdir(parents=True)
+
+    assert find_env_file(cwd=project) == shared
+
+
 def test_explicit_environment_keeps_resolution_hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shared = tmp_path / "subllm" / ".env"
     shared.parent.mkdir()

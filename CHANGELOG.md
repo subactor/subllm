@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.7.0] - 2026-08-16
+
+### Added
+
+- Add strict `koru-agent/planning-assistant` and `koru-agent/queue-executor`
+  routes using Cursor `grok-4.6` with `effort=xhigh` and `fast=false`.
+- Carry route-level Cursor model parameters through `cursor_sdk_kwargs()`.
+- Add the `cursor` installation extra for consumers that execute Cursor SDK
+  routes.
+- Discover the shared credential file at
+  `<workspace>/subactor/subllm/.env` from sibling project checkouts.
+
+### Changed
+
+- Koru routes fail closed when `CURSOR_API_KEY` is unavailable; they never
+  fall back to Sol, Z.AI, OpenRouter, or another Cursor preset.
+
 ## [0.6.1] - 2026-08-16
 
 ### Added
