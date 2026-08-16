@@ -16,6 +16,9 @@ from subllm import (
 def _policy_file(
     path: Path,
     *,
+    cursor_enabled: bool = True,
+    cursor_priority: int = 0,
+    cursor_model: str = "gpt-5.6-sol",
     zai_enabled: bool = True,
     zai_priority: int = 10,
     zai_model: str = "glm-5.2",
@@ -27,6 +30,11 @@ def _policy_file(
         "\n".join(
             (
                 "schema_version = 2",
+                "",
+                "[providers.cursor]",
+                f"enabled = {str(cursor_enabled).lower()}",
+                f"priority = {cursor_priority}",
+                f'default_model = "{cursor_model}"',
                 "",
                 "[providers.zai]",
                 f"enabled = {str(zai_enabled).lower()}",
@@ -78,13 +86,19 @@ def test_repository_policy_file_is_discovered() -> None:
     assert path is not None
     assert path.name == "subllm.toml"
     policy = load_policy_config(cwd=path.parent)
+    assert policy.providers["cursor"].priority == 0
     assert policy.providers["zai"].priority == 10
     assert policy.providers["openrouter"].default_model == "glm-5.2"
     assert policy.applications["platform"].name == "Subactor Platform"
 
 
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-    policy = _policy_file(tmp_path / "subllm.toml", zai_priority=20, openrouter_priority=10)
+    policy = _policy_file(
+        tmp_path / "subllm.toml",
+        cursor_enabled=False,
+        zai_priority=20,
+        openrouter_priority=10,
+    )
     monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
 
     route = resolve(
@@ -102,6 +116,7 @@ def test_provider_can_be_disabled_and_default_model_changed(
 ) -> None:
     policy = _policy_file(
         tmp_path / "subllm.toml",
+        cursor_enabled=False,
         zai_enabled=False,
         openrouter_model="grok-4.5",
     )
@@ -133,6 +148,7 @@ def test_default_model_deduplicates_the_same_explicit_fallback(
 def test_all_providers_disabled_fails_closed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     policy = _policy_file(
         tmp_path / "subllm.toml",
+        cursor_enabled=False,
         zai_enabled=False,
         openrouter_enabled=False,
     )
@@ -147,6 +163,7 @@ def test_all_providers_disabled_fails_closed(tmp_path: Path, monkeypatch: pytest
     (
         ({"openrouter_model": "gemini-3.1-pro-preview"}, "forbidden default model"),
         ({"zai_model": "grok-4.5"}, "unavailable through provider zai"),
+        ({"cursor_model": "glm-5.2"}, "unavailable through provider cursor"),
         ({"zai_priority": 20, "openrouter_priority": 20}, "unique priorities"),
     ),
 )
@@ -175,7 +192,9 @@ def test_application_name_and_url_control_openrouter_attribution(
     policy.write_text(text, encoding="utf-8")
     monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
 
-    route = configured_routes("doctor-agent", "repair-proposal")[1]
+    route = next(
+        item for item in configured_routes("doctor-agent", "repair-proposal") if item.provider == "openrouter"
+    )
     assert route.application == "doctor-agent"
     assert route.application_name == "Subactor Doctor"
     assert route.extra_headers == {

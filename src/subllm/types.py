@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import uuid4
 
-Transport = Literal["openai-compatible"]
+Transport = Literal["openai-compatible", "cursor-sdk"]
 
 
 @dataclass(frozen=True)
@@ -65,6 +65,7 @@ class ConfiguredRoute:
     litellm_model: str
     wire_model: str
     extra_headers: Mapping[str, str]
+    transport: Transport
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -80,6 +81,7 @@ class ConfiguredRoute:
             "litellm_model": self.litellm_model,
             "wire_model": self.wire_model,
             "extra_headers": dict(self.extra_headers),
+            "transport": self.transport,
         }
 
     def provider_request_fields(self, *, request_id: str | None = None) -> dict[str, str]:
@@ -91,6 +93,8 @@ class ConfiguredRoute:
             if not 6 <= len(value) <= 64:
                 raise ValueError("Z.AI request_id must contain 6 to 64 characters")
             return {"request_id": value, "user_id": self.application}
+        if self.provider == "cursor":
+            return {"model": self.wire_model}
         return {}
 
     def litellm_attribution_kwargs(self) -> dict[str, Any]:
@@ -104,6 +108,12 @@ class ConfiguredRoute:
             return {"extra_body": {"user_id": self.application}}
         return {}
 
+    def cursor_sdk_kwargs(self) -> dict[str, Any]:
+        """Return non-secret fields for Cursor SDK Agent.create / Agent.prompt."""
+        if self.transport != "cursor-sdk":
+            raise ValueError(f"provider {self.provider} is not cursor-sdk transport")
+        return {"model": self.wire_model, "api_key_env": self.api_key_env}
+
     def _new_request_id(self) -> str:
         prefix = f"{self.application}-{self.function}"[:31].rstrip("-_")
         return f"{prefix}-{uuid4().hex}"
@@ -114,6 +124,11 @@ class ResolvedRoute(ConfiguredRoute):
     api_key: str = field(repr=False)
 
     def litellm_kwargs(self, *, request_id: str | None = None) -> dict[str, Any]:
+        if self.transport == "cursor-sdk":
+            raise ValueError(
+                "provider cursor uses Cursor SDK transport; call cursor_sdk_kwargs() "
+                "and pass wire_model with CURSOR_API_KEY — not LiteLLM / OpenRouter"
+            )
         result: dict[str, Any] = {
             "model": self.litellm_model,
             "api_key": self.api_key,
@@ -127,3 +142,7 @@ class ResolvedRoute(ConfiguredRoute):
         else:
             result.update(fields)
         return result
+
+    def cursor_sdk_kwargs(self) -> dict[str, Any]:
+        fields = super().cursor_sdk_kwargs()
+        return {**fields, "api_key": self.api_key}

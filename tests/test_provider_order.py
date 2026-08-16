@@ -14,21 +14,22 @@ from subllm import (
 )
 
 
-def test_cursor_is_not_a_litellm_default_when_its_key_is_set() -> None:
+def test_resolve_returns_cursor_when_cursor_key_and_sol_route() -> None:
     route = resolve(
-        "repair-agent",
-        "repair-plan",
+        "doctor-agent",
+        "repair-proposal",
         environ={
             "CURSOR_API_KEY": "cursor_test-not-a-secret",
             "ZAI_API_KEY": "id.signature",
             "OPENROUTER_API_KEY": "openrouter-secret",
         },
     )
-    assert route.provider == "zai"
+    assert route.provider == "cursor"
+    assert route.model == "gpt-5.6-sol"
     assert ORDERABLE_PROVIDER_IDS == ("cursor", "zai", "openrouter")
 
 
-def test_default_order_puts_cursor_first_when_its_key_is_present() -> None:
+def test_default_order_puts_cursor_first_when_key_present() -> None:
     environ = {
         "CURSOR_API_KEY": "cursor_test-not-a-secret",
         "ZAI_API_KEY": "id.signature",
@@ -47,14 +48,14 @@ def test_default_order_keeps_zai_then_openrouter_without_cursor_key() -> None:
     assert available_provider_order(environ=environ) == ("zai", "openrouter")
 
 
-def test_placeholder_cursor_key_does_not_change_the_default_chain() -> None:
+def test_placeholder_cursor_key_does_not_enable_cursor_in_default_order() -> None:
     assert provider_order(environ={"CURSOR_API_KEY": "PLACEHOLDER", "ZAI_API_KEY": "id.signature"}) == (
         "zai",
         "openrouter",
     )
 
 
-def test_explicit_order_overrides_the_cursor_default() -> None:
+def test_explicit_order_reorders_resolve_candidates() -> None:
     environ = {
         "CURSOR_API_KEY": "cursor_test-not-a-secret",
         "ZAI_API_KEY": "id.signature",
@@ -77,12 +78,12 @@ def test_unknown_provider_in_order_is_rejected() -> None:
         provider_order(environ={SUBLLM_PROVIDER_ORDER: "cursor,openai"})
 
 
-def test_empty_and_duplicate_names_are_rejected() -> None:
+def test_empty_and_duplicate_provider_names_fail_closed() -> None:
     with pytest.raises(InvalidPolicyError, match="empty provider name"):
         parse_provider_order("cursor,,zai")
     with pytest.raises(InvalidPolicyError, match="duplicate provider"):
         parse_provider_order("zai,zai")
 
 
-def test_whitespace_in_explicit_order_is_stripped() -> None:
+def test_parse_provider_order_trims_whitespace() -> None:
     assert parse_provider_order(" cursor , openrouter ") == ("cursor", "openrouter")

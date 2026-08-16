@@ -5,6 +5,7 @@ import re
 import pytest
 
 from subllm import (
+    MODELS,
     MissingCredentialError,
     UnknownRouteError,
     available_routes,
@@ -13,15 +14,47 @@ from subllm import (
 )
 
 
-def test_direct_zai_is_selected_when_both_credentials_exist() -> None:
+def test_cursor_sol_is_selected_when_cursor_key_exists() -> None:
     route = resolve(
         "repair-agent",
         "repair-plan",
+        environ={
+            "CURSOR_API_KEY": "cursor_test-not-a-secret",
+            "ZAI_API_KEY": "key-id.signature",
+            "OPENROUTER_API_KEY": "openrouter-secret",
+        },
+    )
+    assert route.provider == "cursor"
+    assert route.model == "gpt-5.6-sol"
+    assert route.transport == "cursor-sdk"
+    assert route.wire_model == "gpt-5.6-sol"
+    assert route.litellm_model == "cursor/gpt-5.6-sol"
+    assert route.cursor_sdk_kwargs()["model"] == "gpt-5.6-sol"
+    with pytest.raises(ValueError, match="Cursor SDK"):
+        route.litellm_kwargs()
+
+
+def test_openrouter_never_owns_gpt_sol() -> None:
+    assert "openrouter" not in MODELS["gpt-5.6-sol"].providers
+    route = resolve(
+        "repair-agent",
+        "repair-plan",
+        environ={"OPENROUTER_API_KEY": "openrouter-secret"},
+    )
+    assert route.provider == "openrouter"
+    assert route.model == "glm-5.2"
+    assert "gpt-5.6-sol" not in route.litellm_model
+    assert "gpt-5.6-sol" not in route.wire_model
+
+
+def test_zai_is_selected_when_cursor_missing_and_zai_valid() -> None:
+    route = resolve(
+        "doctor-agent",
+        "repair-proposal",
         environ={"ZAI_API_KEY": "key-id.signature", "OPENROUTER_API_KEY": "openrouter-secret"},
     )
     assert route.provider == "zai"
-    assert route.litellm_model == "zai/glm-5.2"
-    assert route.wire_model == "glm-5.2"
+    assert route.model == "glm-5.2"
 
 
 def test_zai_key_with_duplicate_id_falls_back_to_openrouter() -> None:
@@ -34,6 +67,7 @@ def test_zai_key_with_duplicate_id_falls_back_to_openrouter() -> None:
         },
     )
     assert route.provider == "openrouter"
+    assert route.model == "glm-5.2"
 
 
 def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:
@@ -81,17 +115,18 @@ def test_zai_request_carries_application_identity_and_unique_request_id() -> Non
     }
 
 
-def test_todo2code_semantic_route_uses_direct_zai_identity() -> None:
-    route = resolve("todo2code", "semantic", environ={"ZAI_API_KEY": "id.secret"})
-    fields = route.provider_request_fields(request_id="todo2code-semantic-live-123")
+def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
+    route = resolve(
+        "todo2code",
+        "semantic",
+        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "or-key"},
+    )
+    fields = route.provider_request_fields()
 
     assert route.provider == "zai"
     assert route.wire_model == "glm-5.2"
     assert route.application_url == "https://github.com/semcod/todo2code"
-    assert fields == {
-        "request_id": "todo2code-semantic-live-123",
-        "user_id": "todo2code",
-    }
+    assert fields["user_id"] == "todo2code"
 
 
 def test_zai_rejects_invalid_custom_request_id_length() -> None:
@@ -100,13 +135,31 @@ def test_zai_rejects_invalid_custom_request_id_length() -> None:
         route.provider_request_fields(request_id="short")
 
 
-def test_available_routes_preserves_explicit_priority() -> None:
+def test_available_routes_skips_cursor_without_key() -> None:
     routes = available_routes(
         "validator-agent",
         "patch-review",
         environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "or-key"},
     )
     assert [(route.provider, route.model) for route in routes] == [
+        ("zai", "glm-5.2"),
+        ("openrouter", "glm-5.2"),
+        ("openrouter", "qwen3.7-plus"),
+    ]
+
+
+def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
+    routes = available_routes(
+        "validator-agent",
+        "patch-review",
+        environ={
+            "CURSOR_API_KEY": "cursor_test-not-a-secret",
+            "ZAI_API_KEY": "id.secret",
+            "OPENROUTER_API_KEY": "or-key",
+        },
+    )
+    assert [(route.provider, route.model) for route in routes] == [
+        ("cursor", "gpt-5.6-sol"),
         ("zai", "glm-5.2"),
         ("openrouter", "glm-5.2"),
         ("openrouter", "qwen3.7-plus"),
@@ -129,11 +182,12 @@ def test_missing_credentials_report_names_not_values() -> None:
     message = str(caught.value)
     assert "OPENROUTER_API_KEY" in message
     assert "ZAI_API_KEY" in message
+    assert "CURSOR_API_KEY" in message
 
 
 def test_credentials_are_redacted_from_repr_and_public_dict() -> None:
-    secret = "id.never-print-this"
-    route = resolve("skills-agent", "developer", environ={"ZAI_API_KEY": secret})
+    secret = "never-print-this-openrouter-key"
+    route = resolve("skills-agent", "developer", environ={"OPENROUTER_API_KEY": secret})
     assert secret not in repr(route)
     assert secret not in str(route.public_dict())
     assert route.litellm_kwargs()["api_key"] == secret

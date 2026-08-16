@@ -4,6 +4,10 @@
   `src/subllm/policy.py`. Keep operator-controlled provider enablement,
   priority, default models and application display identity in the root
   `subllm.toml`; consumers must not grow private copies.
+- ADOPT `wellmanifest/policy-dsl` profile `llm-credential` and
+  `wellmanifest/env-dsl` `subllm-credential-strategies.env`; refresh
+  `policy/adopted/` when those catalogs change. Never pin Cursor Sol on
+  OpenRouter wire ids.
 - Never commit API keys, key IDs, secret fragments, tokens or `.env` files. The ignored local
   `subllm/.env` is the workspace credential source and must stay mode `0600`. Extra SDK names
   such as `CURSOR_API_KEY` belong in that file, not in tracked docs.

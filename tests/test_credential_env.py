@@ -31,11 +31,12 @@ def test_workspace_discovery_and_process_precedence(tmp_path: Path, monkeypatch:
     application = tmp_path / "repair-agent"
     application.mkdir()
     monkeypatch.chdir(application)
-    monkeypatch.setenv("ZAI_API_KEY", "id.from-process")
+    monkeypatch.setenv("OPENROUTER_API_KEY", "or-from-process")
 
     assert find_env_file() == shared
     route = resolve("repair-agent", "repair-plan")
-    assert route.api_key == "id.from-process"
+    assert route.provider == "zai"
+    assert route.api_key == "id.from-file"
 
 
 def test_explicit_environment_keeps_resolution_hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -99,7 +100,7 @@ def test_import_rejects_conflicting_sources_without_creating_target(tmp_path: Pa
 
 
 def test_credential_names_include_cursor_sdk_key() -> None:
-    assert credential_names() == ("ZAI_API_KEY", "OPENROUTER_API_KEY", CURSOR_API_KEY_ENV)
+    assert credential_names() == (CURSOR_API_KEY_ENV, "ZAI_API_KEY", "OPENROUTER_API_KEY")
     assert CURSOR_API_KEY_ENV == "CURSOR_API_KEY"
 
 

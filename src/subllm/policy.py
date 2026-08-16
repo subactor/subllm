@@ -16,8 +16,17 @@ def _provider_models(**values: ProviderModelSpec) -> MappingProxyType[str, Provi
     return MappingProxyType(values)
 
 
+# Credential source → provider → transport. Cursor Sol is never an OpenRouter
+# wire id. Catalog twin: wellmanifest/policy-dsl profiles/llm-credential and
+# wellmanifest/env-dsl examples/valid/subllm-credential-strategies.env.
 PROVIDERS = MappingProxyType(
     {
+        "cursor": ProviderSpec(
+            id="cursor",
+            api_base="https://api.cursor.com",
+            api_key_env="CURSOR_API_KEY",
+            transport="cursor-sdk",
+        ),
         "zai": ProviderSpec(
             id="zai",
             api_base="https://api.z.ai/api/coding/paas/v4",
@@ -32,18 +41,24 @@ PROVIDERS = MappingProxyType(
     }
 )
 
-# Shared .env names that are not LiteLLM routing providers. CURSOR_API_KEY is
-# the name documented by the Cursor SDK (@cursor/sdk / cursor-sdk).
-CURSOR_API_KEY_ENV = "CURSOR_API_KEY"
-EXTRA_CREDENTIAL_ENV = (CURSOR_API_KEY_ENV,)
+CURSOR_API_KEY_ENV = PROVIDERS["cursor"].api_key_env
+EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
 
-# Comma-separated fallback chain. cursor is the Cursor SDK backend; zai and
-# openrouter are the LiteLLM routing providers. Unknown names fail closed.
+# Comma-separated fallback chain. Unknown names fail closed.
 SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
-ORDERABLE_PROVIDER_IDS = ("cursor",) + tuple(PROVIDERS)
+ORDERABLE_PROVIDER_IDS = tuple(PROVIDERS)
 
 MODELS = MappingProxyType(
     {
+        "gpt-5.6-sol": ModelSpec(
+            id="gpt-5.6-sol",
+            providers=_provider_models(
+                cursor=ProviderModelSpec(
+                    litellm_model="cursor/gpt-5.6-sol",
+                    wire_model="gpt-5.6-sol",
+                )
+            ),
+        ),
         "glm-5.2": ModelSpec(
             id="glm-5.2",
             providers=_provider_models(
@@ -143,32 +158,34 @@ APPLICATIONS = MappingProxyType(
     }
 )
 
-_GLM = (
+# Prefer Cursor Sol when CURSOR_API_KEY is valid; otherwise Z.AI then OpenRouter.
+_DEFAULT = (
+    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="zai"),
     RouteCandidate(provider="openrouter"),
 )
 
 _ROUTE_VALUES = (
-    RoutePolicy("doctor-agent", "repair-proposal", _GLM),
+    RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
     RoutePolicy(
         "repair-agent",
         "repair-plan",
-        _GLM + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=10),),
+        _DEFAULT + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=10),),
     ),
     RoutePolicy(
         "validator-agent",
         "patch-review",
-        _GLM + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
+        _DEFAULT + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
     ),
-    RoutePolicy("validator-agent", "direct-pr-review", _GLM),
-    RoutePolicy("skills-agent", "developer", _GLM),
-    RoutePolicy("skills-agent", "validator", _GLM),
-    RoutePolicy("onedev-agent", "code-edit", _GLM),
-    RoutePolicy("todo2code", "semantic", _GLM),
+    RoutePolicy("validator-agent", "direct-pr-review", _DEFAULT),
+    RoutePolicy("skills-agent", "developer", _DEFAULT),
+    RoutePolicy("skills-agent", "validator", _DEFAULT),
+    RoutePolicy("onedev-agent", "code-edit", _DEFAULT),
+    RoutePolicy("todo2code", "semantic", _DEFAULT),
     RoutePolicy(
         "platform",
         "interactive",
-        _GLM
+        _DEFAULT
         + (
             RouteCandidate(provider="openrouter", model="grok-4.5", priority_offset=10),
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),

@@ -1,0 +1,41 @@
+# How to force a model given a key source
+
+SubLLM assigns strategies by **credential source**, not by pinning Cursor Sol
+onto OpenRouter. Standards HOME: `wellmanifest/{policy-dsl,env-dsl}` profile
+`llm-credential`. Runtime HOME: this repository.
+
+| Credential | Strategy | Transport | Default model | Notes |
+| --- | --- | --- | --- | --- |
+| `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` | Sol never becomes `openai/gpt-5.6-sol` |
+| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.2` | Coding Plan base URL |
+| `OPENROUTER_API_KEY` | `openrouter` | OpenAI-compatible | `glm-5.2` | Allowlisted OpenRouter models only |
+
+## Force Cursor Sol
+
+1. Set a real `CURSOR_API_KEY` in `subllm/.env` or the process environment.
+2. Leave `SUBLLM_PROVIDER_ORDER` empty (toml priorities) or set
+   `cursor,zai,openrouter`.
+3. Call `resolve(application, function)` — when the route includes the cursor
+   candidate (fleet default), the result has `provider=cursor`,
+   `transport=cursor-sdk`, `wire_model=gpt-5.6-sol`.
+4. Use `route.cursor_sdk_kwargs()` with `@cursor/sdk`; do **not** call
+   `litellm_kwargs()` for cursor.
+
+## Force Z.AI or OpenRouter
+
+- Missing `CURSOR_API_KEY` skips the cursor candidate (fail-closed for that
+  strategy) and continues with `zai` then `openrouter`.
+- Set only `OPENROUTER_API_KEY` to force OpenRouter; Sol is not available on
+  that wire.
+- Explicit `SUBLLM_PROVIDER_ORDER=openrouter,zai` reorders LiteLLM candidates
+  and may omit `cursor`.
+
+## Projections
+
+Tracked copies of the adopted SSOT live under `policy/adopted/`:
+
+- `credential-strategies.env` — Env DSL constants (no secrets)
+- `strategy-catalog.json` — closed strategy catalog
+
+Validate packs in wellmanifest, then refresh these copies when the catalog
+changes.

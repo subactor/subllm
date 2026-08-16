@@ -1,0 +1,48 @@
+{
+  "schema": "subactor.llm/credential-strategy-catalog/v1",
+  "strategies": [
+    {
+      "id": "cursor",
+      "credentialEnv": "CURSOR_API_KEY",
+      "provider": "cursor",
+      "transport": "cursor-sdk",
+      "apiBase": "https://api.cursor.com",
+      "defaultModel": "gpt-5.6-sol",
+      "allowedModels": ["gpt-5.6-sol"],
+      "notes": "Cursor SDK / @cursor/sdk. Sol and peers are never OpenRouter wire ids."
+    },
+    {
+      "id": "zai",
+      "credentialEnv": "ZAI_API_KEY",
+      "provider": "zai",
+      "transport": "openai-compatible",
+      "apiBase": "https://api.z.ai/api/coding/paas/v4",
+      "defaultModel": "glm-5.2",
+      "allowedModels": ["glm-5.2"],
+      "notes": "Z.AI Coding Plan LiteLLM path."
+    },
+    {
+      "id": "openrouter",
+      "credentialEnv": "OPENROUTER_API_KEY",
+      "provider": "openrouter",
+      "transport": "openai-compatible",
+      "apiBase": "https://openrouter.ai/api/v1",
+      "defaultModel": "glm-5.2",
+      "allowedModels": [
+        "glm-5.2",
+        "grok-4.5",
+        "gemini-3.6-flash",
+        "deepseek-v4-pro",
+        "qwen3.7-plus"
+      ],
+      "forbiddenModels": ["gpt-5.6-sol"],
+      "notes": "OpenRouter models only. Cursor Sol must not appear as openai/gpt-5.6-sol."
+    }
+  ],
+  "defaultProviderOrder": {
+    "withCursorKey": ["cursor", "zai", "openrouter"],
+    "withoutCursorKey": ["zai", "openrouter"]
+  },
+  "providerOrderEnv": "SUBLLM_PROVIDER_ORDER",
+  "failClosed": true
+}

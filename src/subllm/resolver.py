@@ -61,6 +61,7 @@ def _configured(
         litellm_model=provider_model.litellm_model,
         wire_model=provider_model.wire_model,
         extra_headers=headers,
+        transport=provider.transport,
     )
 
 

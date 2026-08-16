@@ -1,16 +1,24 @@
 # Changelog
 
-## [Unreleased]
+## [0.6.0] - 2026-08-16
+
+### Changed
+
+- Assign LLM strategies by API-key source. `gpt-5.6-sol` is Cursor-only
+  (`cursor-sdk`); OpenRouter no longer claims `openai/gpt-5.6-sol`.
+- `resolve()` may return `provider=cursor` when `CURSOR_API_KEY` is valid.
+  Use `cursor_sdk_kwargs()`; `litellm_kwargs()` rejects Cursor transport.
+- Fleet priorities: cursor `0` / Sol, zai `10` / glm-5.2, openrouter `20` /
+  glm-5.2.
 
 ### Added
 
-- Accept `CURSOR_API_KEY` from the shared ignored `.env` so Cursor SDK
-  consumers can use the same workspace credential file. The name matches the
-  Cursor SDK (`@cursor/sdk` / `cursor-sdk`). An empty value remains missing.
-- Add `SUBLLM_PROVIDER_ORDER` for the pre-request fallback chain. Known ids
-  are `cursor`, `zai` and `openrouter`. The default is `cursor,zai,openrouter`
-  when `CURSOR_API_KEY` is set, otherwise `zai,openrouter`. Unknown names
-  fail closed. `resolve()` still returns only LiteLLM routes.
+- ADOPT projections from `wellmanifest/policy-dsl` (`llm-credential`) and
+  `wellmanifest/env-dsl` (`subllm-credential-strategies.env`) under
+  `policy/adopted/` plus `docs/credential-strategies.md`.
+- Catalog entry `gpt-5.6-sol` for the Cursor provider only.
+- Accept `CURSOR_API_KEY` from the shared ignored `.env`.
+- Add `SUBLLM_PROVIDER_ORDER` for the pre-request fallback chain.
 
 ## [0.5.0] - 2026-08-12
 

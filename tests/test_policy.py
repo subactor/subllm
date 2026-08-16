@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 import subllm.resolver as resolver
 from subllm import MODELS, ROUTES, InvalidPolicyError, configured_routes, validate_policy
+from subllm.policy_config import find_policy_file, load_policy_config
 from subllm.types import RouteCandidate, RoutePolicy
 
 
@@ -28,14 +31,25 @@ def test_invalid_policy_rejects_forbidden_model(monkeypatch: pytest.MonkeyPatch)
         validate_policy()
 
 
-def test_direct_zai_precedes_openrouter_for_every_glm_route() -> None:
-    for route in ROUTES.values():
-        configured = configured_routes(route.application, route.function)
-        assert configured[0].provider == "zai"
-        assert next(item for item in configured if item.provider == "openrouter").priority == 20
+def test_cursor_sol_precedes_zai_and_openrouter_for_default_routes() -> None:
+    configured = configured_routes("platform", "interactive")
+    assert configured[0].provider == "cursor"
+    assert configured[0].model == "gpt-5.6-sol"
+    assert configured[0].transport == "cursor-sdk"
+    assert "openrouter" not in MODELS["gpt-5.6-sol"].providers
+
+
+def test_repository_defaults_bind_strategies_to_keys() -> None:
+    path = find_policy_file(cwd=Path(__file__).resolve().parents[1])
+    assert path is not None
+    policy = load_policy_config(cwd=path.parent)
+    assert policy.providers["cursor"].priority == 0
+    assert policy.providers["cursor"].default_model == "gpt-5.6-sol"
+    assert policy.providers["zai"].priority == 10
+    assert policy.providers["openrouter"].priority == 20
+    assert policy.providers["openrouter"].default_model == "glm-5.2"
 
 
 def test_zai_uses_the_coding_plan_endpoint() -> None:
-    route = configured_routes("skills-agent", "developer")[0]
-    assert route.provider == "zai"
+    route = next(item for item in configured_routes("skills-agent", "developer") if item.provider == "zai")
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"

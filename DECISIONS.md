@@ -40,17 +40,38 @@ contain exactly one `API Key ID.signature secret` separator so an accidentally
 duplicated ID fails before a request and permits pre-request OpenRouter
 selection.
 
-## 2026-08-15 — Cursor API key is a shared credential, not a route provider
+## 2026-08-15 — Cursor API key enters the shared credential file
 
 `CURSOR_API_KEY` is the name documented by the Cursor SDK. SubLLM accepts it
 in the ignored workspace `.env` and exposes it through the same loader used
-for Z.AI and OpenRouter. It is not a LiteLLM routing provider: Cursor agents
-are not an OpenAI-compatible chat-completions backend in this catalog.
+for Z.AI and OpenRouter.
 
 `SUBLLM_PROVIDER_ORDER` is the operator-controlled fallback chain. When the
 Cursor key is present the default is `cursor,zai,openrouter`. When it is
 absent the default stays `zai,openrouter`. An explicit list overrides the
-default and unknown ids fail closed. `provider_order()` and
-`available_provider_order()` expose that chain; `resolve()` still selects
-only `zai` or `openrouter`.
+default and unknown ids fail closed.
 
+## 2026-08-16 — Assign LLMs by API-key source (revert OpenRouter Sol)
+
+Cursor Sol (`gpt-5.6-sol`) belongs to the Cursor credential strategy
+(`CURSOR_API_KEY` → provider `cursor` → transport `cursor-sdk`). It must not
+be published as an OpenRouter wire id (`openai/gpt-5.6-sol`).
+
+Fleet defaults:
+
+| Credential | Provider | Priority | Default model |
+| --- | --- | --- | --- |
+| `CURSOR_API_KEY` | `cursor` | 0 | `gpt-5.6-sol` |
+| `ZAI_API_KEY` | `zai` | 10 | `glm-5.2` |
+| `OPENROUTER_API_KEY` | `openrouter` | 20 | `glm-5.2` |
+
+`resolve()` returns `cursor` when the route lists that candidate and the
+Cursor key is valid. Callers use `cursor_sdk_kwargs()`; `litellm_kwargs()`
+fails closed for Cursor SDK transport. Standards live in
+`wellmanifest/policy-dsl` profile `llm-credential` and
+`wellmanifest/env-dsl` `subllm-credential-strategies.env`; this repo ADOPTs
+projections under `policy/adopted/`.
+
+Leave `SUBLLM_PROVIDER_ORDER` empty when operator priorities in `subllm.toml`
+should control selection. An explicit order rewrites priorities as
+`index * 10 + offset` and must stay collision-free with route offsets.

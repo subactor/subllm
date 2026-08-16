@@ -24,10 +24,9 @@ def parse_provider_order(raw: str) -> tuple[str, ...]:
 
 
 def default_provider_order(*, environ: Mapping[str, str]) -> tuple[str, ...]:
-    routing = tuple(PROVIDERS)
     if credential_is_valid("cursor", environ.get(CURSOR_API_KEY_ENV)):
-        return ("cursor",) + routing
-    return routing
+        return ORDERABLE_PROVIDER_IDS
+    return tuple(name for name in ORDERABLE_PROVIDER_IDS if name != "cursor")
 
 
 def explicit_provider_order(*, environ: Mapping[str, str]) -> tuple[str, ...] | None:
@@ -49,10 +48,8 @@ def provider_order(
 
 
 def routing_provider_order(*, environ: Mapping[str, str]) -> tuple[str, ...] | None:
-    explicit = explicit_provider_order(environ=environ)
-    if explicit is None:
-        return None
-    return tuple(name for name in explicit if name in PROVIDERS)
+    """Return an explicit order for resolve(), or None to use subllm.toml priorities."""
+    return explicit_provider_order(environ=environ)
 
 
 def available_provider_order(
@@ -64,10 +61,7 @@ def available_provider_order(
     explicit = credentials or {}
     available: list[str] = []
     for name in provider_order(environ=environment):
-        if name == "cursor":
-            value = explicit.get("cursor", environment.get(CURSOR_API_KEY_ENV, ""))
-        else:
-            value = explicit.get(name, environment.get(PROVIDERS[name].api_key_env, ""))
+        value = explicit.get(name, environment.get(PROVIDERS[name].api_key_env, ""))
         if credential_is_valid(name, value):
             available.append(name)
     return tuple(available)

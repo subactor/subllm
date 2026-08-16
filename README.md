@@ -13,20 +13,23 @@ variables or a credential vault remain the source and override that file.
 
 ## Policy
 
-The initial fleet policy uses the same logical GLM 5.2 model through two
-providers:
+LLM strategies are assigned by **API-key source** (ADOPT
+`wellmanifest/policy-dsl` profile `llm-credential` and
+`wellmanifest/env-dsl` `subllm-credential-strategies.env`):
 
-1. direct Z.AI GLM Coding Plan
-   (`ZAI_API_KEY`, `https://api.z.ai/api/coding/paas/v4`),
-2. OpenRouter (`OPENROUTER_API_KEY`, `https://openrouter.ai/api/v1`).
+| Credential | Provider | Transport | Default model |
+| --- | --- | --- | --- |
+| `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` |
+| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.2` |
+| `OPENROUTER_API_KEY` | `openrouter` | OpenAI-compatible | `glm-5.2` |
 
-Direct Z.AI is preferred when its complete `API_KEY_ID.signature_secret` value
-is present. OpenRouter remains the fallback. A route may explicitly allow
-additional models, but there is no global silent fallback to an unrelated
-model. Gemini 3.1 Pro Preview is blocked in the catalog.
+`gpt-5.6-sol` is Cursor-only. OpenRouter never claims Sol as
+`openai/gpt-5.6-sol`. Missing keys fail closed for that strategy; routes then
+continue with later candidates.
 
-Provider, model, application and route definitions live only in
-`src/subllm/policy.py`.
+Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
+and route definitions live in `src/subllm/policy.py`. See
+[`docs/credential-strategies.md`](docs/credential-strategies.md).
 
 ## Application identity in provider logs
 
@@ -42,18 +45,22 @@ url = "https://github.com/subactor/doctor-agent"
 OpenRouter requests carry the URL in `HTTP-Referer`, the configured name in
 `X-OpenRouter-Title`, and the stable application ID in `user`. Z.AI requests
 carry the stable ID in `user_id`. Native HTTP and SubLLM-managed LiteLLM calls
-also carry a unique `request_id` prefixed with the application and function,
-for example `doctor-agent-repair-proposal-...`. These values contain no
-credential or end-user personal data.
+also carry a unique `request_id` prefixed with the application and function.
+These values contain no credential or end-user personal data.
 
-`ResolvedRoute.litellm_kwargs()` adds the provider-specific fields
-automatically. Direct HTTP clients use `route.provider_request_fields()`.
+`ResolvedRoute.litellm_kwargs()` adds the provider-specific fields for
+OpenAI-compatible transports. Cursor routes use `cursor_sdk_kwargs()` instead.
 
 ## Provider priority and default models
 
-Edit the tracked [`subllm.toml`](subllm.toml) file to control both providers:
+Edit the tracked [`subllm.toml`](subllm.toml) file:
 
 ```toml
+[providers.cursor]
+enabled = true
+priority = 0
+default_model = "gpt-5.6-sol"
+
 [providers.zai]
 enabled = true
 priority = 10
@@ -66,63 +73,33 @@ default_model = "glm-5.2"
 ```
 
 Lower priority wins. Set `enabled = false` to remove a provider from every
-route. `default_model` is a logical ID from the model catalog; SubLLM rejects
-unknown, forbidden or provider-incompatible values. Explicit additional models
-declared by a route remain later candidates and their offsets are added to the
-provider priority.
-
-Sibling projects discover this file automatically. Set `SUBLLM_POLICY_FILE`
-for another layout. When no file is available, such as an isolated CI install,
-the package uses the same built-in defaults shipped with that release.
-
-This ordering controls selection before a request. It does not automatically
-repeat a failed paid request through another provider; callers that implement
-bounded runtime failover use `available_routes()` in this order.
+route. Sibling projects discover this file automatically. Set
+`SUBLLM_POLICY_FILE` for another layout.
 
 ## Fallback chain
 
-`SUBLLM_PROVIDER_ORDER` is a comma-separated allowlist of backend ids:
+`SUBLLM_PROVIDER_ORDER` is a comma-separated allowlist:
 `cursor`, `zai`, `openrouter`. Empty or unset uses the default:
 
 - `cursor,zai,openrouter` when `CURSOR_API_KEY` is set,
 - `zai,openrouter` when it is absent.
 
-Unknown names fail closed. Set it in the process environment or in the
-shared `.env`. `provider_order()` returns the configured chain;
-`available_provider_order()` drops backends without a valid credential.
-`resolve()` never returns `cursor` — that id is the Cursor SDK, not a
-LiteLLM route. An explicit list such as `openrouter,zai` also reorders
-those LiteLLM candidates.
+Unknown names fail closed. `resolve()` returns `cursor` when that candidate
+wins and the Cursor key is valid.
 
 ## One local credential file
-
-Create the private file once in this repository:
 
 ```bash
 cp .env.example .env
 chmod 600 .env
 ```
 
-Set complete provider values there. `CURSOR_API_KEY` is the Cursor SDK name
-(`@cursor/sdk` / `cursor-sdk`); leave it empty when unused:
-
 ```dotenv
 ZAI_API_KEY=YOUR_API_KEY_ID.YOUR_SIGNATURE_SECRET
-OPENROUTER_API_KEY=YOUR_OPENROUTER_KEY
+OPENROUTER_API_KEY=
 CURSOR_API_KEY=
 SUBLLM_PROVIDER_ORDER=
 ```
-
-When an application is a sibling of this repository, `resolve()` discovers
-`subllm/.env` automatically. For another layout, set `SUBLLM_ENV_FILE` to an
-absolute path or to a path relative to the process working directory. An
-explicit process variable wins over the corresponding value in the file.
-
-Only names declared in `policy.py` are accepted: routing provider keys, extra
-SDK names such as `CURSOR_API_KEY`, and the optional `SUBLLM_PROVIDER_ORDER`
-chain. The file must be a regular, non-symlink file with mode `0600` on POSIX.
-`cursor_api_key()` reads the same merged file and process environment that
-`resolve()` uses.
 
 ## Python API
 
@@ -130,67 +107,20 @@ chain. The file must be a regular, non-symlink file with mode `0600` on POSIX.
 from subllm import resolve
 
 route = resolve("repair-agent", "repair-plan")
-result = completion(
-    **route.litellm_kwargs(),
-    messages=[{"role": "user", "content": "..."}],
-)
-```
-
-The resolved credential is excluded from object representations and public
-serialization:
-
-```python
-route.public_dict()
-# {'application': 'repair-agent', 'function': 'repair-plan', ...}
-```
-
-For a transport that already owns its credential, resolve policy without
-reading the environment:
-
-```python
-from subllm import configured_route
-
-route = configured_route("onedev-agent", "code-edit", provider="openrouter")
-print(route.litellm_model)
-```
-
-Cursor SDK consumers read the same shared file. Pass the value explicitly
-instead of relying on ambient process state. Check the fallback chain before
-calling `resolve()` when Cursor should win:
-
-```python
-from subllm import available_provider_order, cursor_api_key
-
-backends = available_provider_order()
-if backends and backends[0] == "cursor":
-    api_key = cursor_api_key()
+if route.provider == "cursor":
+    sdk = route.cursor_sdk_kwargs()
+else:
+    result = completion(**route.litellm_kwargs(), messages=[...])
 ```
 
 ## CLI
 
-The CLI prints only public configuration:
-
 ```bash
 subllm check
-subllm list
 subllm providers
-subllm applications
-subllm env path
-subllm env check
-subllm resolve validator-agent patch-review --configured
-subllm resolve todo2code semantic
+subllm resolve doctor-agent repair-proposal --configured
 subllm resolve onedev-agent code-edit --provider openrouter --field litellm-model
 ```
-
-Existing local agent files can be imported without printing their values:
-
-```bash
-subllm env import ../doctor-agent/.env ../repair-agent/.env --target .env
-```
-
-Without `--configured`, `resolve` requires a valid credential for the selected
-provider. The CLI reports only configured variable names and never prints a
-credential.
 
 ## Development
 
@@ -201,8 +131,4 @@ python -m pip install -e '.[test]'
 ./scripts/verify
 ```
 
-See `docs/architecture.md` for the trust boundary and migration rules.
-See the
-[`SubLLM operator guide`](https://github.com/subactor/subllm/blob/main/docs/operations.md)
-for the complete provider, application naming, credential and provider-log
-runbook.
+See `docs/architecture.md` and `docs/operations.md`.
