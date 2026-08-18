@@ -112,6 +112,8 @@ SUBLLM_PROVIDER_ORDER=
 from subllm import resolve
 
 route = resolve("repair-agent", "repair-plan")
+# wellmanifest/webpage site UX judgment:
+# route = resolve("platform", "site-audit")
 if route.provider == "cursor":
     sdk = route.cursor_sdk_kwargs()
 else:

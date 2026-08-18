@@ -31,6 +31,13 @@ def test_invalid_policy_rejects_forbidden_model(monkeypatch: pytest.MonkeyPatch)
         validate_policy()
 
 
+def test_platform_site_audit_shares_interactive_candidate_providers() -> None:
+    interactive = [(item.provider, item.model) for item in configured_routes("platform", "interactive")]
+    audit = [(item.provider, item.model) for item in configured_routes("platform", "site-audit")]
+    assert audit[0] == ("cursor", "gpt-5.6-sol")
+    assert {provider for provider, _model in audit} == {provider for provider, _model in interactive}
+
+
 def test_cursor_sol_precedes_zai_and_openrouter_for_default_routes() -> None:
     configured = configured_routes("platform", "interactive")
     assert configured[0].provider == "cursor"

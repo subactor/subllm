@@ -230,6 +230,15 @@ _ROUTE_VALUES = (
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
+    RoutePolicy(
+        "platform",
+        "site-audit",
+        _DEFAULT
+        + (
+            RouteCandidate(provider="openrouter", model="grok-4.5", priority_offset=10),
+            RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
+        ),
+    ),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})

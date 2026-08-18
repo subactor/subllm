@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.7.1] - 2026-08-18
+
+### Added
+
+- Add `platform/site-audit` for `wellmanifest/webpage` site-wide UX judgment.
+  Consumers observe DOM/tokens locally and ask the model for kind, budgets and
+  hints. The route uses the same candidate chain as `platform/interactive`.
+
 ## [0.7.0] - 2026-08-16
 
 ### Added
