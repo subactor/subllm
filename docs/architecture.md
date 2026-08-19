@@ -2,9 +2,11 @@
 
 ## Boundary
 
-`subllm` is a policy library. It does not execute shell commands, access a
-credential vault, persist conversations, decide mutations or validate an
-agent's domain-specific response.
+`subllm` is a policy library plus a POA invoker. The library does not
+execute shell commands, access a credential vault, persist conversations,
+decide mutations or validate an agent's domain-specific response. The
+invoker exposes the same catalogs through CLI, shell and localhost HTTP
+as closed query/command processes. It does not add a generic shell.
 
 The library owns four immutable catalogs and one operator policy:
 
@@ -75,3 +77,5 @@ reference one.
 
 See the [operator guide](operations.md) for the editable policy, credential
 location, safe inspection commands and the current application/function map.
+See the [POA API](poa-api.md) for process URIs, CQRS rules and the local
+HTTP surface.

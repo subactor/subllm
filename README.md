@@ -127,7 +127,11 @@ subllm check
 subllm providers
 subllm resolve doctor-agent repair-proposal --configured
 subllm resolve onedev-agent code-edit --provider openrouter --field litellm-model
+subllm poa inspect poa://subactor.subllm/process/list-routes/v1
+subllm serve --host 127.0.0.1 --port 8788
 ```
+
+CLI, shell and HTTP share one POA CQRS/ES bus. See [`docs/poa-api.md`](docs/poa-api.md).
 
 ## Development
 

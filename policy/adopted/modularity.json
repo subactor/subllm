@@ -1,0 +1,24 @@
+{
+  "schema": "subllm.modularity/v1",
+  "adopt": "wellmanifest/modularity",
+  "contracts": [
+    {
+      "id": "llm-route-policy",
+      "contractOwnership": "single-exporter",
+      "exporter": "subactor/subllm",
+      "home": "subactor",
+      "shape": "both",
+      "consumers": "Subactor runtimes that call resolve() or the POA API",
+      "mustNot": "Private provider/model/route catalogs in consumer repos"
+    },
+    {
+      "id": "subllm-poa-process-catalog",
+      "contractOwnership": "single-exporter",
+      "exporter": "subactor/subllm",
+      "home": "subactor",
+      "shape": "runtime_service",
+      "facade": "policy/adopted/poa/process-catalog.json",
+      "mustNot": "Invented process URIs or a second HTTP command surface"
+    }
+  ]
+}

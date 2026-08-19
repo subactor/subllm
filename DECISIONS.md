@@ -79,3 +79,16 @@ projections under `policy/adopted/`.
 Leave `SUBLLM_PROVIDER_ORDER` empty when operator priorities in `subllm.toml`
 should control selection. An explicit order rewrites priorities as
 `index * 10 + offset` and must stay collision-free with route offsets.
+
+## 2026-08-19 — POA CQRS/ES invoker, policy library unchanged
+
+`resolve()` remains the single exporter of route policy. The new invoker
+ADOPTs Process-Oriented Architecture: closed process refs, query/command
+URIs, grants bound to a plan hash, an event journal and receipts.
+
+Placement: `home=subactor`, `shape=both`, `runtimeOwner=subactor`.
+`runtime_service` does not HOME wellmanifest. CLI, shell and `subllm serve`
+share `PolicyBus`. Queries are projections; they must not append events.
+Commands may write the local ignored credential file or persist a dry plan.
+Events never include credential values. Host shell and arbitrary executables
+stay false.

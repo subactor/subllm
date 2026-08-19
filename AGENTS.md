@@ -1,9 +1,16 @@
 # subllm agent instructions
 
+- HOME is `subactor`. Shape is `both` (policy library + runtime invoker).
+  ADOPT `wellmanifest/poa`, `wellmanifest/env-dsl`, `wellmanifest/modularity`,
+  `wellmanifest/new-project` and `wellmanifest/policy-dsl`. Do not HOME those
+  packs. Tickets live in `project/`.
 - Keep provider/model/application catalogs and route membership in
   `src/subllm/policy.py`. Keep operator-controlled provider enablement,
   priority, default models and application display identity in the root
   `subllm.toml`; consumers must not grow private copies.
+- CLI, shell and localhost HTTP must use `subllm.poa.PolicyBus`. Queries
+  never append events. Commands append secret-free `poa.event/v1` records.
+  Unknown process URIs fail closed. Do not add a generic shell adapter.
 - ADOPT `wellmanifest/policy-dsl` profile `llm-credential` and
   `wellmanifest/env-dsl` `subllm-credential-strategies.env`; refresh
   `policy/adopted/` when those catalogs change. Never pin Cursor Sol on

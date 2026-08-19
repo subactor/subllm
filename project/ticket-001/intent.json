@@ -1,0 +1,36 @@
+{
+  "schema": "new-project.intent/v1",
+  "id": "ticket-001",
+  "title": "Adopt POA CQRS ES API",
+  "summary": "Expose SubLLM inspect/plan/query/command through one POA CQRS/ES bus.",
+  "status": "IN_PROGRESS",
+  "placement": {
+    "home": "subactor",
+    "shape": "both",
+    "runtimeOwner": "subactor",
+    "adopt": [
+      "wellmanifest/poa",
+      "wellmanifest/env-dsl",
+      "wellmanifest/modularity",
+      "wellmanifest/new-project",
+      "wellmanifest/policy-dsl"
+    ]
+  },
+  "allowedPaths": [
+    "src/subllm/poa/**",
+    "src/subllm/cli.py",
+    "src/subllm/__init__.py",
+    "tests/test_poa_*.py",
+    "policy/adopted/**",
+    "placement.json",
+    "project/**",
+    "docs/**",
+    "AGENTS.md",
+    "DECISIONS.md",
+    "CHANGELOG.md",
+    "VERSION",
+    "README.md",
+    "pyproject.toml"
+  ],
+  "outcome": "CLI, shell and localhost HTTP share one process registry. Queries never append events. Commands append secret-free poa.event/v1 records and receipts."
+}

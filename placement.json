@@ -1,0 +1,13 @@
+{
+  "schema": "wellmanifest.placement/v1",
+  "home": "subactor",
+  "shape": "both",
+  "runtimeOwner": "subactor",
+  "adopt": [
+    "wellmanifest/poa",
+    "wellmanifest/env-dsl",
+    "wellmanifest/modularity",
+    "wellmanifest/new-project",
+    "wellmanifest/policy-dsl"
+  ]
+}

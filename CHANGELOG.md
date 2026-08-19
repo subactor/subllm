@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.8.0] - 2026-08-19
+
+### Added
+
+- Adopt `wellmanifest/poa` as a CQRS/ES invoker: closed process refs, query
+  and command URIs, event journal and receipts.
+- Expose the same bus on CLI (`subllm poa`) and localhost HTTP (`subllm serve`).
+- Project the process catalog to `policy/adopted/poa/process-catalog.json`.
+
+### Changed
+
+- Existing inspect CLI commands route through `PolicyBus` without changing
+  their public output.
+
 ## [0.7.1] - 2026-08-18
 
 ### Added

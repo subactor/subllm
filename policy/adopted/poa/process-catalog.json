@@ -1,0 +1,414 @@
+{
+  "adopt": [
+    "wellmanifest/poa",
+    "wellmanifest/env-dsl",
+    "wellmanifest/modularity",
+    "wellmanifest/new-project",
+    "wellmanifest/policy-dsl"
+  ],
+  "home": "subactor",
+  "processes": [
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/inspect-policy/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/inspect/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "inspect",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Inspect a declared SubLLM process"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/list-routes/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/list/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "list-routes",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "List configured application and function routes"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/list-providers/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/list/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "list-providers",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "List public provider enablement and defaults"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/list-applications/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/list/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "list-applications",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "List public application identity"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/configured-route/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/resolve/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "configured-route",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Inspect one route without requiring a credential"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/resolve-route/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/resolve/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data",
+            "credential_use"
+          ],
+          "id": "resolve-route",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": true,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Resolve one route using credential presence, not the key value"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/observe-credentials/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/observe/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "observe-credentials",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Observe credential names as configured or missing"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/validate-policy/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/validate/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "validate",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Validate the effective SubLLM policy"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/list-events/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/journal/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "list-events",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Read the event journal projection"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/get-receipt/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/journal/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "get-receipt",
+          "idempotency": "read_only",
+          "kind": "query",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Read one terminal receipt"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/create-plan/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/plan/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "create-plan",
+          "idempotency": "required",
+          "kind": "command",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Create a secret-free dry plan for a declared process"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/import-credentials/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/import-credentials/v1",
+          "depends_on": [],
+          "effects": [
+            "local_write"
+          ],
+          "id": "import-credentials",
+          "idempotency": "required",
+          "kind": "command",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Import provider credential names into the local ignored env file"
+    }
+  ],
+  "schema": "subllm.poa.catalog/v1",
+  "shape": "runtime_service",
+  "single_exporter": "subactor/subllm",
+  "uris": {
+    "poa://subactor.subllm/process/configured-route/v1": "subllm://local/policy/query/configured-route",
+    "poa://subactor.subllm/process/create-plan/v1": "subllm://local/policy/command/create-plan",
+    "poa://subactor.subllm/process/get-receipt/v1": "subllm://local/policy/query/receipt",
+    "poa://subactor.subllm/process/import-credentials/v1": "subllm://local/policy/command/import-credentials",
+    "poa://subactor.subllm/process/inspect-policy/v1": "subllm://local/policy/query/inspect",
+    "poa://subactor.subllm/process/list-applications/v1": "subllm://local/policy/query/list-applications",
+    "poa://subactor.subllm/process/list-events/v1": "subllm://local/policy/query/events",
+    "poa://subactor.subllm/process/list-providers/v1": "subllm://local/policy/query/list-providers",
+    "poa://subactor.subllm/process/list-routes/v1": "subllm://local/policy/query/list-routes",
+    "poa://subactor.subllm/process/observe-credentials/v1": "subllm://local/policy/query/observe-credentials",
+    "poa://subactor.subllm/process/resolve-route/v1": "subllm://local/policy/query/resolve-route",
+    "poa://subactor.subllm/process/validate-policy/v1": "subllm://local/policy/query/validate"
+  }
+}

@@ -78,5 +78,10 @@ SUBLLM_PROVIDER_ORDER=
 subllm check
 subllm providers
 subllm resolve doctor-agent repair-proposal --configured
+subllm poa catalog
+subllm serve --host 127.0.0.1 --port 8788
 python -m pytest -q
 ```
+
+The localhost API is documented in [`poa-api.md`](poa-api.md). Bind only
+loopback. Queries do not mutate the journal.
