@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.2.0] - 2026-08-21
+
+### Added
+
+- Add the direct Z.AI `glm-5.3` catalog entry and pin it to
+  `validator-agent/patch-review` and `validator-agent/direct-pr-review`.
+
+### Changed
+
+- Keep every other application on its existing provider defaults and retain
+  OpenRouter `z-ai/glm-5.2` as the Validator fallback.
+
 ## [0.8.0] - 2026-08-19
 
 ### Added

@@ -79,6 +79,12 @@ MODELS = MappingProxyType(
                 ),
             ),
         ),
+        "glm-5.3": ModelSpec(
+            id="glm-5.3",
+            providers=_provider_models(
+                zai=ProviderModelSpec(litellm_model="zai/glm-5.3", wire_model="glm-5.3"),
+            ),
+        ),
         "grok-4.5": ModelSpec(
             id="grok-4.5",
             providers=_provider_models(
@@ -182,6 +188,16 @@ _DEFAULT = (
     RouteCandidate(provider="openrouter"),
 )
 
+# Validator uses the direct Z.AI GLM-5.3 contract while retaining the existing
+# OpenRouter GLM-5.2 fallback. Other applications remain on their current
+# defaults until they are qualified independently.
+_VALIDATOR = (
+    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
+    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="openrouter", model="glm-5.2"),
+)
+
 _ROUTE_VALUES = (
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
     RoutePolicy(
@@ -192,9 +208,9 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "validator-agent",
         "patch-review",
-        _DEFAULT + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
+        _VALIDATOR + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
     ),
-    RoutePolicy("validator-agent", "direct-pr-review", _DEFAULT),
+    RoutePolicy("validator-agent", "direct-pr-review", _VALIDATOR),
     RoutePolicy("skills-agent", "developer", _DEFAULT),
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     RoutePolicy("onedev-agent", "code-edit", _DEFAULT),

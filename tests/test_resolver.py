@@ -176,7 +176,7 @@ def test_available_routes_skips_cursor_without_key() -> None:
         environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "or-key"},
     )
     assert [(route.provider, route.model) for route in routes] == [
-        ("zai", "glm-5.2"),
+        ("zai", "glm-5.3"),
         ("openrouter", "glm-5.2"),
         ("openrouter", "qwen3.7-plus"),
     ]
@@ -195,7 +195,7 @@ def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
     assert [(route.provider, route.model) for route in routes] == [
         ("cursor", "gpt-5.6-sol"),
         ("cursor", "grok-4.6"),
-        ("zai", "glm-5.2"),
+        ("zai", "glm-5.3"),
         ("openrouter", "glm-5.2"),
         ("openrouter", "qwen3.7-plus"),
     ]

@@ -36,6 +36,12 @@ Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
 and route definitions live in `src/subllm/policy.py`. See
 [`docs/credential-strategies.md`](docs/credential-strategies.md).
 
+The two Validator routes are intentionally narrower than the shared provider
+default: `validator-agent/patch-review` and
+`validator-agent/direct-pr-review` pin direct Z.AI to `glm-5.3`, while their
+OpenRouter fallback remains `z-ai/glm-5.2`. This keeps the GLM 5.3 rollout
+bounded to Validator until the newer model is qualified for other consumers.
+
 ## Application identity in provider logs
 
 Every application has one stable ID plus an operator-controlled display name
