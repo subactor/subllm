@@ -78,6 +78,10 @@ def _policy_file(
                 'name = "Subactor Platform"',
                 'url = "https://github.com/subactor/platform"',
                 "",
+                '[applications.szeptnik-one]',
+                'name = "Szeptnik One"',
+                'url = "https://github.com/tom-sapletta-com/watch"',
+                "",
             )
         ),
         encoding="utf-8",
@@ -94,6 +98,7 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["zai"].priority == 10
     assert policy.providers["openrouter"].default_model == "glm-5.2"
     assert policy.applications["platform"].name == "Subactor Platform"
+    assert policy.applications["szeptnik-one"].name == "Szeptnik One"
 
 
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
