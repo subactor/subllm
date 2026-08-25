@@ -57,6 +57,18 @@ def test_zai_is_selected_when_cursor_missing_and_zai_valid() -> None:
     assert route.model == "glm-5.2"
 
 
+def test_szeptnik_voice_route_uses_application_identity() -> None:
+    route = resolve(
+        "szeptnik-one",
+        "voice-programming",
+        environ={"OPENROUTER_API_KEY": "openrouter-secret"},
+    )
+    assert route.provider == "openrouter"
+    assert route.application_name == "Szeptnik One"
+    assert route.application_url == "https://github.com/tom-sapletta-com/watch"
+    assert route.extra_headers["X-OpenRouter-Title"] == "Szeptnik One"
+
+
 def test_zai_key_with_duplicate_id_falls_back_to_openrouter() -> None:
     route = resolve(
         "doctor-agent",

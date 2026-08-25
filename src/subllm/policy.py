@@ -176,6 +176,11 @@ APPLICATIONS = MappingProxyType(
             title="Subactor Platform",
             url="https://github.com/subactor/platform",
         ),
+        "szeptnik-one": ApplicationSpec(
+            id="szeptnik-one",
+            title="Szeptnik One",
+            url="https://github.com/tom-sapletta-com/watch",
+        ),
     }
 )
 
@@ -198,6 +203,14 @@ _VALIDATOR = (
     RouteCandidate(provider="openrouter", model="glm-5.2"),
 )
 
+# The watch desktop service currently invokes OpenAI-compatible Chat
+# Completions directly. Cursor SDK candidates stay out of these two routes
+# until that transport is implemented by the consumer.
+_SZEPTNIK = (
+    RouteCandidate(provider="zai"),
+    RouteCandidate(provider="openrouter"),
+)
+
 _ROUTE_VALUES = (
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
     RoutePolicy(
@@ -215,6 +228,8 @@ _ROUTE_VALUES = (
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     RoutePolicy("onedev-agent", "code-edit", _DEFAULT),
     RoutePolicy("todo2code", "semantic", _DEFAULT),
+    RoutePolicy("szeptnik-one", "program-generation", _SZEPTNIK),
+    RoutePolicy("szeptnik-one", "voice-programming", _SZEPTNIK),
     RoutePolicy(
         "koru-agent",
         "planning-assistant",

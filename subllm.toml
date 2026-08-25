@@ -55,3 +55,7 @@ url = "https://github.com/semcod/koru"
 [applications.platform]
 name = "Subactor Platform"
 url = "https://github.com/subactor/platform"
+
+[applications.szeptnik-one]
+name = "Szeptnik One"
+url = "https://github.com/tom-sapletta-com/watch"

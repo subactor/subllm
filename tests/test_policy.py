@@ -62,6 +62,16 @@ def test_zai_uses_the_coding_plan_endpoint() -> None:
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
+@pytest.mark.parametrize("function", ("program-generation", "voice-programming"))
+def test_szeptnik_routes_use_only_openai_compatible_transports(function: str) -> None:
+    routes = configured_routes("szeptnik-one", function)
+    assert [(route.provider, route.model) for route in routes] == [
+        ("zai", "glm-5.2"),
+        ("openrouter", "glm-5.2"),
+    ]
+    assert all(route.transport == "openai-compatible" for route in routes)
+
+
 @pytest.mark.parametrize("function", ("patch-review", "direct-pr-review"))
 def test_validator_routes_pin_direct_zai_glm_5_3(function: str) -> None:
     route = next(item for item in configured_routes("validator-agent", function) if item.provider == "zai")
