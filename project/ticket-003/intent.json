@@ -1,0 +1,24 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-003",
+  "workstream": "routing",
+  "deliveryClass": "M",
+  "goal": "Prefer direct Z.AI GLM 5.3 for every registered SubLLM route",
+  "allowedPaths": [
+    "CHANGELOG.md",
+    "VERSION",
+    "pyproject.toml",
+    "src/subllm/policy.py",
+    "subllm.toml",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py",
+    "project/TICKETS.md",
+    "project/ticket-003/**"
+  ],
+  "forbiddenPaths": [".env", "**/.env", "project/ticket-*/user-*.md"],
+  "acceptance": [
+    "Direct Z.AI GLM 5.3 is the first configured candidate for every route",
+    "Fallback providers are never automatic replays of a started request",
+    "Policy, configuration and package verification pass"
+  ]
+}

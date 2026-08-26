@@ -46,7 +46,7 @@ EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
 
 # Comma-separated fallback chain. Unknown names fail closed.
 SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
-ORDERABLE_PROVIDER_IDS = tuple(PROVIDERS)
+ORDERABLE_PROVIDER_IDS = ("zai", "cursor", "openrouter")
 
 MODELS = MappingProxyType(
     {
@@ -189,31 +189,22 @@ APPLICATIONS = MappingProxyType(
     }
 )
 
-# Prefer Cursor Sol, then Cursor Grok 4.6, when CURSOR_API_KEY is valid;
-# otherwise Z.AI then OpenRouter. Both Cursor models use cursor-sdk transport.
+# Prefer direct Z.AI GLM 5.3 for every registered LLM route. Cursor and
+# OpenRouter remain pre-request fallbacks selected only when the preferred
+# credential is unavailable or an operator explicitly overrides provider order.
 _DEFAULT = (
-    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
-    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
-    RouteCandidate(provider="zai"),
-    RouteCandidate(provider="openrouter"),
-)
-
-# Validator uses the direct Z.AI GLM-5.3 contract while retaining the existing
-# OpenRouter GLM-5.2 fallback. Other applications remain on their current
-# defaults until they are qualified independently.
-_VALIDATOR = (
-    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
-    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="zai", model="glm-5.3"),
-    RouteCandidate(provider="openrouter", model="glm-5.2"),
+    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
+    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="openrouter"),
 )
 
 # The watch desktop service currently invokes OpenAI-compatible Chat
 # Completions directly. Cursor SDK candidates stay out of these two routes
 # until that transport is implemented by the consumer.
 _SZEPTNIK = (
-    RouteCandidate(provider="zai"),
-    RouteCandidate(provider="openrouter"),
+    RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="openrouter", model="glm-5.2"),
 )
 
 _ROUTE_VALUES = (
@@ -226,9 +217,9 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "validator-agent",
         "patch-review",
-        _VALIDATOR + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
+        _DEFAULT + (RouteCandidate(provider="openrouter", model="qwen3.7-plus", priority_offset=10),),
     ),
-    RoutePolicy("validator-agent", "direct-pr-review", _VALIDATOR),
+    RoutePolicy("validator-agent", "direct-pr-review", _DEFAULT),
     RoutePolicy("skills-agent", "developer", _DEFAULT),
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     RoutePolicy("onedev-agent", "code-edit", _DEFAULT),
@@ -238,24 +229,12 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "koru-agent",
         "planning-assistant",
-        (
-            RouteCandidate(
-                provider="cursor",
-                model="grok-4.6",
-                model_parameters={"effort": "xhigh", "fast": "false"},
-            ),
-        ),
+        _DEFAULT,
     ),
     RoutePolicy(
         "koru-agent",
         "queue-executor",
-        (
-            RouteCandidate(
-                provider="cursor",
-                model="grok-4.6",
-                model_parameters={"effort": "xhigh", "fast": "false"},
-            ),
-        ),
+        _DEFAULT,
     ),
     RoutePolicy(
         "platform",
@@ -275,9 +254,9 @@ _ROUTE_VALUES = (
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
-    RoutePolicy("supervisor", "assessment", _VALIDATOR),
-    RoutePolicy("supervisor", "delegation", _VALIDATOR),
-    RoutePolicy("supervisor", "review", _VALIDATOR),
+    RoutePolicy("supervisor", "assessment", _DEFAULT),
+    RoutePolicy("supervisor", "delegation", _DEFAULT),
+    RoutePolicy("supervisor", "review", _DEFAULT),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})

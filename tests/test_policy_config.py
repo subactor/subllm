@@ -17,13 +17,13 @@ def _policy_file(
     path: Path,
     *,
     cursor_enabled: bool = True,
-    cursor_priority: int = 0,
+    cursor_priority: int = 20,
     cursor_model: str = "gpt-5.6-sol",
     zai_enabled: bool = True,
-    zai_priority: int = 10,
-    zai_model: str = "glm-5.2",
+    zai_priority: int = 0,
+    zai_model: str = "glm-5.3",
     openrouter_enabled: bool = True,
-    openrouter_priority: int = 20,
+    openrouter_priority: int = 30,
     openrouter_model: str = "glm-5.2",
 ) -> Path:
     path.write_text(
@@ -98,8 +98,10 @@ def test_repository_policy_file_is_discovered() -> None:
     assert path is not None
     assert path.name == "subllm.toml"
     policy = load_policy_config(cwd=path.parent)
-    assert policy.providers["cursor"].priority == 0
-    assert policy.providers["zai"].priority == 10
+    assert policy.providers["zai"].priority == 0
+    assert policy.providers["zai"].default_model == "glm-5.3"
+    assert policy.providers["cursor"].priority == 20
+    assert policy.providers["openrouter"].priority == 30
     assert policy.providers["openrouter"].default_model == "glm-5.2"
     assert policy.applications["platform"].name == "Subactor Platform"
     assert policy.applications["szeptnik-one"].name == "Szeptnik One"

@@ -34,39 +34,41 @@ def test_invalid_policy_rejects_forbidden_model(monkeypatch: pytest.MonkeyPatch)
 def test_platform_site_audit_shares_interactive_candidate_providers() -> None:
     interactive = [(item.provider, item.model) for item in configured_routes("platform", "interactive")]
     audit = [(item.provider, item.model) for item in configured_routes("platform", "site-audit")]
-    assert audit[0] == ("cursor", "gpt-5.6-sol")
+    assert audit[0] == ("zai", "glm-5.3")
     assert {provider for provider, _model in audit} == {provider for provider, _model in interactive}
 
 
-def test_cursor_sol_precedes_zai_and_openrouter_for_default_routes() -> None:
+def test_direct_zai_glm53_precedes_cursor_and_openrouter_for_default_routes() -> None:
     configured = configured_routes("platform", "interactive")
-    assert configured[0].provider == "cursor"
-    assert configured[0].model == "gpt-5.6-sol"
-    assert configured[0].transport == "cursor-sdk"
-    assert "openrouter" not in MODELS["gpt-5.6-sol"].providers
+    assert configured[0].provider == "zai"
+    assert configured[0].model == "glm-5.3"
+    assert configured[0].transport == "openai-compatible"
+    assert configured[0].api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
 def test_repository_defaults_bind_strategies_to_keys() -> None:
     path = find_policy_file(cwd=Path(__file__).resolve().parents[1])
     assert path is not None
     policy = load_policy_config(cwd=path.parent)
-    assert policy.providers["cursor"].priority == 0
+    assert policy.providers["zai"].priority == 0
+    assert policy.providers["zai"].default_model == "glm-5.3"
+    assert policy.providers["cursor"].priority == 20
     assert policy.providers["cursor"].default_model == "gpt-5.6-sol"
-    assert policy.providers["zai"].priority == 10
-    assert policy.providers["openrouter"].priority == 20
+    assert policy.providers["openrouter"].priority == 30
     assert policy.providers["openrouter"].default_model == "glm-5.2"
 
 
 def test_zai_uses_the_coding_plan_endpoint() -> None:
     route = next(item for item in configured_routes("skills-agent", "developer") if item.provider == "zai")
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
+    assert route.model == "glm-5.3"
 
 
 @pytest.mark.parametrize("function", ("program-generation", "voice-programming"))
 def test_szeptnik_routes_use_only_openai_compatible_transports(function: str) -> None:
     routes = configured_routes("szeptnik-one", function)
     assert [(route.provider, route.model) for route in routes] == [
-        ("zai", "glm-5.2"),
+        ("zai", "glm-5.3"),
         ("openrouter", "glm-5.2"),
     ]
     assert all(route.transport == "openai-compatible" for route in routes)
@@ -89,3 +91,11 @@ def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
     assert route.wire_model == "glm-5.3"
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
 
+
+@pytest.mark.parametrize(("application", "function"), sorted(ROUTES))
+def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, function: str) -> None:
+    route = configured_routes(application, function)[0]
+    assert route.provider == "zai"
+    assert route.model == "glm-5.3"
+    assert route.wire_model == "glm-5.3"
+    assert route.api_base == "https://api.z.ai/api/coding/paas/v4"

@@ -14,7 +14,7 @@ from subllm import (
 )
 
 
-def test_cursor_sol_is_selected_when_cursor_key_exists() -> None:
+def test_direct_zai_is_selected_when_all_credentials_exist() -> None:
     route = resolve(
         "repair-agent",
         "repair-plan",
@@ -24,14 +24,11 @@ def test_cursor_sol_is_selected_when_cursor_key_exists() -> None:
             "OPENROUTER_API_KEY": "openrouter-secret",
         },
     )
-    assert route.provider == "cursor"
-    assert route.model == "gpt-5.6-sol"
-    assert route.transport == "cursor-sdk"
-    assert route.wire_model == "gpt-5.6-sol"
-    assert route.litellm_model == "cursor/gpt-5.6-sol"
-    assert route.cursor_sdk_kwargs()["model"] == "gpt-5.6-sol"
-    with pytest.raises(ValueError, match="Cursor SDK"):
-        route.litellm_kwargs()
+    assert route.provider == "zai"
+    assert route.model == "glm-5.3"
+    assert route.transport == "openai-compatible"
+    assert route.wire_model == "glm-5.3"
+    assert route.litellm_model == "zai/glm-5.3"
 
 
 def test_openrouter_never_owns_gpt_sol() -> None:
@@ -54,7 +51,7 @@ def test_zai_is_selected_when_cursor_missing_and_zai_valid() -> None:
         environ={"ZAI_API_KEY": "key-id.signature", "OPENROUTER_API_KEY": "openrouter-secret"},
     )
     assert route.provider == "zai"
-    assert route.model == "glm-5.2"
+    assert route.model == "glm-5.3"
 
 
 def test_szeptnik_voice_route_uses_application_identity() -> None:
@@ -136,43 +133,39 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
     fields = route.provider_request_fields()
 
     assert route.provider == "zai"
-    assert route.wire_model == "glm-5.2"
+    assert route.wire_model == "glm-5.3"
     assert route.application_url == "https://github.com/semcod/todo2code"
     assert fields["user_id"] == "todo2code"
 
 
 @pytest.mark.parametrize("function", ("planning-assistant", "queue-executor"))
-def test_koru_routes_require_cursor_grok_xhigh(function: str) -> None:
+def test_koru_routes_prefer_direct_zai_glm53(function: str) -> None:
     route = resolve(
         "koru-agent",
         function,
         environ={
             "CURSOR_API_KEY": "cursor_test-not-a-secret",
+            "ZAI_API_KEY": "id.signature",
             "OPENROUTER_API_KEY": "openrouter-secret",
         },
     )
 
-    assert route.provider == "cursor"
-    assert route.model == "grok-4.6"
-    assert route.transport == "cursor-sdk"
+    assert route.provider == "zai"
+    assert route.model == "glm-5.3"
+    assert route.transport == "openai-compatible"
     assert route.application_name == "Koru"
     assert route.application_url == "https://github.com/semcod/koru"
-    assert route.cursor_sdk_kwargs()["model"] == {
-        "id": "grok-4.6",
-        "params": [
-            {"id": "effort", "value": "xhigh"},
-            {"id": "fast", "value": "false"},
-        ],
-    }
+    assert route.wire_model == "glm-5.3"
 
 
-def test_koru_routes_fail_closed_without_cursor_credential() -> None:
-    with pytest.raises(MissingCredentialError, match="CURSOR_API_KEY"):
-        resolve(
-            "koru-agent",
-            "planning-assistant",
-            environ={"OPENROUTER_API_KEY": "openrouter-secret"},
-        )
+def test_koru_routes_fall_back_to_openrouter_without_zai_or_cursor() -> None:
+    route = resolve(
+        "koru-agent",
+        "planning-assistant",
+        environ={"OPENROUTER_API_KEY": "openrouter-secret"},
+    )
+    assert route.provider == "openrouter"
+    assert route.model == "glm-5.2"
 
 
 def test_zai_rejects_invalid_custom_request_id_length() -> None:
@@ -194,7 +187,7 @@ def test_available_routes_skips_cursor_without_key() -> None:
     ]
 
 
-def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
+def test_available_routes_prefers_direct_zai_when_all_keys_are_present() -> None:
     routes = available_routes(
         "validator-agent",
         "patch-review",
@@ -205,9 +198,9 @@ def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
         },
     )
     assert [(route.provider, route.model) for route in routes] == [
+        ("zai", "glm-5.3"),
         ("cursor", "gpt-5.6-sol"),
         ("cursor", "grok-4.6"),
-        ("zai", "glm-5.3"),
         ("openrouter", "glm-5.2"),
         ("openrouter", "qwen3.7-plus"),
     ]
@@ -216,7 +209,7 @@ def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
 def test_credential_source_matrix_selects_expected_provider_model() -> None:
     """Z.AI / OpenRouter / Cursor key isolation → optimal model per source."""
     cases = (
-        ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.2"),
+        ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.3"),
         ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.2"),
         ({"CURSOR_API_KEY": "cursor_test-not-a-secret"}, "cursor", "gpt-5.6-sol"),
         (
@@ -225,8 +218,8 @@ def test_credential_source_matrix_selects_expected_provider_model() -> None:
                 "ZAI_API_KEY": "key-id.signature",
                 "OPENROUTER_API_KEY": "openrouter-secret",
             },
-            "cursor",
-            "gpt-5.6-sol",
+            "zai",
+            "glm-5.3",
         ),
     )
     for environ, provider, model in cases:
