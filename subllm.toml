@@ -59,3 +59,8 @@ url = "https://github.com/subactor/platform"
 [applications.szeptnik-one]
 name = "Szeptnik One"
 url = "https://github.com/tom-sapletta-com/watch"
+
+[applications.supervisor]
+name = "Subactor Supervisor"
+url = "https://github.com/subactor/supervisor"
+

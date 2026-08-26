@@ -1,0 +1,21 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-002",
+  "workstream": "application",
+  "deliveryClass": "S",
+  "goal": "Register Supervisor semantic routes in the central SubLLM policy",
+  "allowedPaths": [
+    "src/subllm/policy.py",
+    "subllm.toml",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py",
+    "project/TICKETS.md",
+    "project/ticket-002/**"
+  ],
+  "forbiddenPaths": [".env", "**/.env", "project/ticket-*/user-*.md"],
+  "acceptance": [
+    "Supervisor application identity is declared once in SubLLM",
+    "Supervisor assessment, delegation and review have deterministic route candidates",
+    "Policy and configuration tests pass"
+  ]
+}

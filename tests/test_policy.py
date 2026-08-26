@@ -79,3 +79,13 @@ def test_validator_routes_pin_direct_zai_glm_5_3(function: str) -> None:
     assert route.litellm_model == "zai/glm-5.3"
     assert route.wire_model == "glm-5.3"
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
+
+
+@pytest.mark.parametrize("function", ("assessment", "delegation", "review"))
+def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
+    route = next(item for item in configured_routes("supervisor", function) if item.provider == "zai")
+    assert route.model == "glm-5.3"
+    assert route.litellm_model == "zai/glm-5.3"
+    assert route.wire_model == "glm-5.3"
+    assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
+
