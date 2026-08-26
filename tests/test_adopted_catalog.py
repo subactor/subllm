@@ -27,6 +27,7 @@ def test_adopted_catalog_matches_python_providers() -> None:
 def test_adopted_env_declares_sol_not_on_openrouter() -> None:
     text = (ADOPTED / "credential-strategies.env").read_text(encoding="utf-8")
     assert "CURSOR_DEFAULT_MODEL=gpt-5.6-sol" in text
+    assert "ZAI_DEFAULT_MODEL=glm-5.3" in text
     assert "OPENROUTER_DEFAULT_MODEL=glm-5.2" in text
     assert "CURSOR_FALLBACK_ORDER=gpt-5.6-sol,grok-4.6" in text
     assert "CURSOR_ONLY_MODELS=gpt-5.6-sol,grok-4.6" in text

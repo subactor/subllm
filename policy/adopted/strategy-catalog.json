@@ -18,8 +18,8 @@
       "provider": "zai",
       "transport": "openai-compatible",
       "apiBase": "https://api.z.ai/api/coding/paas/v4",
-      "defaultModel": "glm-5.2",
-      "allowedModels": ["glm-5.2"],
+      "defaultModel": "glm-5.3",
+      "allowedModels": ["glm-5.3", "glm-5.2"],
       "notes": "Z.AI Coding Plan LiteLLM path."
     },
     {

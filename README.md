@@ -20,7 +20,7 @@ LLM strategies are assigned by **API-key source** (ADOPT
 | Credential | Provider | Transport | Default model |
 | --- | --- | --- | --- |
 | `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` |
-| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.2` |
+| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.3` |
 | `OPENROUTER_API_KEY` | `openrouter` | OpenAI-compatible | `glm-5.2` |
 
 `gpt-5.6-sol` is Cursor-only. OpenRouter never claims Sol as
@@ -36,11 +36,9 @@ Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
 and route definitions live in `src/subllm/policy.py`. See
 [`docs/credential-strategies.md`](docs/credential-strategies.md).
 
-The two Validator routes are intentionally narrower than the shared provider
-default: `validator-agent/patch-review` and
-`validator-agent/direct-pr-review` pin direct Z.AI to `glm-5.3`, while their
-OpenRouter fallback remains `z-ai/glm-5.2`. This keeps the GLM 5.3 rollout
-bounded to Validator until the newer model is qualified for other consumers.
+Direct Z.AI defaults to `glm-5.3` for every routed application. OpenRouter
+remains an independent fallback on `z-ai/glm-5.2`, because the policy does not
+declare GLM 5.3 through that provider.
 
 ## Application identity in provider logs
 
@@ -75,7 +73,7 @@ default_model = "gpt-5.6-sol"
 [providers.zai]
 enabled = true
 priority = 10
-default_model = "glm-5.2"
+default_model = "glm-5.3"
 
 [providers.openrouter]
 enabled = true

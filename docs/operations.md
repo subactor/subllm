@@ -29,7 +29,7 @@ default_model = "gpt-5.6-sol"
 [providers.zai]
 enabled = true
 priority = 10
-default_model = "glm-5.2"
+default_model = "glm-5.3"
 
 [providers.openrouter]
 enabled = true

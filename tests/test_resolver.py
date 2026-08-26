@@ -54,7 +54,7 @@ def test_zai_is_selected_when_cursor_missing_and_zai_valid() -> None:
         environ={"ZAI_API_KEY": "key-id.signature", "OPENROUTER_API_KEY": "openrouter-secret"},
     )
     assert route.provider == "zai"
-    assert route.model == "glm-5.2"
+    assert route.model == "glm-5.3"
 
 
 def test_szeptnik_voice_route_uses_application_identity() -> None:
@@ -136,7 +136,7 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
     fields = route.provider_request_fields()
 
     assert route.provider == "zai"
-    assert route.wire_model == "glm-5.2"
+    assert route.wire_model == "glm-5.3"
     assert route.application_url == "https://github.com/semcod/todo2code"
     assert fields["user_id"] == "todo2code"
 
@@ -216,7 +216,7 @@ def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
 def test_credential_source_matrix_selects_expected_provider_model() -> None:
     """Z.AI / OpenRouter / Cursor key isolation → optimal model per source."""
     cases = (
-        ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.2"),
+        ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.3"),
         ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.2"),
         ({"CURSOR_API_KEY": "cursor_test-not-a-secret"}, "cursor", "gpt-5.6-sol"),
         (
