@@ -176,6 +176,11 @@ APPLICATIONS = MappingProxyType(
             title="PreLLM",
             url="https://github.com/semcod/prellm",
         ),
+        "semcod-nfo": ApplicationSpec(
+            id="semcod-nfo",
+            title="NFO",
+            url="https://github.com/semcod/nfo",
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
@@ -243,6 +248,7 @@ _ROUTE_VALUES = (
     ),
     RoutePolicy("prellm", "preprocess", _DEFAULT),
     RoutePolicy("prellm", "execute", _DEFAULT),
+    RoutePolicy("semcod-nfo", "analyze", _DEFAULT),
     RoutePolicy(
         "platform",
         "interactive",

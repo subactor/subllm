@@ -79,6 +79,38 @@ def test_complete_rejects_non_openai_transport(monkeypatch) -> None:
         complete("koru-agent", "planning-assistant", [{"role": "user", "content": "x"}])
 
 
+def test_complete_executes_nfo_analysis_through_direct_zai(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def open_request(request, *, timeout):
+        observed["body"] = json.loads(request.data.decode("utf-8"))
+        return _Response(
+            {
+                "choices": [{"message": {"content": "root cause"}, "finish_reason": "stop"}],
+                "usage": {"total_tokens": 5},
+            }
+        )
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    result = complete(
+        "semcod-nfo",
+        "analyze",
+        [{"role": "user", "content": "Analyze this error"}],
+        request_id="nfo-test-0001",
+        environ={"ZAI_API_KEY": "id.secret"},
+    )
+
+    assert result.provider == "zai"
+    assert result.model == "glm-5.3"
+    assert result.content == "root cause"
+    assert observed["body"] == {
+        "model": "glm-5.3",
+        "messages": [{"role": "user", "content": "Analyze this error"}],
+        "request_id": "nfo-test-0001",
+        "user_id": "semcod-nfo",
+    }
+
+
 def test_complete_rejects_empty_messages() -> None:
     with pytest.raises(CompletionError, match="at least one message"):
         complete("todo2code", "semantic", [], environ={"ZAI_API_KEY": "id.secret"})

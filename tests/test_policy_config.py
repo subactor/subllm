@@ -78,6 +78,10 @@ def _policy_file(
                 'name = "PreLLM"',
                 'url = "https://github.com/semcod/prellm"',
                 "",
+                '[applications.semcod-nfo]',
+                'name = "NFO"',
+                'url = "https://github.com/semcod/nfo"',
+                "",
                 '[applications.platform]',
                 'name = "Subactor Platform"',
                 'url = "https://github.com/subactor/platform"',
@@ -109,6 +113,7 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["openrouter"].default_model == "glm-5.2"
     assert policy.applications["platform"].name == "Subactor Platform"
     assert policy.applications["szeptnik-one"].name == "Szeptnik One"
+    assert policy.applications["semcod-nfo"].url == "https://github.com/semcod/nfo"
 
 
 def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> None:
@@ -120,6 +125,10 @@ def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> 
     assert policy.providers["cursor"].priority == 20
     assert policy.providers["openrouter"].priority == 30
     assert policy.applications["todo2code"].url == "https://github.com/autogrammar/todo2code"
+    assert [(route.provider, route.model) for route in configured_routes("semcod-nfo", "analyze")][0] == (
+        "zai",
+        "glm-5.3",
+    )
 
 
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:

@@ -1,0 +1,19 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-014",
+  "summary": "Register NFO log analysis in central SubLLM routing",
+  "workstream": "runtime",
+  "classification": {"kind": "FEATURE", "priority": "P1", "origin": "founder"},
+  "allowedPaths": [
+    "subllm.toml",
+    "src/subllm/policy.py",
+    "tests/test_policy_config.py",
+    "tests/test_client.py",
+    "project/ticket-014/**"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": ["python", "subllm", "zai", "nfo"],
+  "dependsOn": ["ticket-010"],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
