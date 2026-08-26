@@ -56,6 +56,10 @@ url = "https://github.com/semcod/koru"
 name = "PreLLM"
 url = "https://github.com/semcod/prellm"
 
+[applications.semcod-nfo]
+name = "NFO"
+url = "https://github.com/semcod/nfo"
+
 [applications.platform]
 name = "Subactor Platform"
 url = "https://github.com/subactor/platform"
