@@ -10,8 +10,11 @@
     "pyproject.toml",
     "src/subllm/policy.py",
     "subllm.toml",
+    "tests/test_cli.py",
     "tests/test_policy.py",
     "tests/test_policy_config.py",
+    "tests/test_provider_order.py",
+    "tests/test_resolver.py",
     "project/TICKETS.md",
     "project/ticket-003/**"
   ],

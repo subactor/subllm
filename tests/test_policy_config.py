@@ -68,7 +68,7 @@ def _policy_file(
                 "",
                 '[applications.todo2code]',
                 'name = "todo2code"',
-                'url = "https://github.com/semcod/todo2code"',
+                'url = "https://github.com/autogrammar/todo2code"',
                 "",
                 '[applications.koru-agent]',
                 'name = "Koru"',

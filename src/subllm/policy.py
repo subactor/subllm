@@ -164,7 +164,7 @@ APPLICATIONS = MappingProxyType(
         "todo2code": ApplicationSpec(
             id="todo2code",
             title="todo2code",
-            url="https://github.com/semcod/todo2code",
+            url="https://github.com/autogrammar/todo2code",
         ),
         "koru-agent": ApplicationSpec(
             id="koru-agent",

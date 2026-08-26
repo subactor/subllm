@@ -134,7 +134,7 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
 
     assert route.provider == "zai"
     assert route.wire_model == "glm-5.3"
-    assert route.application_url == "https://github.com/semcod/todo2code"
+    assert route.application_url == "https://github.com/autogrammar/todo2code"
     assert fields["user_id"] == "todo2code"
 
 
