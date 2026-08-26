@@ -138,7 +138,7 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
     assert fields["user_id"] == "todo2code"
 
 
-@pytest.mark.parametrize("function", ("planning-assistant", "queue-executor"))
+@pytest.mark.parametrize("function", ("planning-assistant", "queue-executor", "reflection"))
 def test_koru_routes_prefer_direct_zai_glm53(function: str) -> None:
     route = resolve(
         "koru-agent",

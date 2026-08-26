@@ -1,0 +1,22 @@
+{
+  "schema": "new-project.intent/v1",
+  "id": "ticket-020",
+  "title": "Unify Koru multi-provider transports",
+  "status": "IN_PROGRESS",
+  "allowedPaths": [
+    "src/subllm/client.py",
+    "src/subllm/policy.py",
+    "tests/test_client.py",
+    "tests/test_resolver.py",
+    "pyproject.toml",
+    "VERSION",
+    "CHANGELOG.md",
+    "project/TICKETS.md",
+    "project/ticket-020/**"
+  ],
+  "acceptance": [
+    "Complete dispatches policy-selected Cursor SDK routes without tools.",
+    "Koru routes use the centrally configured multi-provider chain.",
+    "The full verification suite passes."
+  ]
+}

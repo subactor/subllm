@@ -312,6 +312,11 @@ _ROUTE_VALUES = (
         "queue-executor",
         _DEFAULT,
     ),
+    RoutePolicy(
+        "koru-agent",
+        "reflection",
+        _DEFAULT,
+    ),
     RoutePolicy("prellm", "preprocess", _DEFAULT),
     RoutePolicy("prellm", "execute", _DEFAULT),
     RoutePolicy("semcod-nfo", "analyze", _DEFAULT),

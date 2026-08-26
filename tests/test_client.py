@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import json
-from types import SimpleNamespace
+import sys
+from types import ModuleType
 
 import pytest
 
@@ -65,18 +66,94 @@ def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
     assert "id.secret" not in repr(result)
 
 
-def test_complete_rejects_non_openai_transport(monkeypatch) -> None:
-    monkeypatch.setattr(
-        client,
-        "resolve",
-        lambda *_args, **_kwargs: SimpleNamespace(
-            provider="cursor",
-            transport="cursor-sdk",
-        ),
+def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path) -> None:
+    observed: dict[str, object] = {}
+
+    def complete_cursor(route, messages, **kwargs):
+        observed.update(route=route, messages=messages, **kwargs)
+        return client.CompletionResponse(
+            content="cursor answer",
+            provider=route.provider,
+            model=route.wire_model,
+        )
+
+    monkeypatch.setattr(client, "_complete_cursor", complete_cursor)
+    result = complete(
+        "koru-agent",
+        "planning-assistant",
+        [{"role": "user", "content": "x"}],
+        environ={"CURSOR_API_KEY": "cursor_test-not-a-secret"},
+        cwd=tmp_path,
     )
 
-    with pytest.raises(CompletionError, match="only executes openai-compatible routes"):
-        complete("koru-agent", "planning-assistant", [{"role": "user", "content": "x"}])
+    assert result.content == "cursor answer"
+    assert result.provider == "cursor"
+    assert result.model == "gpt-5.6-sol"
+    assert observed["cwd"] == tmp_path
+    assert observed["messages"] == [{"role": "user", "content": "x"}]
+
+
+def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, tmp_path) -> None:
+    observed: dict[str, object] = {}
+
+    class LocalAgentOptions:
+        def __init__(self, **kwargs):
+            observed["local"] = kwargs
+
+    class AgentOptions:
+        def __init__(self, **kwargs):
+            observed["options"] = kwargs
+
+    class Run:
+        def supports(self, _feature: str) -> bool:
+            return False
+
+        def wait(self):
+            return type(
+                "Result",
+                (),
+                {
+                    "status": "finished",
+                    "result": "cursor answer",
+                    "usage": {"total_tokens": 3},
+                    "id": "run-1",
+                },
+            )()
+
+    class Session:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def send(self, prompt: str):
+            observed["prompt"] = prompt
+            return Run()
+
+    class Agent:
+        @staticmethod
+        def create(_options):
+            return Session()
+
+    module = ModuleType("cursor_sdk")
+    module.Agent = Agent
+    module.AgentOptions = AgentOptions
+    module.LocalAgentOptions = LocalAgentOptions
+    monkeypatch.setitem(sys.modules, "cursor_sdk", module)
+
+    result = complete(
+        "koru-agent",
+        "planning-assistant",
+        [{"role": "system", "content": "JSON only"}, {"role": "user", "content": "plan"}],
+        environ={"CURSOR_API_KEY": "cursor_test-not-a-secret"},
+        cwd=tmp_path,
+    )
+
+    assert result.content == "cursor answer"
+    assert observed["options"]["tools"] == []
+    assert observed["local"] == {"cwd": str(tmp_path), "setting_sources": []}
+    assert "<system>\nJSON only\n</system>" in observed["prompt"]
 
 
 def test_complete_executes_nfo_analysis_through_direct_zai(monkeypatch) -> None:
