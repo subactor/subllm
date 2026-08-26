@@ -107,6 +107,17 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.applications["szeptnik-one"].name == "Szeptnik One"
 
 
+def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> None:
+    policy = load_policy_config(environ={}, cwd=tmp_path)
+
+    assert policy.source is None
+    assert policy.providers["zai"].priority == 0
+    assert policy.providers["zai"].default_model == "glm-5.3"
+    assert policy.providers["cursor"].priority == 20
+    assert policy.providers["openrouter"].priority == 30
+    assert policy.applications["todo2code"].url == "https://github.com/autogrammar/todo2code"
+
+
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     policy = _policy_file(
         tmp_path / "subllm.toml",
