@@ -19,3 +19,7 @@ class MissingCredentialError(SubLLMError):
 
 class CredentialFileError(SubLLMError):
     pass
+
+
+class CompletionError(SubLLMError):
+    """A policy-resolved completion could not be executed safely."""
