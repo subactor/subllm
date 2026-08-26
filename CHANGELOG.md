@@ -1,5 +1,16 @@
 # Changelog
 
+## [1.5.0] - 2026-08-26
+
+### Added
+
+- Execute policy-selected Cursor SDK routes through the same public
+  `subllm.complete()` entry point as Z.AI and OpenRouter. Cursor execution is
+  tool-free and retains the configured project working directory.
+- Register `koru-agent/reflection` alongside Koru planning and queue routes.
+  All three use the centrally configured Z.AI → Cursor → OpenRouter
+  pre-request selection chain.
+
 ## [1.4.2] - 2026-08-26
 
 ### Added
