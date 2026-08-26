@@ -1,0 +1,19 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-012",
+  "summary": "Release SubLLM 1.4.1 with PreLLM routes",
+  "workstream": "release",
+  "classification": {"kind": "RELEASE", "priority": "P1", "origin": "founder"},
+  "allowedPaths": [
+    "VERSION",
+    "pyproject.toml",
+    "CHANGELOG.md",
+    "project/TICKETS.md",
+    "project/ticket-012/**"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": ["python", "subllm", "zai", "packaging"],
+  "dependsOn": ["ticket-010"],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
