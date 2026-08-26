@@ -52,6 +52,10 @@ url = "https://github.com/autogrammar/todo2code"
 name = "Koru"
 url = "https://github.com/semcod/koru"
 
+[applications.prellm]
+name = "PreLLM"
+url = "https://github.com/semcod/prellm"
+
 [applications.platform]
 name = "Subactor Platform"
 url = "https://github.com/subactor/platform"

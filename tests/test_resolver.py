@@ -168,6 +168,18 @@ def test_koru_routes_fall_back_to_openrouter_without_zai_or_cursor() -> None:
     assert route.model == "glm-5.2"
 
 
+@pytest.mark.parametrize("function", ("preprocess", "execute"))
+def test_prellm_routes_use_public_application_identity(function: str) -> None:
+    route = resolve("prellm", function, environ={"ZAI_API_KEY": "id.signature"})
+    fields = route.provider_request_fields(request_id=f"prellm-{function}-request")
+
+    assert route.provider == "zai"
+    assert route.model == "glm-5.3"
+    assert route.application_name == "PreLLM"
+    assert route.application_url == "https://github.com/semcod/prellm"
+    assert fields["user_id"] == "prellm"
+
+
 def test_zai_rejects_invalid_custom_request_id_length() -> None:
     route = configured_route("doctor-agent", "repair-proposal", provider="zai")
     with pytest.raises(ValueError, match="6 to 64"):

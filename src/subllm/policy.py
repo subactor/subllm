@@ -171,6 +171,11 @@ APPLICATIONS = MappingProxyType(
             title="Koru",
             url="https://github.com/semcod/koru",
         ),
+        "prellm": ApplicationSpec(
+            id="prellm",
+            title="PreLLM",
+            url="https://github.com/semcod/prellm",
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
@@ -236,6 +241,8 @@ _ROUTE_VALUES = (
         "queue-executor",
         _DEFAULT,
     ),
+    RoutePolicy("prellm", "preprocess", _DEFAULT),
+    RoutePolicy("prellm", "execute", _DEFAULT),
     RoutePolicy(
         "platform",
         "interactive",
