@@ -14,7 +14,7 @@ an isolated checkout or an installed wheel.
 
 ## Acceptance criteria
 
-- [ ] Version metadata and changelog identify 1.4.1.
-- [ ] The full verification suite and package build pass.
+- [x] Version metadata and changelog identify 1.4.1.
+- [x] The full verification suite and package build pass.
 - [ ] Validator merges the exact frozen revision.
 - [ ] GitHub release and PyPI publication expose the same artifacts.
