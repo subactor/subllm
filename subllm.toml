@@ -63,3 +63,7 @@ url = "https://github.com/tom-sapletta-com/watch"
 [applications.supervisor]
 name = "Subactor Supervisor"
 url = "https://github.com/subactor/supervisor"
+
+[applications.twinstudio]
+name = "TwinStudio"
+url = "https://github.com/digitaltwin-run/twinstudio"

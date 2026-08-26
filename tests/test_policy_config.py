@@ -86,6 +86,10 @@ def _policy_file(
                 'name = "Subactor Supervisor"',
                 'url = "https://github.com/subactor/supervisor"',
                 "",
+                '[applications.twinstudio]',
+                'name = "TwinStudio"',
+                'url = "https://github.com/digitaltwin-run/twinstudio"',
+                "",
             )
         ),
         encoding="utf-8",

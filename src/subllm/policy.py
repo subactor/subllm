@@ -186,6 +186,11 @@ APPLICATIONS = MappingProxyType(
             title="Subactor Supervisor",
             url="https://github.com/subactor/supervisor",
         ),
+        "twinstudio": ApplicationSpec(
+            id="twinstudio",
+            title="TwinStudio",
+            url="https://github.com/digitaltwin-run/twinstudio",
+        ),
     }
 )
 
@@ -278,6 +283,9 @@ _ROUTE_VALUES = (
     RoutePolicy("supervisor", "assessment", _VALIDATOR),
     RoutePolicy("supervisor", "delegation", _VALIDATOR),
     RoutePolicy("supervisor", "review", _VALIDATOR),
+    # TwinStudio currently consumes strict JSON Schema through LiteLLM. Keep
+    # Cursor SDK candidates out until the consumer implements that transport.
+    RoutePolicy("twinstudio", "eda-nl2dsl", _SZEPTNIK),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})
