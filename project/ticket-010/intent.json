@@ -1,0 +1,14 @@
+{
+  "schema": "subllm.ticket-intent/v1",
+  "ticket": "ticket-010",
+  "workstream": "routing",
+  "status": "IN_PROGRESS",
+  "workflow_state": "IMPLEMENTATION",
+  "allowed_paths": [
+    "src/subllm/policy.py",
+    "tests/test_policy.py",
+    "tests/test_resolver.py",
+    "project/TICKETS.md",
+    "project/ticket-010/**"
+  ]
+}
