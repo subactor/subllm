@@ -181,6 +181,72 @@ APPLICATIONS = MappingProxyType(
             title="NFO",
             url="https://github.com/semcod/nfo",
         ),
+        "semcod-code2logic": ApplicationSpec(
+            id="semcod-code2logic", title="code2logic", url="https://github.com/semcod/code2logic"
+        ),
+        "semcod-code2docs": ApplicationSpec(
+            id="semcod-code2docs", title="code2docs", url="https://github.com/semcod/code2docs"
+        ),
+        "semcod-vallm": ApplicationSpec(
+            id="semcod-vallm", title="vallm", url="https://github.com/semcod/vallm"
+        ),
+        "semcod-taskill": ApplicationSpec(
+            id="semcod-taskill", title="taskill", url="https://github.com/semcod/taskill"
+        ),
+        "semcod-fixos": ApplicationSpec(
+            id="semcod-fixos", title="fixos", url="https://github.com/semcod/fixos"
+        ),
+        "semcod-pfix": ApplicationSpec(
+            id="semcod-pfix", title="pfix", url="https://github.com/semcod/pfix"
+        ),
+        "semcod-algitex": ApplicationSpec(
+            id="semcod-algitex", title="algitex", url="https://github.com/semcod/algitex"
+        ),
+        "semcod-docval": ApplicationSpec(
+            id="semcod-docval", title="docval", url="https://github.com/semcod/docval"
+        ),
+        "semcod-planfile": ApplicationSpec(
+            id="semcod-planfile", title="planfile", url="https://github.com/semcod/planfile"
+        ),
+        "autogrammar-nexu": ApplicationSpec(
+            id="autogrammar-nexu", title="nexu", url="https://github.com/autogrammar/nexu"
+        ),
+        "autogrammar-intract": ApplicationSpec(
+            id="autogrammar-intract", title="intract", url="https://github.com/autogrammar/intract"
+        ),
+        "autogrammar-nlp2cmd": ApplicationSpec(
+            id="autogrammar-nlp2cmd", title="nlp2cmd", url="https://github.com/autogrammar/nlp2cmd"
+        ),
+        "autogrammar-nlp2dsl": ApplicationSpec(
+            id="autogrammar-nlp2dsl", title="nlp2dsl", url="https://github.com/autogrammar/nlp2dsl"
+        ),
+        "autogrammar-imgl": ApplicationSpec(
+            id="autogrammar-imgl", title="imgl", url="https://github.com/autogrammar/imgl"
+        ),
+        "autogrammar-tillm": ApplicationSpec(
+            id="autogrammar-tillm", title="tillm", url="https://github.com/autogrammar/tillm"
+        ),
+        "autogrammar-hillm": ApplicationSpec(
+            id="autogrammar-hillm", title="hillm", url="https://github.com/autogrammar/hillm"
+        ),
+        "autogrammar-doql": ApplicationSpec(
+            id="autogrammar-doql", title="doql", url="https://github.com/autogrammar/doql"
+        ),
+        "autogrammar-toonic": ApplicationSpec(
+            id="autogrammar-toonic", title="toonic", url="https://github.com/autogrammar/toonic"
+        ),
+        "autogrammar-curllm": ApplicationSpec(
+            id="autogrammar-curllm", title="curllm", url="https://github.com/autogrammar/curllm"
+        ),
+        "autogrammar-testql": ApplicationSpec(
+            id="autogrammar-testql", title="testql", url="https://github.com/autogrammar/testql"
+        ),
+        "autogrammar-redsl": ApplicationSpec(
+            id="autogrammar-redsl", title="redsl", url="https://github.com/autogrammar/redsl"
+        ),
+        "autogrammar-vql": ApplicationSpec(
+            id="autogrammar-vql", title="vql", url="https://github.com/autogrammar/vql"
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
@@ -249,6 +315,30 @@ _ROUTE_VALUES = (
     RoutePolicy("prellm", "preprocess", _DEFAULT),
     RoutePolicy("prellm", "execute", _DEFAULT),
     RoutePolicy("semcod-nfo", "analyze", _DEFAULT),
+    RoutePolicy("semcod-code2logic", "analyze", _DEFAULT),
+    RoutePolicy("semcod-code2docs", "generate", _DEFAULT),
+    RoutePolicy("semcod-vallm", "invoke", _DEFAULT),
+    RoutePolicy("semcod-taskill", "execute", _DEFAULT),
+    RoutePolicy("semcod-fixos", "repair", _DEFAULT),
+    RoutePolicy("semcod-pfix", "repair", _DEFAULT),
+    RoutePolicy("semcod-algitex", "autofix", _DEFAULT),
+    RoutePolicy("semcod-docval", "validate", _DEFAULT),
+    RoutePolicy("semcod-planfile", "plan", _DEFAULT),
+    RoutePolicy("autogrammar-nexu", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-nexu", "cinema", _DEFAULT),
+    RoutePolicy("autogrammar-intract", "propose", _DEFAULT),
+    RoutePolicy("autogrammar-nlp2cmd", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-nlp2cmd", "extract-schema", _DEFAULT),
+    RoutePolicy("autogrammar-nlp2dsl", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-imgl", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-tillm", "invoke", _DEFAULT),
+    RoutePolicy("autogrammar-hillm", "invoke", _DEFAULT),
+    RoutePolicy("autogrammar-doql", "translate", _DEFAULT),
+    RoutePolicy("autogrammar-toonic", "invoke", _DEFAULT),
+    RoutePolicy("autogrammar-curllm", "invoke", _DEFAULT),
+    RoutePolicy("autogrammar-testql", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-redsl", "evaluate", _DEFAULT),
+    RoutePolicy("autogrammar-vql", "generate", _DEFAULT),
     RoutePolicy(
         "platform",
         "interactive",

@@ -60,6 +60,94 @@ url = "https://github.com/semcod/prellm"
 name = "NFO"
 url = "https://github.com/semcod/nfo"
 
+[applications.semcod-code2logic]
+name = "code2logic"
+url = "https://github.com/semcod/code2logic"
+
+[applications.semcod-code2docs]
+name = "code2docs"
+url = "https://github.com/semcod/code2docs"
+
+[applications.semcod-vallm]
+name = "vallm"
+url = "https://github.com/semcod/vallm"
+
+[applications.semcod-taskill]
+name = "taskill"
+url = "https://github.com/semcod/taskill"
+
+[applications.semcod-fixos]
+name = "fixos"
+url = "https://github.com/semcod/fixos"
+
+[applications.semcod-pfix]
+name = "pfix"
+url = "https://github.com/semcod/pfix"
+
+[applications.semcod-algitex]
+name = "algitex"
+url = "https://github.com/semcod/algitex"
+
+[applications.semcod-docval]
+name = "docval"
+url = "https://github.com/semcod/docval"
+
+[applications.semcod-planfile]
+name = "planfile"
+url = "https://github.com/semcod/planfile"
+
+[applications.autogrammar-nexu]
+name = "nexu"
+url = "https://github.com/autogrammar/nexu"
+
+[applications.autogrammar-intract]
+name = "intract"
+url = "https://github.com/autogrammar/intract"
+
+[applications.autogrammar-nlp2cmd]
+name = "nlp2cmd"
+url = "https://github.com/autogrammar/nlp2cmd"
+
+[applications.autogrammar-nlp2dsl]
+name = "nlp2dsl"
+url = "https://github.com/autogrammar/nlp2dsl"
+
+[applications.autogrammar-imgl]
+name = "imgl"
+url = "https://github.com/autogrammar/imgl"
+
+[applications.autogrammar-tillm]
+name = "tillm"
+url = "https://github.com/autogrammar/tillm"
+
+[applications.autogrammar-hillm]
+name = "hillm"
+url = "https://github.com/autogrammar/hillm"
+
+[applications.autogrammar-doql]
+name = "doql"
+url = "https://github.com/autogrammar/doql"
+
+[applications.autogrammar-toonic]
+name = "toonic"
+url = "https://github.com/autogrammar/toonic"
+
+[applications.autogrammar-curllm]
+name = "curllm"
+url = "https://github.com/autogrammar/curllm"
+
+[applications.autogrammar-testql]
+name = "testql"
+url = "https://github.com/autogrammar/testql"
+
+[applications.autogrammar-redsl]
+name = "redsl"
+url = "https://github.com/autogrammar/redsl"
+
+[applications.autogrammar-vql]
+name = "vql"
+url = "https://github.com/autogrammar/vql"
+
 [applications.platform]
 name = "Subactor Platform"
 url = "https://github.com/subactor/platform"
