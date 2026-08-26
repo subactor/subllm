@@ -13,7 +13,7 @@ default without embedding provider policy in PreLLM.
 
 ## Acceptance criteria
 
-- [ ] `prellm/preprocess` and `prellm/execute` are exact registered routes.
-- [ ] Both routes prefer direct Z.AI `glm-5.3` deterministically.
-- [ ] Application attribution points to `https://github.com/semcod/prellm`.
-- [ ] The full SubLLM verification suite passes.
+- [x] `prellm/preprocess` and `prellm/execute` are exact registered routes.
+- [x] Both routes prefer direct Z.AI `glm-5.3` deterministically.
+- [x] Application attribution points to `https://github.com/semcod/prellm`.
+- [x] The full SubLLM verification suite passes.

@@ -64,6 +64,15 @@ def test_zai_uses_the_coding_plan_endpoint() -> None:
     assert route.model == "glm-5.3"
 
 
+@pytest.mark.parametrize("function", ("preprocess", "execute"))
+def test_prellm_routes_prefer_direct_zai_glm53(function: str) -> None:
+    configured = configured_routes("prellm", function)
+    assert configured[0].provider == "zai"
+    assert configured[0].model == "glm-5.3"
+    assert configured[0].wire_model == "glm-5.3"
+    assert configured[0].api_base == "https://api.z.ai/api/coding/paas/v4"
+
+
 @pytest.mark.parametrize("function", ("program-generation", "voice-programming"))
 def test_szeptnik_routes_use_only_openai_compatible_transports(function: str) -> None:
     routes = configured_routes("szeptnik-one", function)
