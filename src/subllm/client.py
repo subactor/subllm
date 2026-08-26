@@ -116,13 +116,14 @@ def _complete_cursor(
         ) from exc
 
     cursor = route.cursor_sdk_kwargs()
-    options = AgentOptions(
-        model=cursor["model"],
-        api_key=cursor["api_key"],
-        local=LocalAgentOptions(cwd=str(cwd), setting_sources=[]),
-        tools=[],
-        name=f"subllm-{route.application}-{route.function}",
-    )
+    option_values = {
+        "model": cursor["model"],
+        "api_key": cursor["api_key"],
+        "local": LocalAgentOptions(cwd=str(cwd), setting_sources=[]),
+        "tools": [],
+        "name": f"subllm-{route.application}-{route.function}",
+    }
+    options = AgentOptions(**option_values)
     try:
         with Agent.create(options) as agent:
             result, wait_error = _wait_for_cursor_run(agent.send(_message_text(messages)), timeout_seconds)
