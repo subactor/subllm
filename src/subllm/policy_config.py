@@ -36,9 +36,9 @@ class RuntimePolicyConfig:
 
 _DEFAULTS = MappingProxyType(
     {
-        "cursor": ProviderPolicyConfig(enabled=True, priority=0, default_model="gpt-5.6-sol"),
-        "zai": ProviderPolicyConfig(enabled=True, priority=10, default_model="glm-5.2"),
-        "openrouter": ProviderPolicyConfig(enabled=True, priority=20, default_model="glm-5.2"),
+        "zai": ProviderPolicyConfig(enabled=True, priority=0, default_model="glm-5.3"),
+        "cursor": ProviderPolicyConfig(enabled=True, priority=20, default_model="gpt-5.6-sol"),
+        "openrouter": ProviderPolicyConfig(enabled=True, priority=30, default_model="glm-5.2"),
     }
 )
 

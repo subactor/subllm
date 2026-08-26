@@ -1,0 +1,19 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-004",
+  "summary": "Align packaged defaults with direct Z.AI GLM 5.3",
+  "workstream": "routing",
+  "classification": {"kind": "BUGFIX", "priority": "P0", "origin": "health"},
+  "allowedPaths": [
+    "src/subllm/policy_config.py",
+    "tests/test_policy_config.py",
+    "pyproject.toml",
+    "project/TICKETS.md",
+    "project/ticket-004/**"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": ["python", "subllm", "zai", "packaging"],
+  "dependsOn": ["ticket-003"],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
