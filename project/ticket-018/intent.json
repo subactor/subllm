@@ -1,0 +1,18 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-018",
+  "summary": "Register remaining Semcod and Autogrammar LLM routes",
+  "workstream": "runtime",
+  "classification": {"kind": "FEATURE", "priority": "P1", "origin": "founder"},
+  "allowedPaths": [
+    "subllm.toml",
+    "src/subllm/policy.py",
+    "tests/test_policy_config.py",
+    "project/ticket-018/**"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": ["python", "subllm", "zai", "semcod", "autogrammar"],
+  "dependsOn": ["ticket-016"],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
