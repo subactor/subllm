@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.4.1] - 2026-08-26
+
+### Added
+
+- Register policy-owned `prellm/preprocess` and `prellm/execute` routes that
+  prefer direct Z.AI `glm-5.3`.
+
+### Fixed
+
+- Discover the repository policy from isolated worktrees whose directory name
+  is not exactly `subllm`.
+
 ## [1.4.0] - 2026-08-26
 
 ### Added
