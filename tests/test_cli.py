@@ -84,17 +84,17 @@ def test_providers_reports_effective_public_settings(capsys) -> None:
     assert payload["providers"]["cursor"] == {
         "default_model": "gpt-5.6-sol",
         "enabled": True,
-        "priority": 0,
+        "priority": 20,
     }
     assert payload["providers"]["zai"] == {
-        "default_model": "glm-5.2",
+        "default_model": "glm-5.3",
         "enabled": True,
-        "priority": 10,
+        "priority": 0,
     }
     assert payload["providers"]["openrouter"] == {
         "default_model": "glm-5.2",
         "enabled": True,
-        "priority": 20,
+        "priority": 30,
     }
 
 
@@ -114,5 +114,5 @@ def test_applications_reports_public_request_identity(capsys) -> None:
     }
     assert payload["applications"]["todo2code"] == {
         "name": "todo2code",
-        "url": "https://github.com/semcod/todo2code",
+        "url": "https://github.com/autogrammar/todo2code",
     }

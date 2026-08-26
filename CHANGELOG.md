@@ -1,5 +1,15 @@
 # Changelog
 
+## [1.3.0] - 2026-08-26
+
+### Changed
+
+- Prefer direct Z.AI `glm-5.3` for every registered application/function
+  route, including todo2code and Koru.
+- Retain Cursor and OpenRouter only as pre-request fallbacks; a started Z.AI
+  request is never replayed automatically through another paid provider.
+- Verify the direct Z.AI preference across the complete route catalog.
+
 ## [1.2.0] - 2026-08-21
 
 ### Added

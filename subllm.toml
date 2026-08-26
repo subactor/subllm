@@ -3,23 +3,23 @@ schema_version = 2
 # Lower priority wins. Set enabled = false to remove a provider from every
 # route. default_model is the logical model ID from src/subllm/policy.py.
 # Credential strategies (ADOPT wellmanifest policy-dsl / env-dsl):
+#   ZAI_API_KEY        → zai                    → glm-5.3 (preferred)
 #   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol (then grok-4.6)
-#   ZAI_API_KEY        → zai                    → glm-5.2
 #   OPENROUTER_API_KEY → openrouter             → glm-5.2 (+ route extras)
 # Cursor Sol / Grok are never OpenRouter wire ids.
 [providers.cursor]
 enabled = true
-priority = 0
+priority = 20
 default_model = "gpt-5.6-sol"
 
 [providers.zai]
 enabled = true
-priority = 10
-default_model = "glm-5.2"
+priority = 0
+default_model = "glm-5.3"
 
 [providers.openrouter]
 enabled = true
-priority = 20
+priority = 30
 default_model = "glm-5.2"
 
 # The table key is the stable application ID sent as user/user_id. name is the
@@ -46,7 +46,7 @@ url = "https://github.com/subactor/onedev-agent"
 
 [applications.todo2code]
 name = "todo2code"
-url = "https://github.com/semcod/todo2code"
+url = "https://github.com/autogrammar/todo2code"
 
 [applications.koru-agent]
 name = "Koru"
@@ -63,4 +63,3 @@ url = "https://github.com/tom-sapletta-com/watch"
 [applications.supervisor]
 name = "Subactor Supervisor"
 url = "https://github.com/subactor/supervisor"
-

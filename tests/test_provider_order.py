@@ -14,7 +14,7 @@ from subllm import (
 )
 
 
-def test_resolve_returns_cursor_when_cursor_key_and_sol_route() -> None:
+def test_resolve_prefers_direct_zai_when_all_credentials_are_available() -> None:
     route = resolve(
         "doctor-agent",
         "repair-proposal",
@@ -24,19 +24,19 @@ def test_resolve_returns_cursor_when_cursor_key_and_sol_route() -> None:
             "OPENROUTER_API_KEY": "openrouter-secret",
         },
     )
-    assert route.provider == "cursor"
-    assert route.model == "gpt-5.6-sol"
-    assert ORDERABLE_PROVIDER_IDS == ("cursor", "zai", "openrouter")
+    assert route.provider == "zai"
+    assert route.model == "glm-5.3"
+    assert ORDERABLE_PROVIDER_IDS == ("zai", "cursor", "openrouter")
 
 
-def test_default_order_puts_cursor_first_when_key_present() -> None:
+def test_default_order_puts_direct_zai_first_when_key_present() -> None:
     environ = {
         "CURSOR_API_KEY": "cursor_test-not-a-secret",
         "ZAI_API_KEY": "id.signature",
         "OPENROUTER_API_KEY": "openrouter-secret",
     }
-    assert provider_order(environ=environ) == ("cursor", "zai", "openrouter")
-    assert available_provider_order(environ=environ) == ("cursor", "zai", "openrouter")
+    assert provider_order(environ=environ) == ("zai", "cursor", "openrouter")
+    assert available_provider_order(environ=environ) == ("zai", "cursor", "openrouter")
 
 
 def test_default_order_keeps_zai_then_openrouter_without_cursor_key() -> None:
