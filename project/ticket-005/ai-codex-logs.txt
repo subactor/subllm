@@ -1,0 +1,7 @@
+2026-08-26T08:58:00+02:00
+SUBLLM_POLICY_FILE=$PWD/subllm.toml ./scripts/verify
+All checks passed; 114 passed; wheel and sdist built successfully.
+
+2026-08-26T08:58:00+02:00
+git diff --check
+PASS

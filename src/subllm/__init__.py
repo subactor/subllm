@@ -1,3 +1,4 @@
+from .client import CompletionResponse, complete
 from .credential_env import (
     POLICY_ENV_NAMES,
     SUBLLM_ENV_FILE,
@@ -13,6 +14,7 @@ from .credential_env import (
     merged_environment,
 )
 from .errors import (
+    CompletionError,
     CredentialFileError,
     InvalidPolicyError,
     MissingCredentialError,
@@ -73,6 +75,8 @@ __all__ = [
     "ApplicationSpec",
     "ApplicationPolicyConfig",
     "ConfiguredRoute",
+    "CompletionError",
+    "CompletionResponse",
     "CredentialFileError",
     "InvalidPolicyError",
     "MissingCredentialError",
@@ -97,6 +101,7 @@ __all__ = [
     "credential_value",
     "configured_route",
     "configured_routes",
+    "complete",
     "cursor_api_key",
     "find_env_file",
     "find_policy_file",

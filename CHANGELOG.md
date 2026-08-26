@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.4.0] - 2026-08-26
+
+### Added
+
+- Add zero-dependency `complete()` execution for policy-resolved
+  OpenAI-compatible routes.
+- Return typed, secret-safe completion metadata without replaying a started
+  request through another paid provider.
+
+## [1.3.1] - 2026-08-26
+
+### Fixed
+
+- Align packaged built-in defaults with the repository policy so installations
+  outside the source checkout prefer direct Z.AI `glm-5.3`.
+
 ## [1.3.0] - 2026-08-26
 
 ### Changed

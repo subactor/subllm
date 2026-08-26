@@ -1,0 +1,18 @@
+{
+  "schema": "subllm.ticket-intent/v1",
+  "ticket": "ticket-005",
+  "workstream": "application",
+  "status": "IN_PROGRESS",
+  "workflow_state": "PUBLICATION",
+  "allowed_paths": [
+    "src/subllm/client.py",
+    "src/subllm/errors.py",
+    "src/subllm/__init__.py",
+    "tests/test_client.py",
+    "pyproject.toml",
+    "CHANGELOG.md",
+    "TODO.md",
+    "project/TICKETS.md",
+    "project/ticket-005/**"
+  ]
+}
