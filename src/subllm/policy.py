@@ -221,10 +221,10 @@ _SZEPTNIK = (
     RouteCandidate(provider="openrouter"),
 )
 
-# TwinStudio's EDA editor and firmware audit use strict local validation around
-# an OpenAI-compatible request. The audit intentionally has no alternate model:
-# its conclusions are qualified against the GLM-5.3 review contract.
-_TWINSTUDIO_EDA = (RouteCandidate(provider="zai", model="glm-5.3"),)
+# TwinStudio validates every answer locally. Keep Z.AI as the first choice,
+# while retaining OpenRouter as a bounded fallback when a provider returns an
+# empty or malformed completion.
+_TWINSTUDIO_EDA = _SZEPTNIK
 
 _ROUTE_VALUES = (
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
