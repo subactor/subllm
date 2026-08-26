@@ -181,6 +181,11 @@ APPLICATIONS = MappingProxyType(
             title="Szeptnik One",
             url="https://github.com/tom-sapletta-com/watch",
         ),
+        "supervisor": ApplicationSpec(
+            id="supervisor",
+            title="Subactor Supervisor",
+            url="https://github.com/subactor/supervisor",
+        ),
     }
 )
 
@@ -270,6 +275,9 @@ _ROUTE_VALUES = (
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
+    RoutePolicy("supervisor", "assessment", _VALIDATOR),
+    RoutePolicy("supervisor", "delegation", _VALIDATOR),
+    RoutePolicy("supervisor", "review", _VALIDATOR),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})

@@ -82,6 +82,10 @@ def _policy_file(
                 'name = "Szeptnik One"',
                 'url = "https://github.com/tom-sapletta-com/watch"',
                 "",
+                '[applications.supervisor]',
+                'name = "Subactor Supervisor"',
+                'url = "https://github.com/subactor/supervisor"',
+                "",
             )
         ),
         encoding="utf-8",
