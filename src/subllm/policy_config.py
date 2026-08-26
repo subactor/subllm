@@ -64,6 +64,10 @@ def find_policy_file(
             path = working_directory / path
         return path.absolute()
 
+    repository_policy = working_directory / "subllm.toml"
+    if repository_policy.is_file():
+        return repository_policy
+
     for root in (working_directory, *working_directory.parents):
         candidates = [root / "subllm" / "subllm.toml"]
         if root.name == "subllm":

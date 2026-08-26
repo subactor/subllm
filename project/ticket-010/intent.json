@@ -6,7 +6,10 @@
   "workflow_state": "IMPLEMENTATION",
   "allowed_paths": [
     "src/subllm/policy.py",
+    "src/subllm/policy_config.py",
+    "subllm.toml",
     "tests/test_policy.py",
+    "tests/test_policy_config.py",
     "tests/test_resolver.py",
     "project/TICKETS.md",
     "project/ticket-010/**"
