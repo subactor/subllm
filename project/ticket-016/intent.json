@@ -1,0 +1,18 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-016",
+  "summary": "Release SubLLM 1.4.2 with the NFO analysis route",
+  "workstream": "release",
+  "classification": {"kind": "RELEASE", "priority": "P1", "origin": "founder"},
+  "allowedPaths": [
+    "VERSION",
+    "pyproject.toml",
+    "CHANGELOG.md",
+    "project/ticket-016/**"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": ["python", "subllm", "zai", "packaging", "nfo"],
+  "dependsOn": ["ticket-014"],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

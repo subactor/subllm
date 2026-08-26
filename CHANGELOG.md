@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.4.2] - 2026-08-26
+
+### Added
+
+- Register the policy-owned `semcod-nfo/analyze` route so NFO log analysis
+  prefers direct Z.AI `glm-5.3` through the public completion API.
+
 ## [1.4.1] - 2026-08-26
 
 ### Added
