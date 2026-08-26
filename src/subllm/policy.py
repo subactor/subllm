@@ -221,6 +221,11 @@ _SZEPTNIK = (
     RouteCandidate(provider="openrouter"),
 )
 
+# TwinStudio's EDA editor and firmware audit use strict local validation around
+# an OpenAI-compatible request. The audit intentionally has no alternate model:
+# its conclusions are qualified against the GLM-5.3 review contract.
+_TWINSTUDIO_EDA = (RouteCandidate(provider="zai", model="glm-5.3"),)
+
 _ROUTE_VALUES = (
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
     RoutePolicy(
@@ -286,6 +291,7 @@ _ROUTE_VALUES = (
     # TwinStudio currently consumes strict JSON Schema through LiteLLM. Keep
     # Cursor SDK candidates out until the consumer implements that transport.
     RoutePolicy("twinstudio", "eda-nl2dsl", _SZEPTNIK),
+    RoutePolicy("twinstudio", "eda-firmware-audit", _TWINSTUDIO_EDA),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})

@@ -95,6 +95,12 @@ def test_twinstudio_eda_route_uses_only_openai_compatible_transports() -> None:
     assert all(route.transport == "openai-compatible" for route in routes)
 
 
+def test_twinstudio_firmware_audit_is_pinned_to_zai_glm_5_3() -> None:
+    routes = configured_routes("twinstudio", "eda-firmware-audit")
+    assert [(route.provider, route.model) for route in routes] == [("zai", "glm-5.3")]
+    assert routes[0].transport == "openai-compatible"
+
+
 @pytest.mark.parametrize("function", ("patch-review", "direct-pr-review"))
 def test_validator_routes_pin_direct_zai_glm_5_3(function: str) -> None:
     route = next(item for item in configured_routes("validator-agent", function) if item.provider == "zai")
