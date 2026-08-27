@@ -1,4 +1,4 @@
-from .client import CompletionResponse, complete
+from .client import CodeEditResponse, CompletionResponse, complete, execute_code_edit
 from .credential_env import (
     POLICY_ENV_NAMES,
     SUBLLM_ENV_FILE,
@@ -76,6 +76,7 @@ __all__ = [
     "ApplicationPolicyConfig",
     "ConfiguredRoute",
     "CompletionError",
+    "CodeEditResponse",
     "CompletionResponse",
     "CredentialFileError",
     "InvalidPolicyError",
@@ -99,6 +100,7 @@ __all__ = [
     "credential_is_valid",
     "credential_names",
     "credential_value",
+    "execute_code_edit",
     "configured_route",
     "configured_routes",
     "complete",

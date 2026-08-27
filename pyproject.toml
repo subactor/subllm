@@ -32,6 +32,7 @@ test = [
 
 [project.scripts]
 subllm = "subllm.cli:main"
+subllm-code-edit = "subllm.client:code_edit_main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
