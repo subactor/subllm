@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import argparse
 import json
+import os
+import subprocess
+import tempfile
 import threading
 from collections.abc import Mapping, Sequence
 from dataclasses import asdict, dataclass, field
@@ -22,6 +26,13 @@ class CompletionResponse:
     usage: Mapping[str, Any] = field(default_factory=dict)
     finish_reason: str = ""
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+
+
+@dataclass(frozen=True)
+class CodeEditResponse:
+    provider: str
+    model: str
+    response: str
 
 
 def _completion_url(api_base: str) -> str:
@@ -222,4 +233,123 @@ def complete(
     )
 
 
-__all__ = ["CompletionResponse", "complete"]
+def execute_code_edit(
+    application: str,
+    function: str,
+    prompt: str,
+    *,
+    worktree: str | Path,
+    provider: str | None = None,
+    aider_bin: str = "aider",
+    timeout_seconds: float = 2700.0,
+    environ: Mapping[str, str] | None = None,
+) -> CodeEditResponse:
+    """Run one policy-routed OpenAI-compatible model through fixed Aider editing.
+
+    SubLLM owns provider/model/credential resolution.  The credential is passed
+    only in the child environment, never in argv, output, or an artifact.
+    Aider cannot commit, run tests, or use an interactive shell in this adapter.
+    """
+    root = Path(worktree).resolve()
+    if not root.is_dir() or not (root / ".git").exists():
+        raise CompletionError("code edit worktree must be an existing Git worktree")
+    if not prompt.strip() or len(prompt.encode("utf-8")) > 1_000_000:
+        raise CompletionError("code edit prompt must contain 1 to 1000000 UTF-8 bytes")
+    if Path(aider_bin).name != "aider":
+        raise CompletionError("code edit adapter requires an aider executable")
+    routes = [
+        route for route in available_routes(application, function, environ=environ)
+        if route.transport == "openai-compatible" and (provider is None or route.provider == provider)
+    ]
+    if not routes:
+        raise CompletionError(
+            f"no available OpenAI-compatible route for {application}/{function}"
+        )
+    route = routes[0]
+    child_environment = dict(os.environ if environ is None else environ)
+    child_environment.update({
+        "AIDER_ANALYTICS": "false",
+        "AIDER_OPENAI_API_BASE": route.api_base,
+        "AIDER_OPENAI_API_KEY": route.api_key,
+        "AIDER_MODEL": f"openai/{route.wire_model}",
+    })
+    with tempfile.TemporaryDirectory(prefix="subllm-aider-") as temporary:
+        command = [
+            aider_bin,
+            "--message", prompt,
+            "--yes-always",
+            "--no-auto-commits",
+            "--no-dirty-commits",
+            "--no-auto-lint",
+            "--no-auto-test",
+            "--no-check-update",
+            "--no-gitignore",
+            "--map-tokens", "0",
+            "--no-analytics",
+            "--chat-history-file", str(Path(temporary) / "chat.history"),
+            "--input-history-file", str(Path(temporary) / "input.history"),
+        ]
+        try:
+            completed = subprocess.run(
+                command,
+                cwd=root,
+                env=child_environment,
+                text=True,
+                capture_output=True,
+                timeout=timeout_seconds,
+                check=False,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            raise CompletionError(
+                f"{route.provider}/{route.wire_model} Aider execution failed: {type(exc).__name__}"
+            ) from exc
+    if completed.returncode != 0:
+        raise CompletionError(
+            f"{route.provider}/{route.wire_model} Aider exited with status {completed.returncode}"
+        )
+    return CodeEditResponse(
+        provider=route.provider,
+        model=route.wire_model,
+        response=(completed.stdout or "")[-100_000:],
+    )
+
+
+def code_edit_main(argv: Sequence[str] | None = None) -> int:
+    """Dedicated, closed CLI adapter for governed coding-agent execution."""
+    parser = argparse.ArgumentParser(prog="subllm-code-edit")
+    parser.add_argument("application")
+    parser.add_argument("function")
+    parser.add_argument("--worktree", type=Path, required=True)
+    parser.add_argument("--prompt-file", type=Path, required=True)
+    parser.add_argument("--provider")
+    parser.add_argument("--aider-bin", default="aider")
+    parser.add_argument("--timeout", type=float, default=2700.0)
+    args = parser.parse_args(argv)
+    try:
+        prompt = args.prompt_file.read_text(encoding="utf-8")
+        result = execute_code_edit(
+            args.application,
+            args.function,
+            prompt,
+            worktree=args.worktree,
+            provider=args.provider,
+            aider_bin=args.aider_bin,
+            timeout_seconds=args.timeout,
+        )
+    except (OSError, UnicodeError, CompletionError) as exc:
+        print(f"subllm-code-edit: {exc}")
+        return 2
+    print(json.dumps({
+        "schema": "subllm.code-edit-result/v1",
+        "status": "SUCCESS",
+        "provider": result.provider,
+        "model": result.model,
+        "response": result.response,
+    }, ensure_ascii=False, sort_keys=True))
+    return 0
+
+
+__all__ = [
+    "CodeEditResponse", "CompletionResponse", "code_edit_main", "complete",
+    "execute_code_edit",
+]
