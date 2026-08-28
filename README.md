@@ -36,9 +36,20 @@ Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
 and route definitions live in `src/subllm/policy.py`. See
 [`docs/credential-strategies.md`](docs/credential-strategies.md).
 
-Direct Z.AI defaults to `glm-5.3` for every routed application. OpenRouter
-remains an independent fallback on `z-ai/glm-5.2`, because the policy does not
-declare GLM 5.3 through that provider.
+Direct Z.AI defaults to `glm-5.3` for every routed application. When Z.AI is
+unavailable, role-specific OpenRouter candidates are:
+
+| Consumer route | OpenRouter fallback |
+| --- | --- |
+| `repair-agent/repair-plan` | `z-ai/glm-5.3-flash` |
+| `validator-agent/patch-review` | `z-ai/glm-5.3` |
+| `validator-agent/direct-pr-review` | `z-ai/glm-5.3` |
+| `onedev-agent/code-edit` (host coding-agent) | `z-ai/glm-5.3` |
+
+`available_routes()` returns these candidates after direct Z.AI. Consumers
+performing requests must advance to the next returned route only for a bounded
+connectivity/provider failure; SubLLM policy resolution itself does not replay
+a paid request.
 
 ## Application identity in provider logs
 
@@ -95,6 +106,10 @@ route. Sibling projects discover this file automatically. Set
 
 Unknown names fail closed. `resolve()` returns `cursor` when that candidate
 wins and the Cursor key is valid.
+
+Provider order and role model selection are separate: `SUBLLM_PROVIDER_ORDER`
+selects the provider sequence, while route membership above selects the model
+used through OpenRouter.
 
 ## One local credential file
 

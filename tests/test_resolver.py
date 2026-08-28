@@ -42,7 +42,7 @@ def test_openrouter_never_owns_gpt_sol() -> None:
         environ={"OPENROUTER_API_KEY": "openrouter-secret"},
     )
     assert route.provider == "openrouter"
-    assert route.model == "glm-5.2"
+    assert route.model == "glm-5.3-flash"
     assert "gpt-5.6-sol" not in route.litellm_model
     assert "gpt-5.6-sol" not in route.wire_model
 
@@ -92,7 +92,7 @@ def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:
         },
     )
     assert route.provider == "openrouter"
-    assert route.litellm_model == "openrouter/z-ai/glm-5.2"
+    assert route.litellm_model == "openrouter/z-ai/glm-5.3-flash"
     assert route.extra_headers["X-OpenRouter-Title"] == "repair-agent"
 
 
@@ -189,7 +189,7 @@ def test_available_routes_skips_cursor_without_key() -> None:
     )
     assert [(route.provider, route.model) for route in routes] == [
         ("zai", "glm-5.3"),
-        ("openrouter", "glm-5.2"),
+        ("openrouter", "glm-5.3"),
         ("openrouter", "qwen3.7-plus"),
     ]
 
@@ -208,7 +208,7 @@ def test_available_routes_prefers_cursor_sol_when_key_present() -> None:
         ("cursor", "gpt-5.6-sol"),
         ("cursor", "grok-4.6"),
         ("zai", "glm-5.3"),
-        ("openrouter", "glm-5.2"),
+        ("openrouter", "glm-5.3"),
         ("openrouter", "qwen3.7-plus"),
     ]
 
@@ -217,7 +217,7 @@ def test_credential_source_matrix_selects_expected_provider_model() -> None:
     """Z.AI / OpenRouter / Cursor key isolation → optimal model per source."""
     cases = (
         ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.3"),
-        ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.2"),
+        ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.3-flash"),
         ({"CURSOR_API_KEY": "cursor_test-not-a-secret"}, "cursor", "gpt-5.6-sol"),
         (
             {
@@ -283,7 +283,7 @@ def test_credentials_are_redacted_from_repr_and_public_dict() -> None:
 
 def test_configured_route_does_not_require_a_credential() -> None:
     route = configured_route("onedev-agent", "code-edit", provider="openrouter")
-    assert route.litellm_model == "openrouter/z-ai/glm-5.2"
+    assert route.litellm_model == "openrouter/z-ai/glm-5.3"
 
 
 def test_unknown_route_and_disallowed_provider_fail_closed() -> None:

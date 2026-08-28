@@ -27,7 +27,7 @@ def test_configured_field(capsys) -> None:
         )
         == 0
     )
-    assert capsys.readouterr().out == "openrouter/z-ai/glm-5.2\n"
+    assert capsys.readouterr().out == "openrouter/z-ai/glm-5.3\n"
 
 
 def test_configured_application_name_field(capsys) -> None:
@@ -61,7 +61,7 @@ def test_resolve_output_never_contains_credential(tmp_path: Path, monkeypatch, c
     output = capsys.readouterr().out
     payload = json.loads(output)
     assert payload["provider"] == "openrouter"
-    assert payload["model"] == "glm-5.2"
+    assert payload["model"] == "glm-5.3-flash"
     assert payload["transport"] == "openai-compatible"
     assert "cli-secret" not in output
 

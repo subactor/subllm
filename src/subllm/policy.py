@@ -83,6 +83,19 @@ MODELS = MappingProxyType(
             id="glm-5.3",
             providers=_provider_models(
                 zai=ProviderModelSpec(litellm_model="zai/glm-5.3", wire_model="glm-5.3"),
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/z-ai/glm-5.3",
+                    wire_model="z-ai/glm-5.3",
+                ),
+            ),
+        ),
+        "glm-5.3-flash": ModelSpec(
+            id="glm-5.3-flash",
+            providers=_provider_models(
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/z-ai/glm-5.3-flash",
+                    wire_model="z-ai/glm-5.3-flash",
+                ),
             ),
         ),
         "grok-4.5": ModelSpec(
@@ -203,14 +216,27 @@ _DEFAULT = (
     RouteCandidate(provider="openrouter"),
 )
 
-# Validator uses the direct Z.AI GLM-5.3 contract while retaining the existing
-# OpenRouter GLM-5.2 fallback. Other applications remain on their current
-# defaults until they are qualified independently.
+# Role-specific OpenRouter fallbacks are selected from the current benchmark:
+# Flash for repair throughput/cost, full GLM 5.3 for review and coding.
+_REPAIR = (
+    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
+    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
+)
+
 _VALIDATOR = (
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="zai", model="glm-5.3"),
-    RouteCandidate(provider="openrouter", model="glm-5.2"),
+    RouteCandidate(provider="openrouter", model="glm-5.3"),
+)
+
+_CODING = (
+    RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
+    RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
 # The watch desktop service currently invokes OpenAI-compatible Chat
@@ -231,7 +257,7 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "repair-agent",
         "repair-plan",
-        _DEFAULT + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=10),),
+        _REPAIR + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=10),),
     ),
     RoutePolicy(
         "validator-agent",
@@ -241,7 +267,8 @@ _ROUTE_VALUES = (
     RoutePolicy("validator-agent", "direct-pr-review", _VALIDATOR),
     RoutePolicy("skills-agent", "developer", _DEFAULT),
     RoutePolicy("skills-agent", "validator", _DEFAULT),
-    RoutePolicy("onedev-agent", "code-edit", _DEFAULT),
+    # Host coding-agent invokes this canonical route through subllm-code-edit.
+    RoutePolicy("onedev-agent", "code-edit", _CODING),
     RoutePolicy("todo2code", "semantic", _DEFAULT),
     RoutePolicy("szeptnik-one", "program-generation", _SZEPTNIK),
     RoutePolicy("szeptnik-one", "voice-programming", _SZEPTNIK),

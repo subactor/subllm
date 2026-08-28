@@ -5,7 +5,7 @@ schema_version = 2
 # Credential strategies (ADOPT wellmanifest policy-dsl / env-dsl):
 #   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol (then grok-4.6)
 #   ZAI_API_KEY        → zai                    → glm-5.3
-#   OPENROUTER_API_KEY → openrouter             → glm-5.2 (+ route extras)
+#   OPENROUTER_API_KEY → openrouter             → role-specific GLM 5.3 fallbacks (+ glm-5.2 default)
 # Cursor Sol / Grok are never OpenRouter wire ids.
 [providers.cursor]
 enabled = true
