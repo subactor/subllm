@@ -1,5 +1,18 @@
 # Decisions
 
+## 2026-08-28 — Role-specific GLM 5.3 OpenRouter fallback
+
+Keep direct Z.AI `glm-5.3` ahead of OpenRouter. When a consumer advances after
+a bounded Z.AI connectivity/provider failure, Repair uses OpenRouter
+`z-ai/glm-5.3-flash`; Validator and the host coding-agent's canonical
+`onedev-agent/code-edit` route use OpenRouter `z-ai/glm-5.3`.
+
+The model choice follows the current full benchmark: Flash qualified for
+Repair at the lowest cost, while full GLM 5.3 remains the requested coding and
+review fallback. Benchmark transport compatibility remains consumer-owned.
+`available_routes()` exposes the ordered alternatives; policy resolution does
+not automatically replay paid requests.
+
 ## 2026-08-11 — One package, no secrets
 
 The `subllm` package owns provider endpoints, provider-specific model IDs,

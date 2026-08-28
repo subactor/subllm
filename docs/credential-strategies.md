@@ -13,6 +13,10 @@ onto OpenRouter. Standards HOME: `wellmanifest/{policy-dsl,env-dsl}` profile
 Cursor fallback order (same credential): **`gpt-5.6-sol` then `grok-4.6`**.
 Exact Cursor SDK slugs confirmed via `Cursor.models.list()`.
 
+The OpenRouter strategy retains `glm-5.2` as its operator default, but
+role-specific failover routes pin benchmark-qualified models: Repair uses
+`glm-5.3-flash`; Validator and the host coding-agent route use `glm-5.3`.
+
 ## Force Cursor Sol
 
 1. Set a real `CURSOR_API_KEY` in `subllm/.env` or the process environment.

@@ -1,5 +1,18 @@
 # Changelog
 
+## [1.7.0] - 2026-08-28
+
+### Added
+
+- Add OpenRouter catalog bindings for `z-ai/glm-5.3` and
+  `z-ai/glm-5.3-flash`.
+- Route Z.AI connectivity fallback by role: GLM 5.3 Flash for Repair and GLM
+  5.3 for Validator plus the host coding-agent `onedev-agent/code-edit` route.
+
+### Changed
+
+- Document provider ordering separately from role-specific model selection.
+
 ## [1.6.0] - 2026-08-28
 
 ### Added

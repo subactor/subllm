@@ -247,7 +247,7 @@ def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     assert route.priority == 10
 
 
-def test_provider_can_be_disabled_and_default_model_changed(
+def test_role_specific_fallback_survives_default_model_change(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -265,8 +265,8 @@ def test_provider_can_be_disabled_and_default_model_changed(
         environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "or-key"},
     )
     assert route.provider == "openrouter"
-    assert route.model == "grok-4.5"
-    assert route.litellm_model == "openrouter/x-ai/grok-4.5"
+    assert route.model == "glm-5.3-flash"
+    assert route.litellm_model == "openrouter/z-ai/glm-5.3-flash"
 
 
 def test_default_model_deduplicates_the_same_explicit_fallback(

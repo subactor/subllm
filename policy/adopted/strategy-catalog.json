@@ -31,6 +31,8 @@
       "defaultModel": "glm-5.2",
       "allowedModels": [
         "glm-5.2",
+        "glm-5.3",
+        "glm-5.3-flash",
         "grok-4.5",
         "gemini-3.6-flash",
         "deepseek-v4-pro",
