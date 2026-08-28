@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.6.0] - 2026-08-28
+
+### Added
+
+- Register the central `skills-agent/process-editor` LLM route and the closed
+  `poa://subactor.subllm/process/edit-process/v1` process.
+- Validate exact-base, editable-path process DSL proposals through one
+  CLI/HTTP `PolicyBus`, producing secret-free events, candidate digests and a
+  terminal receipt without publishing or granting authority.
+
+### Security
+
+- Reject edits to process identity, allowed actions, deterministic controls,
+  editor authority and publication gates, including attempts to inject those
+  fields into an untrusted editable-path list.
+- Reject secret-bearing command payloads before any journal event is appended.
+
 ## [1.5.0] - 2026-08-26
 
 ### Added

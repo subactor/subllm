@@ -15,6 +15,7 @@ from subllm.resolver import configured_route, configured_routes, resolve, valida
 
 from .canonical import digest_document
 from .errors import PoaContractError
+from .process_editor import propose_process_edit
 from .refs import (
     ADAPTER,
     ARTIFACT_REF,
@@ -22,6 +23,7 @@ from .refs import (
     IDEMPOTENCY,
     INPUT_SCHEMA,
     OBSERVATION_FACTS,
+    PROCESS_DSL_INPUT,
     PROCESS_REF,
     ROUTE_INPUT,
     SHA256,
@@ -33,6 +35,8 @@ from .refs import (
 from .registry import (
     CONFIGURED_ROUTE_URI,
     CREATE_PLAN_URI,
+    EDIT_PROCESS_REF,
+    EDIT_PROCESS_URI,
     EVENTS_URI,
     IMPORT_CREDENTIALS_URI,
     INSPECT_URI,
@@ -97,6 +101,7 @@ class PolicyBus:
         }
         self._commands: dict[str, CommandHandler] = {
             CREATE_PLAN_URI: self._command_create_plan,
+            EDIT_PROCESS_URI: self._command_edit_process,
             IMPORT_CREDENTIALS_URI: self._command_import_credentials,
         }
 
@@ -120,6 +125,7 @@ class PolicyBus:
         )
         if payload["schema"] != "subllm.command/v1":
             raise PoaContractError("POA-DOC-001", "command schema is not registered")
+        _secret_free(payload)
         require_pattern(payload["subject"], "subject", SUBJECT)
         require_pattern(payload["idempotency_key"], "idempotency_key", IDEMPOTENCY)
         process_uri = require_uri(payload["process_uri"], "command")
@@ -265,6 +271,45 @@ class PolicyBus:
         receipt = self._receipt(run_id, plan, "succeeded", digest_document(output))
         self.store.remember_receipt(run_id, receipt)
         return {"run_id": run_id, "idempotent": False, "plan": plan, "receipt": receipt, "result": output}
+
+    def _command_edit_process(self, document: dict[str, Any]) -> dict[str, Any]:
+        payload = exact(
+            document,
+            {
+                "schema",
+                "process_uri",
+                "source_process",
+                "base_sha256",
+                "edits",
+                "subject",
+                "idempotency_key",
+            },
+        )
+        proposal = propose_process_edit(
+            payload["source_process"], payload["base_sha256"], payload["edits"]
+        )
+        plan = self._build_plan(
+            {
+                "process_ref": EDIT_PROCESS_REF,
+                "input_ref": PROCESS_DSL_INPUT,
+                "input_sha256": proposal["base_sha256"],
+                "subject": payload["subject"],
+                "idempotency_key": payload["idempotency_key"],
+            }
+        )
+        run_id = f"run.{uuid4().hex[:12]}"
+        for event_type in ("planned", "started", "completed", "verified"):
+            self._emit(run_id, plan, event_type)
+        self.store.remember_plan(run_id, plan, payload["idempotency_key"])
+        receipt = self._receipt(run_id, plan, "succeeded", proposal["candidate_sha256"])
+        self.store.remember_receipt(run_id, receipt)
+        return {
+            "run_id": run_id,
+            "idempotent": False,
+            "plan": plan,
+            "receipt": receipt,
+            "result": proposal,
+        }
 
     def _observation(self) -> dict[str, Any]:
         observed = _now()

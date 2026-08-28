@@ -4,6 +4,7 @@
 | --- | --- | --- | --- |
 | ticket-001 | Adopt POA CQRS ES API | IN_PROGRESS | runtime |
 | ticket-020 | Unify Koru multi-provider transports | IN_PROGRESS | runtime |
+| ticket-021 | Governed process DSL editor | IN_PROGRESS / PUBLICATION | runtime |
 
 HOME is `subactor`. Shape is `both` (policy library + runtime invoker).
 Tickets for this system live here. Do not open wellmanifest tickets for SubLLM work.

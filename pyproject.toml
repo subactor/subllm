@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subactor-subllm"
-version = "1.5.0"
+version = "1.6.0"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"

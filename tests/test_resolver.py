@@ -138,7 +138,17 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
     assert fields["user_id"] == "todo2code"
 
 
-@pytest.mark.parametrize("function", ("planning-assistant", "queue-executor", "reflection"))
+@pytest.mark.parametrize(
+    "function",
+    (
+        "planning-assistant",
+        "queue-executor",
+        "reflection",
+        "nl-to-koru-dsl",
+        "nl-to-coru-dsl",
+        "strategy-review",
+    ),
+)
 def test_koru_routes_prefer_direct_zai_glm53(function: str) -> None:
     route = resolve(
         "koru-agent",
@@ -156,6 +166,20 @@ def test_koru_routes_prefer_direct_zai_glm53(function: str) -> None:
     assert route.application_name == "Koru"
     assert route.application_url == "https://github.com/semcod/koru"
     assert route.wire_model == "glm-5.3"
+
+
+@pytest.mark.parametrize("function", ("oql-generation", "doctor-recommendation"))
+def test_c2004_routes_use_c2004_identity(function: str) -> None:
+    route = resolve(
+        "c2004-system",
+        function,
+        environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "openrouter-secret"},
+    )
+
+    assert route.provider == "zai"
+    assert route.model == "glm-5.3"
+    assert route.application_name == "C2004"
+    assert route.application_url == "https://github.com/maskservice/c2004"
 
 
 def test_koru_routes_fall_back_to_openrouter_without_zai_or_cursor() -> None:

@@ -33,6 +33,7 @@ INPUT_SCHEMA = "schema://subactor.subllm/closed-request/v1"
 OUTPUT_SCHEMA = "schema://subactor.subllm/public-view/v1"
 OBSERVATION_FACTS = "artifact://subactor.subllm/observations/policy-facts/r1"
 ROUTE_INPUT = "artifact://subactor.subllm/inputs/route-request/r1"
+PROCESS_DSL_INPUT = "artifact://subactor.subllm/inputs/process-dsl/r1"
 GRAMMAR = "grammar://subactor.subllm/poa-request/v1"
 
 

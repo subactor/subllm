@@ -138,6 +138,9 @@ subllm serve --host 127.0.0.1 --port 8788
 ```
 
 CLI, shell and HTTP share one POA CQRS/ES bus. See [`docs/poa-api.md`](docs/poa-api.md).
+The registered `edit-process` command validates LLM-authored process DSL edits
+against exact-base and editable-path controls. It returns a proposal and
+receipt only; it never changes the process registry or grants execution.
 
 ## Development
 
