@@ -11,6 +11,8 @@ from subllm.poa.errors import PoaContractError
 from subllm.poa.refs import ROUTE_INPUT
 from subllm.poa.registry import (
     CREATE_PLAN_URI,
+    EDIT_PROCESS_REF,
+    EDIT_PROCESS_URI,
     LIST_ROUTES_REF,
     LIST_ROUTES_URI,
     VALIDATE_REF,
@@ -18,6 +20,56 @@ from subllm.poa.registry import (
 )
 
 ROOT = Path(__file__).resolve().parents[1]
+
+
+def _editable_process() -> dict:
+    return {
+        "schema_version": "1.1",
+        "process_id": "repair.v1",
+        "entrypoint": "repair-agent",
+        "required_inputs": ["doctor_issue"],
+        "checklist": ["Reproduce", "Repair", "Validate"],
+        "completion_criteria": ["validated"],
+        "allowed_actions": ["apply_validated_patch"],
+        "timeout_seconds": 900,
+        "retry_policy": {
+            "max_attempts": 3,
+            "reuse_branch": True,
+            "reuse_pull_request": True,
+        },
+        "required_artifacts": ["pull_request"],
+        "decision_policy": {
+            "mode": "controlled-hybrid",
+            "strategy_order": [
+                "deterministic-preconditions",
+                "bounded-heuristics",
+                "llm-editor-proposal",
+                "deterministic-validation",
+                "independent-publication",
+            ],
+            "deterministic_controls": [
+                "schema",
+                "scope",
+                "authority",
+                "base-digest",
+                "idempotency",
+            ],
+            "heuristic": {"authority": "advisory", "fallback": "fail-closed"},
+            "llm_editor": {
+                "authority": "proposal-only",
+                "editable_paths": [
+                    "/checklist",
+                    "/timeout_seconds",
+                    "/retry_policy/max_attempts",
+                ],
+            },
+            "publication": {
+                "schema_validation": True,
+                "exact_base_digest": True,
+                "independent_validation": True,
+            },
+        },
+    }
 
 
 def test_query_does_not_append_events() -> None:
@@ -102,6 +154,116 @@ def test_import_command_records_names_not_values(tmp_path: Path) -> None:
     observed = bus.query({"schema": "subllm.query/v1", "process_uri": LIST_ROUTES_URI})
     assert bus.store.sequence == 4
     assert observed["routes"]
+
+
+def test_process_editor_returns_digest_bound_proposal_and_receipt() -> None:
+    source = _editable_process()
+    base_sha256 = digest_document(source)
+    bus = PolicyBus()
+    result = bus.command(
+        {
+            "schema": "subllm.command/v1",
+            "process_uri": EDIT_PROCESS_URI,
+            "source_process": source,
+            "base_sha256": base_sha256,
+            "edits": [
+                {"op": "replace", "path": "/timeout_seconds", "value": 1200},
+                {"op": "replace", "path": "/retry_policy/max_attempts", "value": 2},
+            ],
+            "subject": "agent:subllm-process-editor",
+            "idempotency_key": "test.edit.repair-process",
+        }
+    )
+
+    proposal = result["result"]
+    assert proposal["authority"] == "proposal-only"
+    assert proposal["base_sha256"] == base_sha256
+    assert proposal["candidate_process"]["timeout_seconds"] == 1200
+    assert proposal["candidate_process"]["retry_policy"]["max_attempts"] == 2
+    assert proposal["candidate_sha256"] == digest_document(proposal["candidate_process"])
+    assert result["plan"]["process_ref"] == EDIT_PROCESS_REF
+    assert result["receipt"]["steps"][0]["output_sha256"] == proposal["candidate_sha256"]
+    assert [event["event_type"] for event in bus.store.events(result["run_id"])] == [
+        "planned",
+        "started",
+        "completed",
+        "verified",
+    ]
+
+    replay = bus.command(
+        {
+            "schema": "subllm.command/v1",
+            "process_uri": EDIT_PROCESS_URI,
+            "source_process": source,
+            "base_sha256": base_sha256,
+            "edits": [{"op": "replace", "path": "/timeout_seconds", "value": 99}],
+            "subject": "agent:subllm-process-editor",
+            "idempotency_key": "test.edit.repair-process",
+        }
+    )
+    assert replay["idempotent"] is True
+    assert replay["run_id"] == result["run_id"]
+
+
+@pytest.mark.parametrize(
+    ("mutate", "code"),
+    [
+        (lambda source: "a" * 64, "POA-EDIT-002"),
+        (
+            lambda source: digest_document(
+                {
+                    **source,
+                    "decision_policy": {
+                        **source["decision_policy"],
+                        "llm_editor": {
+                            **source["decision_policy"]["llm_editor"],
+                            "editable_paths": ["/allowed_actions"],
+                        },
+                    },
+                }
+            ),
+            "POA-EDIT-003",
+        ),
+    ],
+)
+def test_process_editor_rejects_stale_base_and_authority_edits(mutate, code: str) -> None:
+    source = _editable_process()
+    if code == "POA-EDIT-003":
+        source["decision_policy"]["llm_editor"]["editable_paths"] = ["/allowed_actions"]
+        edits = [{"op": "replace", "path": "/allowed_actions", "value": ["arbitrary_shell"]}]
+    else:
+        edits = [{"op": "replace", "path": "/timeout_seconds", "value": 1200}]
+    with pytest.raises(PoaContractError, match=code):
+        PolicyBus().command(
+            {
+                "schema": "subllm.command/v1",
+                "process_uri": EDIT_PROCESS_URI,
+                "source_process": source,
+                "base_sha256": mutate(source),
+                "edits": edits,
+                "subject": "agent:subllm-process-editor",
+                "idempotency_key": f"test.edit.reject.{code.lower()}",
+            }
+        )
+
+
+def test_process_editor_rejects_secret_before_appending_events() -> None:
+    source = _editable_process()
+    source["token"] = "must-not-enter-the-journal"
+    bus = PolicyBus()
+    with pytest.raises(PoaContractError, match="POA-SECRET-001"):
+        bus.command(
+            {
+                "schema": "subllm.command/v1",
+                "process_uri": EDIT_PROCESS_URI,
+                "source_process": source,
+                "base_sha256": digest_document(source),
+                "edits": [{"op": "replace", "path": "/timeout_seconds", "value": 1200}],
+                "subject": "agent:subllm-process-editor",
+                "idempotency_key": "test.edit.secret",
+            }
+        )
+    assert bus.store.events() == []
 
 
 def test_adopted_poa_catalog_matches_exporter() -> None:

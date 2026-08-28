@@ -297,6 +297,7 @@ _ROUTE_VALUES = (
     ),
     RoutePolicy("validator-agent", "direct-pr-review", _DEFAULT),
     RoutePolicy("skills-agent", "developer", _DEFAULT),
+    RoutePolicy("skills-agent", "process-editor", _DEFAULT),
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     RoutePolicy("onedev-agent", "code-edit", _DEFAULT),
     RoutePolicy("todo2code", "semantic", _DEFAULT),

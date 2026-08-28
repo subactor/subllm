@@ -33,6 +33,7 @@ EVENTS_URI = "subllm://local/policy/query/events"
 RECEIPT_URI = "subllm://local/policy/query/receipt"
 CREATE_PLAN_URI = "subllm://local/policy/command/create-plan"
 IMPORT_CREDENTIALS_URI = "subllm://local/policy/command/import-credentials"
+EDIT_PROCESS_URI = "subllm://local/policy/command/edit-process"
 
 INSPECT_REF = "poa://subactor.subllm/process/inspect-policy/v1"
 LIST_ROUTES_REF = "poa://subactor.subllm/process/list-routes/v1"
@@ -46,6 +47,7 @@ EVENTS_REF = "poa://subactor.subllm/process/list-events/v1"
 RECEIPT_REF = "poa://subactor.subllm/process/get-receipt/v1"
 CREATE_PLAN_REF = "poa://subactor.subllm/process/create-plan/v1"
 IMPORT_CREDENTIALS_REF = "poa://subactor.subllm/process/import-credentials/v1"
+EDIT_PROCESS_REF = "poa://subactor.subllm/process/edit-process/v1"
 
 CAP_INSPECT = "capability://subactor.subllm/policy/inspect/v1"
 CAP_LIST = "capability://subactor.subllm/policy/list/v1"
@@ -55,6 +57,7 @@ CAP_VALIDATE = "capability://subactor.subllm/policy/validate/v1"
 CAP_JOURNAL = "capability://subactor.subllm/policy/journal/v1"
 CAP_PLAN = "capability://subactor.subllm/policy/plan/v1"
 CAP_IMPORT = "capability://subactor.subllm/policy/import-credentials/v1"
+CAP_EDIT_PROCESS = "capability://subactor.subllm/policy/edit-process/v1"
 
 
 def _verification() -> list[dict[str, str]]:
@@ -174,6 +177,19 @@ PROCESSES: dict[str, dict[str, Any]] = {
             )
         ],
     ),
+    EDIT_PROCESS_REF: _process(
+        EDIT_PROCESS_REF,
+        "Validate a digest-bound LLM process DSL edit proposal",
+        [
+            _step(
+                "edit-process",
+                CAP_EDIT_PROCESS,
+                "command",
+                ["read_data"],
+                idempotency="required",
+            )
+        ],
+    ),
 }
 
 BINDINGS: dict[str, dict[str, Any]] = {
@@ -249,6 +265,15 @@ BINDINGS: dict[str, dict[str, Any]] = {
         "adapter_ref": ADAPTER,
         "priority": 0,
     },
+    CAP_EDIT_PROCESS: {
+        "schema": "poa.binding/v1",
+        "binding_id": "bind.edit-process",
+        "capability_ref": CAP_EDIT_PROCESS,
+        "process_uri": EDIT_PROCESS_URI,
+        "target_ref": TARGET,
+        "adapter_ref": ADAPTER,
+        "priority": 0,
+    },
 }
 
 PROCESS_URIS: dict[str, str] = {
@@ -264,6 +289,7 @@ PROCESS_URIS: dict[str, str] = {
     RECEIPT_REF: RECEIPT_URI,
     CREATE_PLAN_REF: CREATE_PLAN_URI,
     IMPORT_CREDENTIALS_REF: IMPORT_CREDENTIALS_URI,
+    EDIT_PROCESS_REF: EDIT_PROCESS_URI,
 }
 
 URI_KIND = {
@@ -279,6 +305,7 @@ URI_KIND = {
     RECEIPT_URI: "query",
     CREATE_PLAN_URI: "command",
     IMPORT_CREDENTIALS_URI: "command",
+    EDIT_PROCESS_URI: "command",
 }
 
 URI_TO_PROCESS = {uri: process_ref for process_ref, uri in PROCESS_URIS.items()}

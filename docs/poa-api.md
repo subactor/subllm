@@ -42,9 +42,29 @@ adapter.
 | Query | `subllm://local/policy/query/validate` | must not append |
 | Command | `subllm://local/policy/command/create-plan` | planned + receipt |
 | Command | `subllm://local/policy/command/import-credentials` | planned, started, completed, verified |
+| Command | `subllm://local/policy/command/edit-process` | proposal planned, started, completed, verified |
 
 Events and receipts never include credential values, raw prompts or shell
 strings. `host_shell` and `arbitrary_executable` stay false.
+
+## Governed process DSL editing
+
+An editor first obtains a structured edit list through the centrally routed
+`skills-agent/process-editor` LLM function. It then sends the source process,
+its exact canonical SHA-256 and those edits to `/v1/commands` with
+`process_uri=subllm://local/policy/command/edit-process`.
+
+The URI accepts only `replace` operations listed in the source process's
+`decision_policy.llm_editor.editable_paths`. Process identity, required inputs,
+allowed actions, artifacts, deterministic controls, editor authority and
+publication gates are protected even if an untrusted document tries to add
+them to the editable list. A stale base, duplicate path, type change, no-op or
+secret-bearing payload fails before an event is appended.
+
+The result is `subllm.process-edit-proposal/v1` with base and candidate digests,
+the candidate DSL, an event trail and a terminal receipt. It is not a file
+write, grant or publication. The owning registry must validate its schema and
+obtain independent validation before publishing the candidate.
 
 The process catalog exporter is Python (`subllm.poa.catalog_document`).
 `policy/adopted/poa/process-catalog.json` is the modularity facade.

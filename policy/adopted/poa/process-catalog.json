@@ -392,6 +392,38 @@
         }
       ],
       "title": "Import provider credential names into the local ignored env file"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
+      "process_ref": "poa://subactor.subllm/process/edit-process/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/edit-process/v1",
+          "depends_on": [],
+          "effects": [
+            "read_data"
+          ],
+          "id": "edit-process",
+          "idempotency": "required",
+          "kind": "command",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Validate a digest-bound LLM process DSL edit proposal"
     }
   ],
   "schema": "subllm.poa.catalog/v1",
@@ -400,6 +432,7 @@
   "uris": {
     "poa://subactor.subllm/process/configured-route/v1": "subllm://local/policy/query/configured-route",
     "poa://subactor.subllm/process/create-plan/v1": "subllm://local/policy/command/create-plan",
+    "poa://subactor.subllm/process/edit-process/v1": "subllm://local/policy/command/edit-process",
     "poa://subactor.subllm/process/get-receipt/v1": "subllm://local/policy/query/receipt",
     "poa://subactor.subllm/process/import-credentials/v1": "subllm://local/policy/command/import-credentials",
     "poa://subactor.subllm/process/inspect-policy/v1": "subllm://local/policy/query/inspect",

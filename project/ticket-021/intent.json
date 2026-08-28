@@ -1,0 +1,21 @@
+{
+  "schema": "new-project.intent/v1",
+  "id": "ticket-021",
+  "title": "Governed process DSL editor",
+  "status": "IN_PROGRESS / PUBLICATION",
+  "allowedPaths": [
+    "src/subllm/poa/**",
+    "src/subllm/policy.py",
+    "tests/test_poa_*.py",
+    "tests/test_policy.py",
+    "policy/adopted/poa/process-catalog.json",
+    "docs/poa-api.md",
+    "README.md",
+    "CHANGELOG.md",
+    "VERSION",
+    "pyproject.toml",
+    "project/TICKETS.md",
+    "project/ticket-021/**"
+  ],
+  "outcome": "LLM process edits are proposal-only, exact-base-bound and accepted only through a deterministic URI validator."
+}

@@ -1,0 +1,11 @@
+2026-08-28
+
+- `./scripts/verify`: PASS; Ruff, compileall, 158 pytest tests, sdist and wheel.
+- URI integration: PASS; exact base
+  `a721a6cd0b7588122e710cb66508b6d92c21e9e8d8b9384fdfa14716a3459f70`
+  produced candidate
+  `b49ee837ad84f48fd3883276632ea334c6113ad771f3bc242f82087f8d93c2ac`
+  and receipt
+  `eb8ea30450235fb95472fd8889c5da196d97d3ff333b1d22dbe1c35f1596597d`.
+- Repair consumed the URI result as schema 1.1 `process-dsl` and changed its
+  effective bounded LLM plan-attempt count from 3 to 2.
