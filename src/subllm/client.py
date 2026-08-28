@@ -168,6 +168,7 @@ def complete(
     *,
     timeout_seconds: float = 30.0,
     request_id: str | None = None,
+    response_format: Mapping[str, Any] | None = None,
     environ: Mapping[str, str] | None = None,
     credentials: Mapping[str, str] | None = None,
     cwd: str | Path | None = None,
@@ -205,6 +206,8 @@ def complete(
         **dict(route.model_parameters),
         **route.provider_request_fields(request_id=request_id),
     }
+    if response_format is not None:
+        body["response_format"] = dict(response_format)
     request = Request(
         _completion_url(route.api_base),
         data=json.dumps(body, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),

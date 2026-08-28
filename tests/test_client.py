@@ -195,6 +195,27 @@ def test_complete_rejects_empty_messages() -> None:
         complete("todo2code", "semantic", [], environ={"ZAI_API_KEY": "id.secret"})
 
 
+def test_complete_forwards_structured_response_format(monkeypatch) -> None:
+    observed = {}
+
+    def open_request(request, timeout):
+        observed["body"] = json.loads(request.data.decode("utf-8"))
+        return _Response(
+            {"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}]}
+        )
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    complete(
+        "autogrammar-hillm",
+        "invoke",
+        [{"role": "user", "content": "translate"}],
+        response_format={"type": "json_object"},
+        environ={"ZAI_API_KEY": "id.secret"},
+    )
+
+    assert observed["body"]["response_format"] == {"type": "json_object"}
+
+
 def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypatch, tmp_path) -> None:
     (tmp_path / ".git").mkdir()
     observed: dict[str, object] = {}
