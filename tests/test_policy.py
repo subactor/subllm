@@ -53,6 +53,7 @@ def test_vision_routes_exist_for_known_image_consumers() -> None:
         ("autogrammar-nexu", "vision"),
         ("autogrammar-nlp2cmd", "vision"),
         ("autogrammar-vql", "vision"),
+        ("autogrammar-imgl", "vision"),
     ):
         routes = configured_routes(application, function)
         assert routes[0].modality == "vision"

@@ -7,8 +7,8 @@
 - Mark routes with modality `text` or `vision`. Vision routes accept OpenAI
   `image_url` parts and never select Cursor SDK.
 - Catalogue OpenRouter `z-ai/glm-4.5v` and mark `gemini-3.6-flash` as vision.
-- Register `autogrammar-nexu/vision`, `autogrammar-nlp2cmd/vision` and
-  `autogrammar-vql/vision`.
+- Register `autogrammar-nexu/vision`, `autogrammar-nlp2cmd/vision`,
+  `autogrammar-vql/vision` and `autogrammar-imgl/vision`.
 - Reject image parts on text routes, missing images on vision routes, and
   non-https / non-`data:image` URLs.
 

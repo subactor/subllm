@@ -48,6 +48,7 @@ unavailable, role-specific OpenRouter candidates are:
 | `autogrammar-nexu/vision` | `z-ai/glm-4.5v` |
 | `autogrammar-nlp2cmd/vision` | `z-ai/glm-4.5v` |
 | `autogrammar-vql/vision` | `z-ai/glm-4.5v` |
+| `autogrammar-imgl/vision` | `z-ai/glm-4.5v` |
 
 Vision routes are a separate modality. They send OpenAI-compatible `image_url`
 parts, never use Cursor SDK, and fail closed on a text route, a missing image,

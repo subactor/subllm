@@ -404,6 +404,7 @@ _ROUTE_VALUES = (
     RoutePolicy("autogrammar-nlp2cmd", "vision", _VISION, modality="vision"),
     RoutePolicy("autogrammar-nlp2dsl", "generate", _DEFAULT),
     RoutePolicy("autogrammar-imgl", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-imgl", "vision", _VISION, modality="vision"),
     RoutePolicy("autogrammar-tillm", "invoke", _DEFAULT),
     RoutePolicy("autogrammar-hillm", "invoke", _DEFAULT),
     RoutePolicy("autogrammar-doql", "translate", _DEFAULT),
