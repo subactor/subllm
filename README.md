@@ -45,6 +45,15 @@ unavailable, role-specific OpenRouter candidates are:
 | `validator-agent/patch-review` | `z-ai/glm-5.3` |
 | `validator-agent/direct-pr-review` | `z-ai/glm-5.3` |
 | `onedev-agent/code-edit` (host coding-agent) | `z-ai/glm-5.3` |
+| `autogrammar-nexu/vision` | `z-ai/glm-4.5v` |
+| `autogrammar-nlp2cmd/vision` | `z-ai/glm-4.5v` |
+| `autogrammar-vql/vision` | `z-ai/glm-4.5v` |
+| `autogrammar-imgl/vision` | `z-ai/glm-4.5v` |
+
+Vision routes are a separate modality. They send OpenAI-compatible `image_url`
+parts, never use Cursor SDK, and fail closed on a text route, a missing image,
+or a `file:` / `http:` image URL. Text routes such as
+`autogrammar-nexu/cinema` stay text-only.
 
 `available_routes()` returns these candidates after direct Z.AI. Consumers
 performing requests must advance to the next returned route only for a bounded

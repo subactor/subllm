@@ -1,5 +1,9 @@
 # TODO
 
+- [ ] [`ticket-022`](project/ticket-022/README.md) — vision modality and
+  `autogrammar-nexu/vision` (plus nlp2cmd/vql vision). Status:
+  `IN_PROGRESS / EDIT`; workstream: `vision`.
+
 - [ ] [`ticket-005`](project/ticket-005/README.md) - publish a zero-dependency
   OpenAI-compatible client so Semcod and Autogrammar consumers use one SubLLM
   execution boundary. Status: `IN_PROGRESS / PUBLICATION`; workstream:

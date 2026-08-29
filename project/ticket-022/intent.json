@@ -1,0 +1,23 @@
+{
+  "schema": "subllm.ticket-intent/v1",
+  "ticket": "ticket-022",
+  "summary": "Add vision modality and nexu/nlp2cmd/vql vision routes",
+  "workstream": "vision",
+  "status": "IN_PROGRESS",
+  "workflow_state": "EDIT",
+  "allowed_paths": [
+    "src/subllm/types.py",
+    "src/subllm/policy.py",
+    "src/subllm/resolver.py",
+    "src/subllm/client.py",
+    "tests/test_policy.py",
+    "tests/test_client.py",
+    "README.md",
+    "CHANGELOG.md",
+    "VERSION",
+    "pyproject.toml",
+    "TODO.md",
+    "project/TICKETS.md",
+    "project/ticket-022/**"
+  ]
+}

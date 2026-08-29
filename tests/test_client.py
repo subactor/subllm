@@ -68,6 +68,84 @@ def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
     assert "id.secret" not in repr(result)
 
 
+def test_complete_sends_vision_image_parts_on_nexu_route(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+    image = {
+        "type": "image_url",
+        "image_url": {"url": "data:image/png;base64,aaa"},
+    }
+
+    def open_request(request, *, timeout):
+        observed["url"] = request.full_url
+        observed["title"] = request.get_header("X-openrouter-title")
+        observed["body"] = json.loads(request.data.decode("utf-8"))
+        return _Response(
+            {
+                "choices": [{"message": {"content": "a button"}, "finish_reason": "stop"}],
+            }
+        )
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    result = complete(
+        "autogrammar-nexu",
+        "vision",
+        [{"role": "user", "content": [image, {"type": "text", "text": "label this"}]}],
+        environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+    )
+
+    assert result.content == "a button"
+    assert result.provider == "openrouter"
+    assert result.model == "z-ai/glm-4.5v"
+    assert observed["url"] == "https://openrouter.ai/api/v1/chat/completions"
+    assert observed["body"]["messages"][0]["content"][0] == image
+    assert observed["body"]["model"] == "z-ai/glm-4.5v"
+
+
+def test_complete_rejects_images_on_text_routes() -> None:
+    with pytest.raises(CompletionError, match="vision SubLLM route"):
+        complete(
+            "autogrammar-nexu",
+            "cinema",
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": "data:image/png;base64,aaa"}},
+                        {"type": "text", "text": "x"},
+                    ],
+                }
+            ],
+            environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+        )
+
+
+def test_complete_rejects_vision_route_without_image() -> None:
+    with pytest.raises(CompletionError, match="at least one image_url"):
+        complete(
+            "autogrammar-nexu",
+            "vision",
+            [{"role": "user", "content": "no image"}],
+            environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+        )
+
+
+def test_complete_rejects_file_image_urls() -> None:
+    with pytest.raises(CompletionError, match="https or data:image"):
+        complete(
+            "autogrammar-nexu",
+            "vision",
+            [
+                {
+                    "role": "user",
+                    "content": [
+                        {"type": "image_url", "image_url": {"url": "file:///tmp/x.png"}},
+                    ],
+                }
+            ],
+            environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+        )
+
+
 def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path) -> None:
     observed: dict[str, object] = {}
 

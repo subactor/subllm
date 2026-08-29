@@ -38,6 +38,40 @@ def test_platform_site_audit_shares_interactive_candidate_providers() -> None:
     assert {provider for provider, _model in audit} == {provider for provider, _model in interactive}
 
 
+def test_nexu_vision_route_is_openrouter_only() -> None:
+    configured = configured_routes("autogrammar-nexu", "vision")
+    assert configured[0].modality == "vision"
+    assert configured[0].provider == "openrouter"
+    assert configured[0].model == "glm-4.5v"
+    assert configured[0].transport == "openai-compatible"
+    assert {route.provider for route in configured} == {"openrouter"}
+    assert all(MODELS[route.model].vision for route in configured)
+
+
+def test_vision_routes_exist_for_known_image_consumers() -> None:
+    for application, function in (
+        ("autogrammar-nexu", "vision"),
+        ("autogrammar-nlp2cmd", "vision"),
+        ("autogrammar-vql", "vision"),
+        ("autogrammar-imgl", "vision"),
+    ):
+        routes = configured_routes(application, function)
+        assert routes[0].modality == "vision"
+        assert routes[0].model == "glm-4.5v"
+
+
+def test_invalid_policy_rejects_cursor_on_vision_route(monkeypatch: pytest.MonkeyPatch) -> None:
+    route = RoutePolicy(
+        "autogrammar-nexu",
+        "vision-cursor",
+        (RouteCandidate("cursor", "gpt-5.6-sol"),),
+        modality="vision",
+    )
+    monkeypatch.setattr(resolver, "ROUTES", {(route.application, route.function): route})
+    with pytest.raises(InvalidPolicyError, match="vision route cannot use cursor-sdk"):
+        validate_policy()
+
+
 def test_direct_zai_glm53_precedes_cursor_and_openrouter_for_default_routes() -> None:
     configured = configured_routes("platform", "interactive")
     assert configured[0].provider == "zai"
@@ -125,6 +159,15 @@ def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
 
 @pytest.mark.parametrize(("application", "function"), sorted(ROUTES))
 def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, function: str) -> None:
+    policy = ROUTES[(application, function)]
+    if policy.modality == "vision":
+        route = configured_routes(application, function)[0]
+        assert route.provider == "openrouter"
+        assert route.model == "glm-4.5v"
+        assert route.litellm_model == "openrouter/z-ai/glm-4.5v"
+        assert route.wire_model == "z-ai/glm-4.5v"
+        assert route.modality == "vision"
+        return
     route = configured_routes(application, function)[0]
     assert route.provider == "zai"
     assert route.model == "glm-5.3"

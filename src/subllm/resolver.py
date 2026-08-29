@@ -22,6 +22,21 @@ def route_policy(application: str, function: str) -> RoutePolicy:
         raise UnknownRouteError(f"unknown SubLLM route: {application}/{function}") from exc
 
 
+def _candidate_fits_modality(
+    candidate: RouteCandidate,
+    runtime_policy: RuntimePolicyConfig,
+    modality: str,
+) -> bool:
+    provider = PROVIDERS[candidate.provider]
+    model_id = candidate.model or runtime_policy.providers[provider.id].default_model
+    model = MODELS.get(model_id)
+    if model is None or model.forbidden:
+        return False
+    if modality != "vision":
+        return True
+    return provider.transport == "openai-compatible" and model.vision
+
+
 def _configured(
     application: str,
     function: str,
@@ -62,6 +77,7 @@ def _configured(
         wire_model=provider_model.wire_model,
         extra_headers=headers,
         transport=provider.transport,
+        modality=route_policy(application, function).modality,
         model_parameters=candidate.model_parameters,
     )
 
@@ -79,7 +95,9 @@ def configured_routes(
     candidates = (
         _configured(application, function, item, runtime_policy, order=order)
         for item in policy.candidates
-        if runtime_policy.providers[item.provider].enabled and (order is None or item.provider in order)
+        if runtime_policy.providers[item.provider].enabled
+        and (order is None or item.provider in order)
+        and _candidate_fits_modality(item, runtime_policy, policy.modality)
     )
     ordered = sorted(candidates, key=lambda item: item.priority)
     if not ordered:
@@ -177,4 +195,14 @@ def validate_policy() -> None:
                 raise InvalidPolicyError(
                     f"model {model_id} is unavailable through provider {candidate.provider}"
                 )
+            if route.modality == "vision":
+                if PROVIDERS[candidate.provider].transport != "openai-compatible":
+                    raise InvalidPolicyError(
+                        f"vision route cannot use {PROVIDERS[candidate.provider].transport}: "
+                        f"{route.application}/{route.function}"
+                    )
+                if not model.vision:
+                    raise InvalidPolicyError(
+                        f"vision route uses non-vision model: {model_id}"
+                    )
         configured_routes(route.application, route.function)
