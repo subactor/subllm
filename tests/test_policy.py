@@ -117,7 +117,7 @@ def test_prellm_routes_prefer_direct_zai_glm53(function: str) -> None:
 
 def test_role_specific_openrouter_fallbacks_match_benchmark_recommendations() -> None:
     expected = {
-        ("repair-agent", "repair-plan"): "glm-5.3-flash",
+        ("repair-agent", "repair-plan"): "glm-5.3",
         ("validator-agent", "patch-review"): "glm-5.3",
         ("validator-agent", "direct-pr-review"): "glm-5.3",
         # Host coding-agent invokes this canonical route through subllm-code-edit.
