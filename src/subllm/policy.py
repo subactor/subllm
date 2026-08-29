@@ -265,6 +265,11 @@ APPLICATIONS = MappingProxyType(
         "autogrammar-vql": ApplicationSpec(
             id="autogrammar-vql", title="vql", url="https://github.com/autogrammar/vql"
         ),
+        "twinstudio": ApplicationSpec(
+            id="twinstudio",
+            title="TwinStudio",
+            url="https://github.com/digitaltwin-run/twinstudio",
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
@@ -392,13 +397,16 @@ _ROUTE_VALUES = (
     RoutePolicy("autogrammar-testql", "generate", _DEFAULT),
     RoutePolicy("autogrammar-redsl", "evaluate", _DEFAULT),
     RoutePolicy("autogrammar-vql", "generate", _DEFAULT),
+    # Natural-language EDA requests are converted to one constrained DSL
+    # operation; TwinStudio validates and previews it before a human decision.
+    RoutePolicy("twinstudio", "eda-nl2dsl", _CODING),
     RoutePolicy(
         "platform",
         "interactive",
         _DEFAULT
         + (
+            RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=5),
             RouteCandidate(provider="openrouter", model="grok-4.5", priority_offset=10),
-            RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
     RoutePolicy(
@@ -406,8 +414,8 @@ _ROUTE_VALUES = (
         "site-audit",
         _DEFAULT
         + (
+            RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=5),
             RouteCandidate(provider="openrouter", model="grok-4.5", priority_offset=10),
-            RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
     RoutePolicy("supervisor", "assessment", _DEFAULT),

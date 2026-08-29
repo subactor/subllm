@@ -116,3 +116,7 @@ def test_applications_reports_public_request_identity(capsys) -> None:
         "name": "todo2code",
         "url": "https://github.com/autogrammar/todo2code",
     }
+    assert payload["applications"]["twinstudio"] == {
+        "name": "TwinStudio",
+        "url": "https://github.com/digitaltwin-run/twinstudio",
+    }

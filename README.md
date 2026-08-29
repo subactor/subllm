@@ -45,6 +45,7 @@ unavailable, role-specific OpenRouter candidates are:
 | `validator-agent/patch-review` | `z-ai/glm-5.3` |
 | `validator-agent/direct-pr-review` | `z-ai/glm-5.3` |
 | `onedev-agent/code-edit` (host coding-agent) | `z-ai/glm-5.3` |
+| `twinstudio/eda-nl2dsl` | `z-ai/glm-5.3` |
 
 `available_routes()` returns these candidates after direct Z.AI. Consumers
 performing requests must advance to the next returned route only for a bounded

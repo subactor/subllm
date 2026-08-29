@@ -174,6 +174,10 @@ def _policy_file(
                 'name = "vql"',
                 'url = "https://github.com/autogrammar/vql"',
                 "",
+                '[applications.twinstudio]',
+                'name = "TwinStudio"',
+                'url = "https://github.com/digitaltwin-run/twinstudio"',
+                "",
                 '[applications.platform]',
                 'name = "Subactor Platform"',
                 'url = "https://github.com/subactor/platform"',
@@ -209,6 +213,9 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.applications["semcod-pfix"].url == "https://github.com/semcod/pfix"
     assert policy.applications["autogrammar-nlp2dsl"].url == (
         "https://github.com/autogrammar/nlp2dsl"
+    )
+    assert policy.applications["twinstudio"].url == (
+        "https://github.com/digitaltwin-run/twinstudio"
     )
 
 

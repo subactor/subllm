@@ -152,6 +152,10 @@ url = "https://github.com/autogrammar/redsl"
 name = "vql"
 url = "https://github.com/autogrammar/vql"
 
+[applications.twinstudio]
+name = "TwinStudio"
+url = "https://github.com/digitaltwin-run/twinstudio"
+
 [applications.platform]
 name = "Subactor Platform"
 url = "https://github.com/subactor/platform"

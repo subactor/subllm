@@ -1,5 +1,14 @@
 # Changelog
 
+## [1.8.0] - 2026-08-28
+
+### Added
+
+- Register the central `twinstudio/eda-nl2dsl` route used to translate one
+  reviewed EDA request into one constrained TwinStudio DSL operation.
+- Publish the TwinStudio application identity for provider attribution and
+  validate the route through policy, runtime configuration and CLI tests.
+
 ## [1.7.0] - 2026-08-28
 
 ### Added

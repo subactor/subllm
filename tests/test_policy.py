@@ -72,6 +72,14 @@ def test_process_editor_has_a_central_llm_route() -> None:
     assert {route.provider for route in routes} == {"zai", "cursor", "openrouter"}
 
 
+def test_twinstudio_eda_nl2dsl_has_a_central_coding_route() -> None:
+    routes = configured_routes("twinstudio", "eda-nl2dsl")
+
+    assert routes[0].provider == "zai"
+    assert routes[0].model == "glm-5.3"
+    assert {route.provider for route in routes} == {"zai", "cursor", "openrouter"}
+
+
 @pytest.mark.parametrize("function", ("preprocess", "execute"))
 def test_prellm_routes_prefer_direct_zai_glm53(function: str) -> None:
     configured = configured_routes("prellm", function)
