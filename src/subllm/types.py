@@ -6,6 +6,7 @@ from typing import Any, Literal
 from uuid import uuid4
 
 Transport = Literal["openai-compatible", "cursor-sdk"]
+Modality = Literal["text", "vision"]
 
 
 @dataclass(frozen=True)
@@ -28,6 +29,7 @@ class ModelSpec:
     id: str
     providers: Mapping[str, ProviderModelSpec]
     forbidden: bool = False
+    vision: bool = False
 
 
 @dataclass(frozen=True)
@@ -50,6 +52,7 @@ class RoutePolicy:
     application: str
     function: str
     candidates: tuple[RouteCandidate, ...]
+    modality: Modality = "text"
 
 
 @dataclass(frozen=True)
@@ -68,6 +71,7 @@ class ConfiguredRoute:
     extra_headers: Mapping[str, str]
     transport: Transport
     model_parameters: Mapping[str, str] = field(default_factory=dict, kw_only=True)
+    modality: Modality = field(default="text", kw_only=True)
 
     def public_dict(self) -> dict[str, Any]:
         return {
@@ -84,6 +88,7 @@ class ConfiguredRoute:
             "wire_model": self.wire_model,
             "extra_headers": dict(self.extra_headers),
             "transport": self.transport,
+            "modality": self.modality,
             "model_parameters": dict(self.model_parameters),
         }
 

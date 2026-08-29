@@ -1,0 +1,10 @@
+# ticket-022 validation — 2026-08-29
+
+$ python3 -m ruff check src tests
+All checks passed!
+
+$ PYTHONPATH=src python3 -m pytest tests -q
+177 passed, 3 skipped in 1.96s
+
+Skipped tests are the Z.AI-first invariant, which does not apply to vision
+routes. No paid provider requests.

@@ -98,6 +98,16 @@ MODELS = MappingProxyType(
                 ),
             ),
         ),
+        "glm-4.5v": ModelSpec(
+            id="glm-4.5v",
+            vision=True,
+            providers=_provider_models(
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/z-ai/glm-4.5v",
+                    wire_model="z-ai/glm-4.5v",
+                ),
+            ),
+        ),
         "grok-4.5": ModelSpec(
             id="grok-4.5",
             providers=_provider_models(
@@ -109,6 +119,7 @@ MODELS = MappingProxyType(
         ),
         "gemini-3.6-flash": ModelSpec(
             id="gemini-3.6-flash",
+            vision=True,
             providers=_provider_models(
                 openrouter=ProviderModelSpec(
                     litellm_model="openrouter/google/gemini-3.6-flash",
@@ -316,6 +327,13 @@ _CODING = (
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
+# Vision routes stay on OpenAI-compatible transports. Cursor SDK is text-only
+# and is never a vision candidate. Z.AI coding GLM 5.3 is not marked vision.
+_VISION = (
+    RouteCandidate(provider="openrouter", model="glm-4.5v"),
+    RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=10),
+)
+
 # The watch desktop service currently invokes OpenAI-compatible Chat
 # Completions directly. Cursor SDK candidates stay out of these two routes
 # until that transport is implemented by the consumer.
@@ -379,9 +397,11 @@ _ROUTE_VALUES = (
     RoutePolicy("semcod-planfile", "plan", _DEFAULT),
     RoutePolicy("autogrammar-nexu", "generate", _DEFAULT),
     RoutePolicy("autogrammar-nexu", "cinema", _DEFAULT),
+    RoutePolicy("autogrammar-nexu", "vision", _VISION, modality="vision"),
     RoutePolicy("autogrammar-intract", "propose", _DEFAULT),
     RoutePolicy("autogrammar-nlp2cmd", "generate", _DEFAULT),
     RoutePolicy("autogrammar-nlp2cmd", "extract-schema", _DEFAULT),
+    RoutePolicy("autogrammar-nlp2cmd", "vision", _VISION, modality="vision"),
     RoutePolicy("autogrammar-nlp2dsl", "generate", _DEFAULT),
     RoutePolicy("autogrammar-imgl", "generate", _DEFAULT),
     RoutePolicy("autogrammar-tillm", "invoke", _DEFAULT),
@@ -392,6 +412,7 @@ _ROUTE_VALUES = (
     RoutePolicy("autogrammar-testql", "generate", _DEFAULT),
     RoutePolicy("autogrammar-redsl", "evaluate", _DEFAULT),
     RoutePolicy("autogrammar-vql", "generate", _DEFAULT),
+    RoutePolicy("autogrammar-vql", "vision", _VISION, modality="vision"),
     RoutePolicy(
         "platform",
         "interactive",
