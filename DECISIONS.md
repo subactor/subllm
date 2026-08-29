@@ -4,8 +4,9 @@
 
 Keep direct Z.AI `glm-5.3` ahead of OpenRouter. When a consumer advances after
 a bounded Z.AI connectivity/provider failure, Repair uses OpenRouter
-`z-ai/glm-5.3-flash`; Validator and the host coding-agent's canonical
-`onedev-agent/code-edit` route use OpenRouter `z-ai/glm-5.3`.
+`z-ai/glm-5.3`; Validator routes use OpenRouter `z-ai/glm-5.3-flash`; the host
+coding-agent's canonical `onedev-agent/code-edit` route uses OpenRouter
+`z-ai/glm-5.3`.
 
 The model choice follows the current full benchmark: Flash qualified for
 Repair at the lowest cost, while full GLM 5.3 remains the requested coding and

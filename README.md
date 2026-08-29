@@ -41,9 +41,9 @@ unavailable, role-specific OpenRouter candidates are:
 
 | Consumer route | OpenRouter fallback |
 | --- | --- |
-| `repair-agent/repair-plan` | `z-ai/glm-5.3-flash` |
-| `validator-agent/patch-review` | `z-ai/glm-5.3` |
-| `validator-agent/direct-pr-review` | `z-ai/glm-5.3` |
+| `repair-agent/repair-plan` | `z-ai/glm-5.3` |
+| `validator-agent/patch-review` | `z-ai/glm-5.3-flash` |
+| `validator-agent/direct-pr-review` | `z-ai/glm-5.3-flash` |
 | `onedev-agent/code-edit` (host coding-agent) | `z-ai/glm-5.3` |
 | `autogrammar-nexu/vision` | `z-ai/glm-4.5v` |
 | `autogrammar-nlp2cmd/vision` | `z-ai/glm-4.5v` |

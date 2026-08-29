@@ -305,7 +305,7 @@ _DEFAULT = (
 )
 
 # Role-specific OpenRouter fallbacks are selected from the current benchmark:
-# full GLM 5.3 for repair structured JSON, full GLM 5.3 for review and coding.
+# GLM 5.3 for repair structured JSON; GLM 5.3 Flash for validator review.
 _REPAIR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
@@ -317,7 +317,7 @@ _VALIDATOR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
-    RouteCandidate(provider="openrouter", model="glm-5.3"),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
 )
 
 _CODING = (

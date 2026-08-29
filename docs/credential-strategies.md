@@ -15,7 +15,8 @@ Exact Cursor SDK slugs confirmed via `Cursor.models.list()`.
 
 The OpenRouter strategy retains `glm-5.2` as its operator default, but
 role-specific failover routes pin benchmark-qualified models: Repair uses
-`glm-5.3-flash`; Validator and the host coding-agent route use `glm-5.3`.
+`glm-5.3`; Validator routes use `glm-5.3-flash`; the host coding-agent route
+uses `glm-5.3`.
 
 ## Force Cursor Sol
 

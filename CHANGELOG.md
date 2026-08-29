@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.8.1] - 2026-08-29
+
+### Changed
+
+- Route Validator OpenRouter fallback to `z-ai/glm-5.3-flash` on
+  `patch-review` and `direct-pr-review` while keeping Repair on `z-ai/glm-5.3`.
+
 ## [1.8.0] - 2026-08-29
 
 ### Added
