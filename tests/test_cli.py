@@ -27,7 +27,7 @@ def test_configured_field(capsys) -> None:
         )
         == 0
     )
-    assert capsys.readouterr().out == "openrouter/z-ai/glm-5.3\n"
+    assert capsys.readouterr().out == "openrouter/z-ai/glm-5.3-flash\n"
 
 
 def test_configured_application_name_field(capsys) -> None:
