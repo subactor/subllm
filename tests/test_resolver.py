@@ -39,7 +39,7 @@ def test_openrouter_never_owns_gpt_sol() -> None:
         environ={"OPENROUTER_API_KEY": "openrouter-secret"},
     )
     assert route.provider == "openrouter"
-    assert route.model == "glm-5.3-flash"
+    assert route.model == "glm-5.3"
     assert "gpt-5.6-sol" not in route.litellm_model
     assert "gpt-5.6-sol" not in route.wire_model
 
@@ -89,7 +89,7 @@ def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:
         },
     )
     assert route.provider == "openrouter"
-    assert route.litellm_model == "openrouter/z-ai/glm-5.3-flash"
+    assert route.litellm_model == "openrouter/z-ai/glm-5.3"
     assert route.extra_headers["X-OpenRouter-Title"] == "repair-agent"
 
 
@@ -246,7 +246,7 @@ def test_credential_source_matrix_selects_expected_provider_model() -> None:
     """Z.AI / OpenRouter / Cursor key isolation → optimal model per source."""
     cases = (
         ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.3"),
-        ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.3-flash"),
+        ({"OPENROUTER_API_KEY": "openrouter-secret"}, "openrouter", "glm-5.3"),
         ({"CURSOR_API_KEY": "cursor_test-not-a-secret"}, "cursor", "gpt-5.6-sol"),
         (
             {

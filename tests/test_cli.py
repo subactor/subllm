@@ -61,7 +61,7 @@ def test_resolve_output_never_contains_credential(tmp_path: Path, monkeypatch, c
     output = capsys.readouterr().out
     payload = json.loads(output)
     assert payload["provider"] == "openrouter"
-    assert payload["model"] == "glm-5.3-flash"
+    assert payload["model"] == "glm-5.3"
     assert payload["transport"] == "openai-compatible"
     assert "cli-secret" not in output
 

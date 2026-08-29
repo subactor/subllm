@@ -272,20 +272,20 @@ def test_role_specific_fallback_survives_default_model_change(
         environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "or-key"},
     )
     assert route.provider == "openrouter"
-    assert route.model == "glm-5.3-flash"
-    assert route.litellm_model == "openrouter/z-ai/glm-5.3-flash"
+    assert route.model == "glm-5.3"
+    assert route.litellm_model == "openrouter/z-ai/glm-5.3"
 
 
 def test_default_model_deduplicates_the_same_explicit_fallback(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    policy = _policy_file(tmp_path / "subllm.toml", openrouter_model="deepseek-v4-pro")
+    policy = _policy_file(tmp_path / "subllm.toml", openrouter_model="glm-5.3")
     monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
 
     routes = configured_routes("repair-agent", "repair-plan")
     assert [(route.provider, route.model) for route in routes].count(
-        ("openrouter", "deepseek-v4-pro")
+        ("openrouter", "glm-5.3")
     ) == 1
 
 

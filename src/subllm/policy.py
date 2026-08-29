@@ -299,12 +299,12 @@ _DEFAULT = (
 )
 
 # Role-specific OpenRouter fallbacks are selected from the current benchmark:
-# Flash for repair throughput/cost, full GLM 5.3 for review and coding.
+# full GLM 5.3 for repair structured JSON, full GLM 5.3 for review and coding.
 _REPAIR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
-    RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
+    RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
 _VALIDATOR = (
@@ -331,11 +331,7 @@ _SZEPTNIK = (
 
 _ROUTE_VALUES = (
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
-    RoutePolicy(
-        "repair-agent",
-        "repair-plan",
-        _REPAIR + (RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=10),),
-    ),
+    RoutePolicy("repair-agent", "repair-plan", _REPAIR),
     RoutePolicy(
         "validator-agent",
         "patch-review",
