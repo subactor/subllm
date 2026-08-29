@@ -218,7 +218,7 @@ def test_available_routes_skips_cursor_without_key() -> None:
     )
     assert [(route.provider, route.model) for route in routes] == [
         ("zai", "glm-5.3"),
-        ("openrouter", "glm-5.3"),
+        ("openrouter", "glm-5.3-flash"),
         ("openrouter", "qwen3.7-plus"),
     ]
 
@@ -237,7 +237,7 @@ def test_available_routes_prefers_direct_zai_when_all_keys_are_present() -> None
         ("zai", "glm-5.3"),
         ("cursor", "gpt-5.6-sol"),
         ("cursor", "grok-4.6"),
-        ("openrouter", "glm-5.3"),
+        ("openrouter", "glm-5.3-flash"),
         ("openrouter", "qwen3.7-plus"),
     ]
 
