@@ -161,7 +161,13 @@ def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
 def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, function: str) -> None:
     policy = ROUTES[(application, function)]
     if policy.modality == "vision":
-        pytest.skip("vision routes stay on OpenRouter vision models")
+        route = configured_routes(application, function)[0]
+        assert route.provider == "openrouter"
+        assert route.model == "glm-4.5v"
+        assert route.litellm_model == "openrouter/z-ai/glm-4.5v"
+        assert route.wire_model == "z-ai/glm-4.5v"
+        assert route.modality == "vision"
+        return
     route = configured_routes(application, function)[0]
     assert route.provider == "zai"
     assert route.model == "glm-5.3"
