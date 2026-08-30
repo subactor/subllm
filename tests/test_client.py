@@ -2,9 +2,13 @@ from __future__ import annotations
 
 import io
 import json
+import os
+import signal
 import subprocess
 import sys
-from types import ModuleType, SimpleNamespace
+import time
+from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 
 import pytest
@@ -193,51 +197,18 @@ def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path) -> None:
 def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, tmp_path) -> None:
     observed: dict[str, object] = {}
 
-    class LocalAgentOptions:
-        def __init__(self, **kwargs):
-            observed["local"] = kwargs
+    def run_worker(request, **kwargs):
+        observed.update(request=request, **kwargs)
+        return {
+            "schema": "subllm.cursor-worker-result/v1",
+            "status": "SUCCESS",
+            "content": "cursor answer",
+            "usage": {"total_tokens": 3},
+            "finish_reason": "",
+            "run_id": "run-1",
+        }
 
-    class AgentOptions:
-        def __init__(self, **kwargs):
-            observed["options"] = kwargs
-
-    class Run:
-        def supports(self, _feature: str) -> bool:
-            return False
-
-        def wait(self):
-            return type(
-                "Result",
-                (),
-                {
-                    "status": "finished",
-                    "result": "cursor answer",
-                    "usage": {"total_tokens": 3},
-                    "id": "run-1",
-                },
-            )()
-
-    class Session:
-        def __enter__(self):
-            return self
-
-        def __exit__(self, *_args):
-            return None
-
-        def send(self, prompt: str):
-            observed["prompt"] = prompt
-            return Run()
-
-    class Agent:
-        @staticmethod
-        def create(_options):
-            return Session()
-
-    module = ModuleType("cursor_sdk")
-    module.Agent = Agent
-    module.AgentOptions = AgentOptions
-    module.LocalAgentOptions = LocalAgentOptions
-    monkeypatch.setitem(sys.modules, "cursor_sdk", module)
+    monkeypatch.setattr(client, "_run_cursor_worker", run_worker)
 
     result = complete(
         "koru-agent",
@@ -248,9 +219,78 @@ def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, t
     )
 
     assert result.content == "cursor answer"
-    assert observed["options"]["tools"] == []
-    assert observed["local"] == {"cwd": str(tmp_path), "setting_sources": []}
-    assert "<system>\nJSON only\n</system>" in observed["prompt"]
+    assert observed["cwd"] == tmp_path
+    assert observed["timeout_seconds"] == 12
+    request = observed["request"]
+    assert request["cwd"] == str(tmp_path)
+    assert request["model"] == "gpt-5.6-sol"
+    assert "<system>\nJSON only\n</system>" in request["prompt"]
+
+
+def test_cursor_worker_timeout_terminates_the_process_group(monkeypatch, tmp_path) -> None:
+    observed: list[tuple[int, signal.Signals]] = []
+
+    class Process:
+        pid = 4312
+        returncode = None
+        waits = 0
+
+        def communicate(self, **_kwargs):
+            raise subprocess.TimeoutExpired([sys.executable], 0.1)
+
+        def wait(self, timeout=None):
+            self.waits += 1
+            if self.waits == 1:
+                raise subprocess.TimeoutExpired([sys.executable], timeout)
+            self.returncode = -signal.SIGKILL
+            return self.returncode
+
+    process = Process()
+    monkeypatch.setattr(client.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(client.os, "killpg", lambda pid, sig: observed.append((pid, sig)))
+
+    with pytest.raises(CompletionError, match="worker timed out"):
+        client._run_cursor_worker(
+            {"schema": "subllm.cursor-worker-request/v1"},
+            timeout_seconds=0.1,
+            cwd=tmp_path,
+        )
+
+    assert observed == [(4312, signal.SIGTERM), (4312, signal.SIGKILL)]
+
+
+def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> None:
+    assert os.name == "posix", "the governed completion runtime requires POSIX process groups"
+    child_pid_file = tmp_path / "cursor-child.pid"
+    source_root = Path(client.__file__).resolve().parents[1]
+    fixture_root = Path(__file__).resolve().parent / "fixtures" / "hanging_cursor_sdk"
+    monkeypatch.setenv("PYTHONPATH", os.pathsep.join((str(fixture_root), str(source_root))))
+    monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
+
+    with pytest.raises(CompletionError, match="worker timed out"):
+        client._run_cursor_worker(
+            {
+                "schema": "subllm.cursor-worker-request/v1",
+                "model": "gpt-5.6-sol",
+                "api_key": "cursor_test-not-a-secret",
+                "cwd": str(tmp_path),
+                "name": "subllm-timeout-test",
+                "prompt": "wait",
+            },
+            timeout_seconds=1.0,
+            cwd=tmp_path,
+        )
+
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"Cursor worker descendant {child_pid} remained alive")
 
 
 def test_complete_executes_nfo_analysis_through_direct_zai(monkeypatch) -> None:
