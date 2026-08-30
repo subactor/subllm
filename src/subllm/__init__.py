@@ -14,6 +14,7 @@ from .credential_env import (
     merged_environment,
 )
 from .errors import (
+    CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
@@ -71,6 +72,7 @@ from .types import (
 __all__ = [
     "APPLICATIONS",
     "CURSOR_API_KEY_ENV",
+    "CURSOR_WORKER_TIMEOUT_CODE",
     "EXTRA_CREDENTIAL_ENV",
     "MODELS",
     "ORDERABLE_PROVIDER_IDS",

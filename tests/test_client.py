@@ -14,6 +14,7 @@ from urllib.error import HTTPError
 import pytest
 
 from subllm import (
+    CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
@@ -249,13 +250,14 @@ def test_cursor_worker_timeout_terminates_the_process_group(monkeypatch, tmp_pat
     monkeypatch.setattr(client.subprocess, "Popen", lambda *_args, **_kwargs: process)
     monkeypatch.setattr(client.os, "killpg", lambda pid, sig: observed.append((pid, sig)))
 
-    with pytest.raises(CompletionError, match="worker timed out"):
+    with pytest.raises(CompletionError, match="worker timed out") as raised:
         client._run_cursor_worker(
             {"schema": "subllm.cursor-worker-request/v1"},
             timeout_seconds=0.1,
             cwd=tmp_path,
         )
 
+    assert raised.value.diagnostic_code == CURSOR_WORKER_TIMEOUT_CODE
     assert observed == [(4312, signal.SIGTERM), (4312, signal.SIGKILL)]
 
 
@@ -267,7 +269,7 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join((str(fixture_root), str(source_root))))
     monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
 
-    with pytest.raises(CompletionError, match="worker timed out"):
+    with pytest.raises(CompletionError, match="worker timed out") as raised:
         client._run_cursor_worker(
             {
                 "schema": "subllm.cursor-worker-request/v1",
@@ -281,6 +283,7 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
             cwd=tmp_path,
         )
 
+    assert raised.value.diagnostic_code == CURSOR_WORKER_TIMEOUT_CODE
     child_pid = int(child_pid_file.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline:

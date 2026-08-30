@@ -17,6 +17,7 @@ from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .errors import (
+    CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
@@ -61,8 +62,15 @@ class CodeEditResponse:
 
 
 class _RetryableAttemptError(CompletionError):
-    def __init__(self, message: str, *, outcome: str, provider_level: bool = True) -> None:
-        super().__init__(message)
+    def __init__(
+        self,
+        message: str,
+        *,
+        outcome: str,
+        provider_level: bool = True,
+        diagnostic_code: str | None = None,
+    ) -> None:
+        super().__init__(message, diagnostic_code=diagnostic_code)
         self.outcome = outcome
         self.provider_level = provider_level
 
@@ -158,7 +166,7 @@ def _terminate_cursor_worker(process: subprocess.Popen[bytes]) -> None:
     except ProcessLookupError:
         return
     with suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=0.5)
+        process.wait(timeout=1.0)
     try:
         if os.name == "posix":
             # The worker may have exited while its bridge descendants retained
@@ -190,7 +198,10 @@ def _run_cursor_worker(
         output, _ = process.communicate(input=encoded, timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
         _terminate_cursor_worker(process)
-        raise CompletionError(f"Cursor SDK worker timed out after {timeout_seconds:g}s") from exc
+        raise CompletionError(
+            f"Cursor SDK worker timed out after {timeout_seconds:g}s",
+            diagnostic_code=CURSOR_WORKER_TIMEOUT_CODE,
+        ) from exc
     if process.returncode != 0:
         raise CompletionError("Cursor SDK worker failed")
     if len(output) > MAX_CURSOR_WORKER_RESULT_BYTES:
@@ -323,6 +334,7 @@ def _complete_route(
             raise _RetryableAttemptError(
                 str(exc),
                 outcome="provider_unavailable",
+                diagnostic_code=exc.diagnostic_code,
             ) from exc
     if route.transport == "openai-compatible":
         return _complete_openai_compatible(
@@ -395,12 +407,15 @@ def complete(
             )
         except _RetryableAttemptError as exc:
             duration = time.monotonic() - attempt_started
+            diagnostic_code = exc.diagnostic_code or _attempt_diagnostic_code(
+                exc.outcome
+            )
             attempts.append(CompletionAttempt(
                 route.provider,
                 route.wire_model,
                 exc.outcome,
                 round(duration * 1000),
-                _attempt_diagnostic_code(exc.outcome),
+                diagnostic_code,
             ))
             record_failure(
                 route.provider,
@@ -414,7 +429,7 @@ def complete(
             if not execution.failover_enabled:
                 raise CompletionError(
                     str(exc),
-                    diagnostic_code=_attempt_diagnostic_code(exc.outcome),
+                    diagnostic_code=diagnostic_code,
                 ) from exc
             continue
         duration = time.monotonic() - attempt_started
