@@ -1,9 +1,10 @@
 from __future__ import annotations
 
+import io
 import json
 import subprocess
 import sys
-from types import ModuleType
+from types import ModuleType, SimpleNamespace
 from urllib.error import HTTPError
 
 import pytest
@@ -18,7 +19,13 @@ from subllm import (
     execute_code_edit,
     provider_health,
 )
-from subllm.client import CodeEditResponse, code_edit_main
+from subllm.client import (
+    CodeEditResponse,
+    CompletionAttempt,
+    CompletionResponse,
+    code_edit_main,
+    completion_main,
+)
 
 
 class _Response:
@@ -531,3 +538,88 @@ def test_code_edit_cli_emits_secret_free_machine_result(tmp_path, monkeypatch, c
         "model": "glm-5.3",
         "response": "done",
     }
+
+
+def test_completion_cli_executes_policy_transport_and_emits_attempt_receipt(
+    monkeypatch, capsys,
+) -> None:
+    request = {
+        "schema": "subllm.completion-request/v1",
+        "messages": [{"role": "user", "content": "assess"}],
+        "response_format": {"type": "json_object"},
+        "request_id": "supervisor-test-1",
+    }
+    monkeypatch.setattr(
+        client.sys,
+        "stdin",
+        SimpleNamespace(buffer=io.BytesIO(json.dumps(request).encode())),
+    )
+    observed: dict[str, object] = {}
+
+    def run_complete(application, function, messages, **kwargs):
+        observed.update(application=application, function=function, messages=messages, **kwargs)
+        return CompletionResponse(
+            content='{"action":"observe"}',
+            provider="cursor",
+            model="gpt-5.6-sol",
+            usage={"total_tokens": 7},
+            finish_reason="stop",
+            attempts=(CompletionAttempt(
+                "zai",
+                "glm-5.3",
+                "http_429",
+                12,
+                PROVIDER_RATE_LIMIT_CODE,
+            ),),
+        )
+
+    monkeypatch.setattr(client, "complete", run_complete)
+    assert completion_main(["supervisor", "assessment", "--timeout", "120"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload == {
+        "schema": "subllm.completion-result/v1",
+        "status": "SUCCESS",
+        "content": '{"action":"observe"}',
+        "provider": "cursor",
+        "model": "gpt-5.6-sol",
+        "usage": {"total_tokens": 7},
+        "finish_reason": "stop",
+        "attempts": [
+            {
+                "provider": "zai",
+                "model": "glm-5.3",
+                "outcome": "http_429",
+                "duration_ms": 12,
+                "diagnostic_code": PROVIDER_RATE_LIMIT_CODE,
+            }
+        ],
+    }
+    assert observed == {
+        "application": "supervisor",
+        "function": "assessment",
+        "messages": request["messages"],
+        "timeout_seconds": 120.0,
+        "request_id": "supervisor-test-1",
+        "response_format": {"type": "json_object"},
+    }
+
+
+@pytest.mark.parametrize(
+    "payload_input,error",
+    [
+        ({"schema": "subllm.completion-request/v1", "messages": [], "extra": True}, "closed JSON object"),
+        ({"schema": "other/v1", "messages": [{"role": "user"}]}, "schema is not supported"),
+    ],
+)
+def test_completion_cli_rejects_unbounded_or_unknown_input(
+    monkeypatch, capsys, payload_input, error,
+) -> None:
+    monkeypatch.setattr(
+        client.sys,
+        "stdin",
+        SimpleNamespace(buffer=io.BytesIO(json.dumps(payload_input).encode())),
+    )
+    assert completion_main(["supervisor", "assessment"]) == 2
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert error in captured.err

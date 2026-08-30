@@ -6,9 +6,12 @@
   "workflow_state": "PUBLICATION",
   "allowed_paths": [
     "src/subllm/client.py",
+    "src/subllm/provider_order.py",
     "src/subllm/errors.py",
     "src/subllm/__init__.py",
     "tests/test_client.py",
+    "tests/test_credential_env.py",
+    "scripts/verify",
     "pyproject.toml",
     "CHANGELOG.md",
     "TODO.md",
