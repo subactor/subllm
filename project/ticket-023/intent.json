@@ -1,0 +1,17 @@
+{
+  "schema": "subllm.ticket-intent/v1",
+  "ticket": "ticket-023",
+  "summary": "Standardize provider failover diagnostics through wellmanifest/logs",
+  "workstream": "runtime",
+  "status": "IN_PROGRESS",
+  "workflow_state": "EDIT",
+  "allowed_paths": [
+    "src/subllm/client.py",
+    "src/subllm/errors.py",
+    "src/subllm/__init__.py",
+    "tests/test_client.py",
+    "logs-error-catalog.v1.json",
+    "errors/**",
+    "project/ticket-023/**"
+  ]
+}

@@ -14,6 +14,9 @@ from .credential_env import (
     merged_environment,
 )
 from .errors import (
+    PROVIDER_CHAIN_EXHAUSTED_CODE,
+    PROVIDER_RATE_LIMIT_CODE,
+    PROVIDER_UNAVAILABLE_CODE,
     CompletionError,
     CredentialFileError,
     InvalidPolicyError,
@@ -73,6 +76,9 @@ __all__ = [
     "ORDERABLE_PROVIDER_IDS",
     "POLICY_ENV_NAMES",
     "PROVIDERS",
+    "PROVIDER_CHAIN_EXHAUSTED_CODE",
+    "PROVIDER_RATE_LIMIT_CODE",
+    "PROVIDER_UNAVAILABLE_CODE",
     "ROUTES",
     "ApplicationSpec",
     "ApplicationPolicyConfig",

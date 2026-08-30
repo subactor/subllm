@@ -14,7 +14,12 @@ from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
-from .errors import CompletionError
+from .errors import (
+    PROVIDER_CHAIN_EXHAUSTED_CODE,
+    PROVIDER_RATE_LIMIT_CODE,
+    PROVIDER_UNAVAILABLE_CODE,
+    CompletionError,
+)
 from .health import order_by_health, record_failure, record_success
 from .policy_config import load_policy_config
 from .resolver import available_routes, configured_routes
@@ -30,6 +35,7 @@ class CompletionAttempt:
     model: str
     outcome: str
     duration_ms: int
+    diagnostic_code: str | None = None
 
 
 @dataclass(frozen=True)
@@ -55,6 +61,12 @@ class _RetryableAttemptError(CompletionError):
         super().__init__(message)
         self.outcome = outcome
         self.provider_level = provider_level
+
+
+def _attempt_diagnostic_code(outcome: str) -> str:
+    if outcome == "http_429":
+        return PROVIDER_RATE_LIMIT_CODE
+    return PROVIDER_UNAVAILABLE_CODE
 
 
 def _completion_url(api_base: str) -> str:
@@ -368,7 +380,13 @@ def complete(
             )
         except _RetryableAttemptError as exc:
             duration = time.monotonic() - attempt_started
-            attempts.append(CompletionAttempt(route.provider, route.wire_model, exc.outcome, round(duration * 1000)))
+            attempts.append(CompletionAttempt(
+                route.provider,
+                route.wire_model,
+                exc.outcome,
+                round(duration * 1000),
+                _attempt_diagnostic_code(exc.outcome),
+            ))
             record_failure(
                 route.provider,
                 reason=exc.outcome,
@@ -379,7 +397,10 @@ def complete(
                 failed_providers.add(route.provider)
             last_error = exc
             if not execution.failover_enabled:
-                raise CompletionError(str(exc)) from exc
+                raise CompletionError(
+                    str(exc),
+                    diagnostic_code=_attempt_diagnostic_code(exc.outcome),
+                ) from exc
             continue
         duration = time.monotonic() - attempt_started
         attempts.append(CompletionAttempt(route.provider, route.wire_model, "success", round(duration * 1000)))
@@ -392,7 +413,10 @@ def complete(
     if not summary:
         summary = "total_timeout"
     message = f"all bounded candidates failed for {application}/{function}: {summary}"
-    raise CompletionError(message) from last_error
+    raise CompletionError(
+        message,
+        diagnostic_code=PROVIDER_CHAIN_EXHAUSTED_CODE,
+    ) from last_error
 
 
 def execute_code_edit(

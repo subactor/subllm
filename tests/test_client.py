@@ -8,7 +8,16 @@ from urllib.error import HTTPError
 
 import pytest
 
-from subllm import CompletionError, client, complete, execute_code_edit, provider_health
+from subllm import (
+    PROVIDER_CHAIN_EXHAUSTED_CODE,
+    PROVIDER_RATE_LIMIT_CODE,
+    PROVIDER_UNAVAILABLE_CODE,
+    CompletionError,
+    client,
+    complete,
+    execute_code_edit,
+    provider_health,
+)
 from subllm.client import CodeEditResponse, code_edit_main
 
 
@@ -321,6 +330,10 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
     assert result.provider == "openrouter"
     assert result.model == "z-ai/glm-5.3"
     assert [attempt.outcome for attempt in result.attempts] == ["timeout", "success"]
+    assert [attempt.diagnostic_code for attempt in result.attempts] == [
+        PROVIDER_UNAVAILABLE_CODE,
+        None,
+    ]
     assert providers == [
         "https://api.z.ai/api/coding/paas/v4/chat/completions",
         "https://openrouter.ai/api/v1/chat/completions",
@@ -328,6 +341,62 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
     zai = next(receipt for receipt in provider_health() if receipt.provider == "zai")
     assert zai.status == "degraded"
     assert zai.reason == "timeout"
+
+
+def test_complete_codes_rate_limit_before_successful_failover(monkeypatch) -> None:
+    providers: list[str] = []
+
+    def open_request(request, *, timeout):
+        providers.append(request.full_url)
+        if "api.z.ai" in request.full_url:
+            raise HTTPError(request.full_url, 429, "rate limited", {}, None)
+        return _Response(
+            {"choices": [{"message": {"content": "fallback"}, "finish_reason": "stop"}]}
+        )
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    result = complete(
+        "todo2code",
+        "semantic",
+        [{"role": "user", "content": "classify"}],
+        timeout_seconds=20,
+        environ={
+            "ZAI_API_KEY": "id.secret",
+            "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+        },
+    )
+
+    assert result.provider == "openrouter"
+    assert [attempt.diagnostic_code for attempt in result.attempts] == [
+        PROVIDER_RATE_LIMIT_CODE,
+        None,
+    ]
+    assert len(providers) == 2
+
+
+def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
+    calls = 0
+
+    def open_request(request, *, timeout):
+        nonlocal calls
+        calls += 1
+        raise TimeoutError("simulated provider outage")
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    with pytest.raises(CompletionError, match="all bounded candidates failed") as raised:
+        complete(
+            "todo2code",
+            "semantic",
+            [{"role": "user", "content": "classify"}],
+            timeout_seconds=20,
+            environ={
+                "ZAI_API_KEY": "id.secret",
+                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+            },
+        )
+
+    assert raised.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
+    assert calls == 2
 
 
 def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
