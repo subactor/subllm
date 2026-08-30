@@ -250,8 +250,8 @@ def test_cursor_worker_timeout_terminates_the_process_group(monkeypatch, tmp_pat
     assert observed == [(4312, signal.SIGTERM), (4312, signal.SIGKILL)]
 
 
-@pytest.mark.skipif(os.name != "posix", reason="process-group receipt is POSIX-specific")
 def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> None:
+    assert os.name == "posix", "the governed completion runtime requires POSIX process groups"
     child_pid_file = tmp_path / "cursor-child.pid"
     source_root = Path(client.__file__).resolve().parents[1]
     fixture_root = Path(__file__).resolve().parent / "fixtures" / "hanging_cursor_sdk"

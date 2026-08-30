@@ -45,13 +45,14 @@ def _execute(request: Mapping[str, Any]) -> Mapping[str, Any]:
             "provider cursor requires the optional dependency 'subactor-subllm[cursor]'"
         ) from exc
 
-    options = AgentOptions(
-        model=request["model"],
-        api_key=request["api_key"],
-        local=LocalAgentOptions(cwd=request["cwd"], setting_sources=[]),
-        tools=[],
-        name=request["name"],
-    )
+    option_values = {
+        "model": request["model"],
+        "api_key": request["api_key"],
+        "local": LocalAgentOptions(cwd=request["cwd"], setting_sources=[]),
+        "tools": [],
+        "name": request["name"],
+    }
+    options = AgentOptions(**option_values)
     try:
         with Agent.create(options) as agent:
             result = agent.send(request["prompt"]).wait()
