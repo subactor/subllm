@@ -1,14 +1,85 @@
 from __future__ import annotations
 
+import ctypes
 import json
+import os
+import signal
 import sys
+import time
 from collections.abc import Mapping
+from contextlib import suppress
 from dataclasses import asdict
+from pathlib import Path
 from typing import Any
 
 from .errors import CompletionError
 
 MAX_CURSOR_WORKER_REQUEST_BYTES = 4_000_000
+_PR_SET_CHILD_SUBREAPER = 36
+_GRACEFUL_REAP_SECONDS = 0.25
+_FORCED_REAP_SECONDS = 0.5
+
+
+def _enable_child_subreaper() -> None:
+    """Keep orphaned SDK descendants owned by this isolated worker on Linux."""
+    if sys.platform != "linux":
+        return
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        prctl = libc.prctl
+        prctl.argtypes = (
+            ctypes.c_int,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+            ctypes.c_ulong,
+        )
+        prctl.restype = ctypes.c_int
+        result = prctl(_PR_SET_CHILD_SUBREAPER, 1, 0, 0, 0)
+    except (AttributeError, OSError) as exc:
+        raise CompletionError("Cursor worker could not enable child reaping") from exc
+    if result != 0:
+        raise CompletionError("Cursor worker could not enable child reaping")
+
+
+def _reap_exited_children() -> bool:
+    """Reap exited direct/adopted children and report whether any remain."""
+    while True:
+        try:
+            child_pid, _status = os.waitpid(-1, os.WNOHANG)
+        except ChildProcessError:
+            return False
+        if child_pid == 0:
+            return True
+
+
+def _direct_child_pids() -> tuple[int, ...]:
+    try:
+        encoded = Path(f"/proc/self/task/{os.getpid()}/children").read_text(
+            encoding="ascii"
+        )
+    except OSError:
+        return ()
+    return tuple(int(value) for value in encoded.split())
+
+
+def _terminate_and_reap_children(signum: int, _frame: Any) -> None:
+    """Finish group termination without leaving daemon-owned zombie children."""
+    graceful_deadline = time.monotonic() + _GRACEFUL_REAP_SECONDS
+    while time.monotonic() < graceful_deadline:
+        if not _reap_exited_children():
+            raise SystemExit(128 + signum)
+        time.sleep(0.01)
+
+    forced_deadline = time.monotonic() + _FORCED_REAP_SECONDS
+    while time.monotonic() < forced_deadline:
+        for child_pid in _direct_child_pids():
+            with suppress(ProcessLookupError):
+                os.kill(child_pid, signal.SIGKILL)
+        if not _reap_exited_children():
+            raise SystemExit(128 + signum)
+        time.sleep(0.01)
+    raise SystemExit(128 + signum)
 
 
 def _request(source: Any) -> Mapping[str, Any]:
@@ -74,6 +145,9 @@ def _execute(request: Mapping[str, Any]) -> Mapping[str, Any]:
 
 def main() -> int:
     try:
+        _enable_child_subreaper()
+        if os.name == "posix":
+            signal.signal(signal.SIGTERM, _terminate_and_reap_children)
         encoded = sys.stdin.buffer.read(MAX_CURSOR_WORKER_REQUEST_BYTES + 1)
         if len(encoded) > MAX_CURSOR_WORKER_REQUEST_BYTES:
             raise CompletionError("Cursor worker request exceeds 4000000 bytes")

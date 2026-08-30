@@ -1,0 +1,12 @@
+{
+  "schema": "wellmanifest.logs/adopter-error-catalog/v1",
+  "namespace": "SUBLLM",
+  "contractSha256": "916ccdd3a6f499b160b631da09a6a060233105e907f5582c12d8eaecae92e2eb",
+  "errorsDirectory": "errors",
+  "diagnosticCodes": [
+    "SUBLLM-CURSOR-WORKER-TIMEOUT",
+    "SUBLLM-PROVIDER-CHAIN-EXHAUSTED",
+    "SUBLLM-PROVIDER-RATE-LIMIT",
+    "SUBLLM-PROVIDER-UNAVAILABLE"
+  ]
+}
