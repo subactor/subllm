@@ -174,6 +174,10 @@ def _policy_file(
                 'name = "vql"',
                 'url = "https://github.com/autogrammar/vql"',
                 "",
+                '[applications.twinstudio]',
+                'name = "TwinStudio"',
+                'url = "https://github.com/subactor/twinstudio"',
+                "",
                 '[applications.platform]',
                 'name = "Subactor Platform"',
                 'url = "https://github.com/subactor/platform"',
@@ -204,6 +208,7 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["openrouter"].priority == 30
     assert policy.providers["openrouter"].default_model == "glm-5.2"
     assert policy.applications["platform"].name == "Subactor Platform"
+    assert policy.applications["twinstudio"].url == "https://github.com/subactor/twinstudio"
     assert policy.applications["szeptnik-one"].name == "Szeptnik One"
     assert policy.applications["semcod-nfo"].url == "https://github.com/semcod/nfo"
     assert policy.applications["semcod-pfix"].url == "https://github.com/semcod/pfix"
@@ -221,6 +226,7 @@ def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> 
     assert policy.providers["cursor"].priority == 20
     assert policy.providers["openrouter"].priority == 30
     assert policy.applications["todo2code"].url == "https://github.com/autogrammar/todo2code"
+    assert policy.applications["twinstudio"].name == "TwinStudio"
     assert [(route.provider, route.model) for route in configured_routes("semcod-nfo", "analyze")][0] == (
         "zai",
         "glm-5.3",
