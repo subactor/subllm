@@ -110,7 +110,7 @@ def test_import_rejects_conflicting_sources_without_creating_target(tmp_path: Pa
 
 
 def test_credential_names_include_cursor_sdk_key() -> None:
-    assert credential_names() == (CURSOR_API_KEY_ENV, "ZAI_API_KEY", "OPENROUTER_API_KEY")
+    assert set(credential_names()) == {"ZAI_API_KEY", "GEMINI_API_KEY", "OPENAI_API_KEY", "ANTHROPIC_API_KEY", "CURSOR_API_KEY", "OLLAMA_API_KEY", "OPENROUTER_API_KEY"}
     assert CURSOR_API_KEY_ENV == "CURSOR_API_KEY"
 
 
