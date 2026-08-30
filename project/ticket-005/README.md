@@ -24,3 +24,5 @@ execution surface. Tracking issue: https://github.com/subactor/subllm/issues/29
 - [x] The full SubLLM verification suite passes.
 - [x] A bounded CLI accepts only the declared completion request fields and
       emits a secret-free provider/model/attempt receipt.
+- [x] The local verification gate cannot skip Python files merely because its
+      worktree is nested below a gitignored workspace directory.

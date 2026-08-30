@@ -4,7 +4,7 @@ from collections.abc import Mapping
 
 from .credential_env import credential_is_valid, merged_environment
 from .errors import InvalidPolicyError
-from .policy import CURSOR_API_KEY_ENV, ORDERABLE_PROVIDER_IDS, PROVIDERS, SUBLLM_PROVIDER_ORDER
+from .policy import ORDERABLE_PROVIDER_IDS, PROVIDERS, SUBLLM_PROVIDER_ORDER
 
 
 def parse_provider_order(raw: str) -> tuple[str, ...]:
