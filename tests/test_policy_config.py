@@ -299,6 +299,45 @@ max_attempts = 6
         load_policy_config()
 
 
+def test_runtime_environment_can_raise_bounded_attempt_deadline() -> None:
+    root = Path(__file__).resolve().parents[1]
+
+    policy = load_policy_config(
+        environ={
+            "SUBLLM_ATTEMPT_TIMEOUT_SECONDS": "30",
+            "SUBLLM_SLOW_RESPONSE_SECONDS": "20",
+        },
+        cwd=root,
+    )
+
+    assert policy.execution.attempt_timeout_seconds == 30.0
+    assert policy.execution.slow_response_seconds == 20.0
+    assert policy.execution.max_attempts == 6
+    assert policy.source == root / "subllm.toml"
+
+
+@pytest.mark.parametrize(
+    ("environ", "message"),
+    (
+        ({"SUBLLM_ATTEMPT_TIMEOUT_SECONDS": "not-a-number"}, "must be a number"),
+        ({"SUBLLM_ATTEMPT_TIMEOUT_SECONDS": "0"}, "must be from"),
+        (
+            {
+                "SUBLLM_ATTEMPT_TIMEOUT_SECONDS": "15",
+                "SUBLLM_SLOW_RESPONSE_SECONDS": "20",
+            },
+            "must not exceed",
+        ),
+    ),
+)
+def test_invalid_runtime_execution_override_fails_closed(
+    environ: dict[str, str],
+    message: str,
+) -> None:
+    with pytest.raises(InvalidPolicyError, match=message):
+        load_policy_config(environ=environ, cwd=Path(__file__).resolve().parents[1])
+
+
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     policy = _policy_file(
         tmp_path / "subllm.toml",

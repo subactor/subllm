@@ -1,0 +1,3 @@
+2026-08-30T17:55:00Z Live Supervisor readback proved 12-second process deadlines terminate and reap ZAI, Cursor and OpenRouter attempts, but all three structured assessment attempts exceeded that threshold.
+2026-08-30T17:55:00Z Added closed numeric overrides while preserving sequential failover, catalog ownership and the caller total budget.
+2026-08-30T17:57:00Z Ruff, compileall, 203 tests, wheel and sdist verification passed.

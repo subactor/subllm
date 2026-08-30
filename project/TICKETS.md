@@ -15,5 +15,6 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | ticket-005 | Add zero-dependency OpenAI-compatible SubLLM client | IN_PROGRESS / PUBLICATION | application |
 | ticket-006 | Bound Cursor SDK completion process trees | IN_PROGRESS / PUBLICATION | runtime |
 | ticket-007 | Enforce wall-clock OpenAI-compatible attempt deadlines | IN_PROGRESS / PUBLICATION | runtime |
+| ticket-008 | Allow bounded runtime tuning of attempt deadlines | IN_PROGRESS / PUBLICATION | runtime |
 | ticket-010 | Register semcod/prellm routes for direct Z.AI GLM 5.3 | IN_PROGRESS | routing |
 | ticket-012 | Release SubLLM 1.4.1 with PreLLM routes | IN_PROGRESS | release |

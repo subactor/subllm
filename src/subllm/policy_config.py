@@ -12,6 +12,8 @@ from .errors import InvalidPolicyError
 from .policy import APPLICATIONS, MODELS, PROVIDERS
 
 SUBLLM_POLICY_FILE = "SUBLLM_POLICY_FILE"
+SUBLLM_ATTEMPT_TIMEOUT_SECONDS = "SUBLLM_ATTEMPT_TIMEOUT_SECONDS"
+SUBLLM_SLOW_RESPONSE_SECONDS = "SUBLLM_SLOW_RESPONSE_SECONDS"
 
 
 @dataclass(frozen=True)
@@ -72,6 +74,53 @@ _EXECUTION_DEFAULTS = ExecutionPolicyConfig(
     failure_threshold=1,
     max_attempts=6,
 )
+
+
+def _environment_number(
+    environment: Mapping[str, str],
+    name: str,
+    default: float,
+) -> float:
+    raw = environment.get(name)
+    if raw is None:
+        return default
+    try:
+        value = float(raw)
+    except (TypeError, ValueError) as exc:
+        raise InvalidPolicyError(f"runtime {name} must be a number") from exc
+    if not 0.1 <= value <= 3600.0:
+        raise InvalidPolicyError(f"runtime {name} must be from 0.1 to 3600")
+    return value
+
+
+def _execution_with_environment(
+    execution: ExecutionPolicyConfig,
+    environ: Mapping[str, str] | None,
+) -> ExecutionPolicyConfig:
+    environment = os.environ if environ is None else environ
+    attempt_timeout = _environment_number(
+        environment,
+        SUBLLM_ATTEMPT_TIMEOUT_SECONDS,
+        execution.attempt_timeout_seconds,
+    )
+    slow_response = _environment_number(
+        environment,
+        SUBLLM_SLOW_RESPONSE_SECONDS,
+        execution.slow_response_seconds,
+    )
+    if slow_response > attempt_timeout:
+        raise InvalidPolicyError(
+            f"runtime {SUBLLM_SLOW_RESPONSE_SECONDS} must not exceed "
+            f"{SUBLLM_ATTEMPT_TIMEOUT_SECONDS}"
+        )
+    return ExecutionPolicyConfig(
+        failover_enabled=execution.failover_enabled,
+        attempt_timeout_seconds=attempt_timeout,
+        slow_response_seconds=slow_response,
+        cooldown_seconds=execution.cooldown_seconds,
+        failure_threshold=execution.failure_threshold,
+        max_attempts=execution.max_attempts,
+    )
 
 
 def find_policy_file(
@@ -237,7 +286,7 @@ def load_policy_config(
         return RuntimePolicyConfig(
             providers=_DEFAULTS,
             applications=_APPLICATION_DEFAULTS,
-            execution=_EXECUTION_DEFAULTS,
+            execution=_execution_with_environment(_EXECUTION_DEFAULTS, environ),
         )
     try:
         with source.open("rb") as handle:
@@ -269,13 +318,14 @@ def load_policy_config(
     enabled_priorities = [settings.priority for settings in providers.values() if settings.enabled]
     if len(enabled_priorities) != len(set(enabled_priorities)):
         raise InvalidPolicyError(f"enabled providers must have unique priorities in {source}")
+    execution = (
+        _validate_execution(raw["execution"], source=source)
+        if schema_version == 3
+        else _EXECUTION_DEFAULTS
+    )
     return RuntimePolicyConfig(
         providers=MappingProxyType(providers),
         applications=MappingProxyType(applications),
-        execution=(
-            _validate_execution(raw["execution"], source=source)
-            if schema_version == 3
-            else _EXECUTION_DEFAULTS
-        ),
+        execution=_execution_with_environment(execution, environ),
         source=source,
     )
