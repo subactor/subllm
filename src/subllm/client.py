@@ -13,8 +13,6 @@ from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
-from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
 
 from .errors import (
     CURSOR_WORKER_TIMEOUT_CODE,
@@ -31,6 +29,7 @@ from .types import ResolvedRoute
 MAX_VISION_DATA_URL_CHARS = 4_000_000
 MAX_COMPLETION_REQUEST_BYTES = 1_000_000
 MAX_CURSOR_WORKER_RESULT_BYTES = 1_000_000
+MAX_OPENAI_WORKER_RESULT_BYTES = 1_000_000
 _IMAGE_URL_PREFIXES = ("data:image/", "https://")
 
 
@@ -79,32 +78,6 @@ def _attempt_diagnostic_code(outcome: str) -> str:
     if outcome == "http_429":
         return PROVIDER_RATE_LIMIT_CODE
     return PROVIDER_UNAVAILABLE_CODE
-
-
-def _completion_url(api_base: str) -> str:
-    return f"{api_base.rstrip('/')}/chat/completions"
-
-
-def _decode_response(payload: bytes, *, provider: str, model: str) -> CompletionResponse:
-    try:
-        raw = json.loads(payload.decode("utf-8"))
-        choice = raw["choices"][0]
-        content = choice["message"]["content"]
-    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError) as exc:
-        raise CompletionError(
-            f"{provider}/{model} returned an invalid chat completion response"
-        ) from exc
-    if not isinstance(content, str) or not content:
-        raise CompletionError(f"{provider}/{model} returned empty assistant content")
-    usage = raw.get("usage")
-    return CompletionResponse(
-        content=content,
-        provider=provider,
-        model=model,
-        usage=dict(usage) if isinstance(usage, Mapping) else {},
-        finish_reason=str(choice.get("finish_reason") or ""),
-        raw=raw,
-    )
 
 
 def _image_url(part: Mapping[str, Any]) -> str:
@@ -156,8 +129,8 @@ def _message_text(messages: Sequence[Mapping[str, Any]]) -> str:
     return "\n\n".join(rendered)
 
 
-def _terminate_cursor_worker(process: subprocess.Popen[bytes]) -> None:
-    """Terminate the isolated worker and every Cursor bridge descendant."""
+def _terminate_worker_process_group(process: subprocess.Popen[bytes]) -> None:
+    """Terminate an isolated attempt worker and every descendant."""
     try:
         if os.name == "posix":
             os.killpg(process.pid, signal.SIGTERM)
@@ -197,7 +170,7 @@ def _run_cursor_worker(
     try:
         output, _ = process.communicate(input=encoded, timeout=timeout_seconds)
     except subprocess.TimeoutExpired as exc:
-        _terminate_cursor_worker(process)
+        _terminate_worker_process_group(process)
         raise CompletionError(
             f"Cursor SDK worker timed out after {timeout_seconds:g}s",
             diagnostic_code=CURSOR_WORKER_TIMEOUT_CODE,
@@ -266,56 +239,134 @@ def _complete_openai_compatible(
     request_id: str | None,
     response_format: Mapping[str, Any] | None,
 ) -> CompletionResponse:
-    body: dict[str, Any] = {
-        "model": route.wire_model,
-        "messages": [dict(message) for message in messages],
-        **dict(route.model_parameters),
-        **route.provider_request_fields(request_id=request_id),
-    }
-    if response_format is not None:
-        body["response_format"] = dict(response_format)
-    request = Request(
-        _completion_url(route.api_base),
-        data=json.dumps(body, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),
-        headers={
-            "Authorization": f"Bearer {route.api_key}",
-            "Content-Type": "application/json",
-            **dict(route.extra_headers),
+    result = _run_openai_worker(
+        {
+            "schema": "subllm.openai-worker-request/v1",
+            "provider": route.provider,
+            "api_base": route.api_base,
+            "wire_model": route.wire_model,
+            "api_key": route.api_key,
+            "messages": [dict(message) for message in messages],
+            "model_parameters": dict(route.model_parameters),
+            "request_fields": dict(route.provider_request_fields(request_id=request_id)),
+            "extra_headers": dict(route.extra_headers),
+            "response_format": dict(response_format) if response_format is not None else None,
         },
-        method="POST",
+        timeout_seconds=timeout_seconds,
+    )
+    if result["status"] == "ERROR":
+        outcome = str(result["outcome"])
+        status = outcome.removeprefix("http_") if outcome.startswith("http_") else ""
+        message = (
+            f"{route.provider}/{route.wire_model} request failed with HTTP {status}"
+            if status
+            else f"{route.provider}/{route.wire_model} request failed: {outcome}"
+        )
+        if not result["retryable"]:
+            raise CompletionError(message)
+        raise _RetryableAttemptError(
+            message,
+            outcome=outcome,
+            provider_level=bool(result["provider_level"]),
+        )
+    return CompletionResponse(
+        content=str(result["content"]),
+        provider=route.provider,
+        model=route.wire_model,
+        usage=dict(result["usage"]),
+        finish_reason=str(result["finish_reason"]),
+    )
+
+
+def _run_openai_worker(
+    request: Mapping[str, Any],
+    *,
+    timeout_seconds: float,
+) -> Mapping[str, Any]:
+    encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
+        [sys.executable, "-m", "subllm.openai_worker"],
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
     )
     try:
-        with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - fixed policy HTTPS base
-            payload = response.read()
-    except HTTPError as exc:
-        message = f"{route.provider}/{route.wire_model} request failed with HTTP {exc.code}"
-        if exc.code in {401, 403, 408, 409, 425, 429} or exc.code >= 500:
-            raise _RetryableAttemptError(
-                message,
-                outcome=f"http_{exc.code}",
-                provider_level=exc.code != 404,
-            ) from exc
-        if exc.code == 404:
-            raise _RetryableAttemptError(
-                message,
-                outcome="model_unavailable",
-                provider_level=False,
-            ) from exc
-        raise CompletionError(message) from exc
-    except (TimeoutError, URLError, OSError) as exc:
-        outcome = "timeout" if isinstance(exc, TimeoutError) else "transport_error"
+        output, _ = process.communicate(input=encoded, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        _terminate_worker_process_group(process)
         raise _RetryableAttemptError(
-            f"{route.provider}/{route.wire_model} request failed: {type(exc).__name__}",
-            outcome=outcome,
+            f"OpenAI-compatible worker timed out after {timeout_seconds:g}s",
+            outcome="timeout",
         ) from exc
-    try:
-        return _decode_response(payload, provider=route.provider, model=route.wire_model)
-    except CompletionError as exc:
+    if process.returncode != 0:
+        raise _RetryableAttemptError("OpenAI-compatible worker failed", outcome="transport_error")
+    if len(output) > MAX_OPENAI_WORKER_RESULT_BYTES:
         raise _RetryableAttemptError(
-            str(exc),
+            "OpenAI-compatible worker result exceeds 1000000 bytes",
+            outcome="invalid_response",
+            provider_level=False,
+        )
+    try:
+        result = json.loads(output.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise _RetryableAttemptError(
+            "OpenAI-compatible worker returned invalid JSON",
             outcome="invalid_response",
             provider_level=False,
         ) from exc
+    success_fields = {"schema", "status", "content", "usage", "finish_reason"}
+    error_fields = {"schema", "status", "outcome", "provider_level", "retryable"}
+    if not isinstance(result, Mapping) or set(result) not in (success_fields, error_fields):
+        raise _RetryableAttemptError(
+            "OpenAI-compatible worker returned an invalid result",
+            outcome="invalid_response",
+            provider_level=False,
+        )
+    if result.get("schema") != "subllm.openai-worker-result/v1":
+        raise _RetryableAttemptError(
+            "OpenAI-compatible worker result schema is not supported",
+            outcome="invalid_response",
+            provider_level=False,
+        )
+    if result.get("status") == "SUCCESS":
+        if not isinstance(result.get("content"), str) or not result["content"]:
+            raise _RetryableAttemptError(
+                "OpenAI-compatible worker returned empty content",
+                outcome="invalid_response",
+                provider_level=False,
+            )
+        if not isinstance(result.get("usage"), Mapping):
+            raise _RetryableAttemptError(
+                "OpenAI-compatible worker returned invalid usage",
+                outcome="invalid_response",
+                provider_level=False,
+            )
+        if not isinstance(result.get("finish_reason"), str):
+            raise _RetryableAttemptError(
+                "OpenAI-compatible worker returned invalid finish reason",
+                outcome="invalid_response",
+                provider_level=False,
+            )
+    elif result.get("status") == "ERROR":
+        if (
+            not isinstance(result.get("outcome"), str)
+            or not result["outcome"]
+            or type(result.get("provider_level")) is not bool
+            or type(result.get("retryable")) is not bool
+        ):
+            raise _RetryableAttemptError(
+                "OpenAI-compatible worker returned invalid error evidence",
+                outcome="invalid_response",
+                provider_level=False,
+            )
+    else:
+        raise _RetryableAttemptError(
+            "OpenAI-compatible worker returned invalid status",
+            outcome="invalid_response",
+            provider_level=False,
+        )
+    return result
 
 
 def _complete_route(
