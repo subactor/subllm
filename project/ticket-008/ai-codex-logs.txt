@@ -1,3 +1,5 @@
 2026-08-30T17:55:00Z Live Supervisor readback proved 12-second process deadlines terminate and reap ZAI, Cursor and OpenRouter attempts, but all three structured assessment attempts exceeded that threshold.
 2026-08-30T17:55:00Z Added closed numeric overrides while preserving sequential failover, catalog ownership and the caller total budget.
 2026-08-30T17:57:00Z Ruff, compileall, 203 tests, wheel and sdist verification passed.
+2026-08-30T18:00:08Z Validator approved exact head 6fee19d4c6914f8d42c5ac2793086847a71cce68 and merged PR #37 as 3d77edd38d9d042b6e604d40df565c76f75a554c.
+2026-08-30T18:12:37Z Immutable live readback with attempt=30s/slow=20s produced three Cursor assessments, completion ready=true/lastOutcome=success, and no idle residual workers.
