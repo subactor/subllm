@@ -12,7 +12,17 @@ from types import SimpleNamespace
 
 import pytest
 
-from subllm import CompletionError, client, complete, execute_code_edit, provider_health
+from subllm import (
+    CURSOR_WORKER_TIMEOUT_CODE,
+    PROVIDER_CHAIN_EXHAUSTED_CODE,
+    PROVIDER_RATE_LIMIT_CODE,
+    PROVIDER_UNAVAILABLE_CODE,
+    CompletionError,
+    client,
+    complete,
+    execute_code_edit,
+    provider_health,
+)
 from subllm.client import (
     CodeEditResponse,
     CompletionAttempt,
@@ -227,13 +237,14 @@ def test_cursor_worker_timeout_terminates_the_process_group(monkeypatch, tmp_pat
     monkeypatch.setattr(client.subprocess, "Popen", lambda *_args, **_kwargs: process)
     monkeypatch.setattr(client.os, "killpg", lambda pid, sig: observed.append((pid, sig)))
 
-    with pytest.raises(CompletionError, match="worker timed out"):
+    with pytest.raises(CompletionError, match="worker timed out") as raised:
         client._run_cursor_worker(
             {"schema": "subllm.cursor-worker-request/v1"},
             timeout_seconds=0.1,
             cwd=tmp_path,
         )
 
+    assert raised.value.diagnostic_code == CURSOR_WORKER_TIMEOUT_CODE
     assert observed == [(4312, signal.SIGTERM), (4312, signal.SIGKILL)]
 
 
@@ -245,7 +256,7 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
     monkeypatch.setenv("PYTHONPATH", os.pathsep.join((str(fixture_root), str(source_root))))
     monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
 
-    with pytest.raises(CompletionError, match="worker timed out"):
+    with pytest.raises(CompletionError, match="worker timed out") as raised:
         client._run_cursor_worker(
             {
                 "schema": "subllm.cursor-worker-request/v1",
@@ -259,6 +270,7 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
             cwd=tmp_path,
         )
 
+    assert raised.value.diagnostic_code == CURSOR_WORKER_TIMEOUT_CODE
     child_pid = int(child_pid_file.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 2
     while time.monotonic() < deadline and _process_is_running(child_pid):
@@ -368,6 +380,10 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
     assert result.provider == "openrouter"
     assert result.model == "z-ai/glm-5.3"
     assert [attempt.outcome for attempt in result.attempts] == ["timeout", "success"]
+    assert [attempt.diagnostic_code for attempt in result.attempts] == [
+        PROVIDER_UNAVAILABLE_CODE,
+        None,
+    ]
     assert providers == [
         "https://api.z.ai/api/coding/paas/v4",
         "https://openrouter.ai/api/v1",
@@ -375,6 +391,72 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
     zai = next(receipt for receipt in provider_health() if receipt.provider == "zai")
     assert zai.status == "degraded"
     assert zai.reason == "timeout"
+
+
+def test_complete_codes_rate_limit_before_successful_failover(monkeypatch) -> None:
+    providers: list[str] = []
+
+    def run_worker(request, **_kwargs):
+        providers.append(request["api_base"])
+        if request["provider"] == "zai":
+            return {
+                "schema": "subllm.openai-worker-result/v1",
+                "status": "ERROR",
+                "outcome": "http_429",
+                "provider_level": True,
+                "retryable": True,
+            }
+        return _worker_success("fallback")
+
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    result = complete(
+        "todo2code",
+        "semantic",
+        [{"role": "user", "content": "classify"}],
+        timeout_seconds=20,
+        environ={
+            "ZAI_API_KEY": "id.secret",
+            "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+        },
+    )
+
+    assert result.provider == "openrouter"
+    assert [attempt.diagnostic_code for attempt in result.attempts] == [
+        PROVIDER_RATE_LIMIT_CODE,
+        None,
+    ]
+    assert len(providers) == 2
+
+
+def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
+    calls = 0
+
+    def run_worker(_request, **_kwargs):
+        nonlocal calls
+        calls += 1
+        return {
+            "schema": "subllm.openai-worker-result/v1",
+            "status": "ERROR",
+            "outcome": "timeout",
+            "provider_level": True,
+            "retryable": True,
+        }
+
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    with pytest.raises(CompletionError, match="all bounded candidates failed") as raised:
+        complete(
+            "todo2code",
+            "semantic",
+            [{"role": "user", "content": "classify"}],
+            timeout_seconds=20,
+            environ={
+                "ZAI_API_KEY": "id.secret",
+                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+            },
+        )
+
+    assert raised.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
+    assert calls == 2
 
 
 def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
@@ -545,7 +627,13 @@ def test_completion_cli_executes_policy_transport_and_emits_attempt_receipt(
             model="gpt-5.6-sol",
             usage={"total_tokens": 7},
             finish_reason="stop",
-            attempts=(CompletionAttempt("zai", "glm-5.3", "http_429", 12),),
+            attempts=(CompletionAttempt(
+                "zai",
+                "glm-5.3",
+                "http_429",
+                12,
+                PROVIDER_RATE_LIMIT_CODE,
+            ),),
         )
 
     monkeypatch.setattr(client, "complete", run_complete)
@@ -560,7 +648,13 @@ def test_completion_cli_executes_policy_transport_and_emits_attempt_receipt(
         "usage": {"total_tokens": 7},
         "finish_reason": "stop",
         "attempts": [
-            {"provider": "zai", "model": "glm-5.3", "outcome": "http_429", "duration_ms": 12}
+            {
+                "provider": "zai",
+                "model": "glm-5.3",
+                "outcome": "http_429",
+                "duration_ms": 12,
+                "diagnostic_code": PROVIDER_RATE_LIMIT_CODE,
+            }
         ],
     }
     assert observed == {
