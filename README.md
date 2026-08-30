@@ -20,17 +20,16 @@ LLM strategies are assigned by **API-key source** (ADOPT
 | Credential | Provider | Transport | Default model |
 | --- | --- | --- | --- |
 | `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` |
-| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.2` |
+| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.3` |
 | `OPENROUTER_API_KEY` | `openrouter` | OpenAI-compatible | `glm-5.2` |
 
 `gpt-5.6-sol` is Cursor-only. OpenRouter never claims Sol as
 `openai/gpt-5.6-sol`. Missing keys fail closed for that strategy; routes then
 continue with later candidates.
 
-Koru is intentionally stricter than the shared default route. Its
-`planning-assistant` and `queue-executor` routes allow only Cursor
-`grok-4.6` with `effort=xhigh` and `fast=false`; they do not fall back to
-OpenRouter, Z.AI, Sol, or a different Cursor preset.
+Koru planning, queue, reflection and DSL routes use the shared declared
+Z.AI → Cursor → OpenRouter chain. Runtime health may reorder only candidates
+already present in each exact route.
 
 Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
 and route definitions live in `src/subllm/policy.py`. See
@@ -96,17 +95,17 @@ Edit the tracked [`subllm.toml`](subllm.toml) file:
 ```toml
 [providers.cursor]
 enabled = true
-priority = 0
+priority = 20
 default_model = "gpt-5.6-sol"
 
 [providers.zai]
 enabled = true
-priority = 10
-default_model = "glm-5.2"
+priority = 0
+default_model = "glm-5.3"
 
 [providers.openrouter]
 enabled = true
-priority = 20
+priority = 30
 default_model = "glm-5.2"
 ```
 
@@ -117,9 +116,10 @@ route. Sibling projects discover this file automatically. Set
 ## Fallback chain
 
 `SUBLLM_PROVIDER_ORDER` is a comma-separated allowlist:
-`cursor`, `zai`, `openrouter`. Empty or unset uses the default:
+`zai`, `cursor`, `openrouter`. Empty or unset leaves ordering to the priorities
+in `subllm.toml`, currently:
 
-- `cursor,zai,openrouter` when `CURSOR_API_KEY` is set,
+- `zai,cursor,openrouter` when all three credentials are valid,
 - `zai,openrouter` when it is absent.
 
 Unknown names fail closed. `resolve()` returns `cursor` when that candidate
@@ -149,6 +149,9 @@ Health is process-local and self-recovers after cooldown; it is not durable
 authority. Operators can inspect `provider_health()` or clear it with
 `reset_provider_health()`.
 
+The full retry classification, ordering algorithm, response receipts and cost
+boundary are documented in [`docs/runtime-failover.md`](docs/runtime-failover.md).
+
 ## One local credential file
 
 ```bash
@@ -166,15 +169,16 @@ SUBLLM_PROVIDER_ORDER=
 ## Python API
 
 ```python
-from subllm import resolve
+from subllm import complete, provider_health
 
-route = resolve("repair-agent", "repair-plan")
-# wellmanifest/webpage site UX judgment:
-# route = resolve("platform", "site-audit")
-if route.provider == "cursor":
-    sdk = route.cursor_sdk_kwargs()
-else:
-    result = completion(**route.litellm_kwargs(), messages=[...])
+result = complete(
+    "repair-agent",
+    "repair-plan",
+    [{"role": "user", "content": "Prepare a repair plan"}],
+    timeout_seconds=30,
+)
+print(result.provider, result.model, result.attempts)
+print(provider_health())
 ```
 
 ## CLI
@@ -202,4 +206,5 @@ python -m pip install -e '.[test]'
 ./scripts/verify
 ```
 
-See `docs/architecture.md` and `docs/operations.md`.
+See `docs/architecture.md`, `docs/operations.md` and
+`docs/runtime-failover.md`.

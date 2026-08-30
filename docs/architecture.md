@@ -8,14 +8,17 @@ decide mutations or validate an agent's domain-specific response. The
 invoker exposes the same catalogs through CLI, shell and localhost HTTP
 as closed query/command processes. It does not add a generic shell.
 
-The library owns four immutable catalogs and one operator policy:
+The library owns four immutable catalogs, one operator policy and a
+process-local health projection:
 
 - providers: API base, credential environment name and transport metadata,
 - models: logical identity and exact provider-specific model names,
 - applications: stable identity and attribution URL,
 - routes: ordered candidates for one application/function pair.
 - `subllm.toml`: provider enablement, base priority, default logical model and
-  application display identity.
+  application display identity plus runtime failover thresholds,
+- health projection: recent provider failures, latency and cooldown expiry;
+  never a durable routing authority.
 
 For a normal local call, resolution merges the ignored workspace
 `subllm/.env` with the process environment. The process environment has higher
@@ -36,27 +39,43 @@ and CLI output.
 application + function -----> central route catalog
                                       |
 subllm.toml ----------------> enabled/priority/default model
+        |                     attempt/slow/cooldown/max-attempt limits
                                       |
-SUBLLM_PROVIDER_ORDER -------> cursor,zai,openrouter chain
+SUBLLM_PROVIDER_ORDER -------> explicit provider allowlist/order
                                       |
 subllm/.env < process env ---> credential availability
                                       |
                                       v
-                         resolved provider/model/base
+                         allowed provider/model candidates
+                                      |
+                         health-aware ordering
+                                      |
+                         bounded sequential attempts
                                       |
                            +----------+----------+
                            |                     |
                            v                     v
-                      LiteLLM kwargs       native HTTP/Aider
+                      Cursor SDK          OpenAI-compatible HTTP
 ```
 
 ## Provider failover
 
-Policy ordering and runtime retries are separate. `resolve()` chooses the first
-configured candidate. `available_routes()` returns every configured candidate
-in priority order for a caller that implements bounded provider failover.
-Subllm never retries a paid request by itself, avoiding duplicate side effects
-and hidden cost.
+Policy ordering and runtime execution are separate. `resolve()` remains a pure
+single-route resolver. `available_routes()` returns every credential-valid
+candidate in policy order. `complete()` may reorder only those candidates using
+process-local provider health and then execute bounded sequential attempts.
+
+Provider-level failures temporarily skip later models on the same provider.
+Model-level failures may advance to another declared model on that provider.
+Successful responses are never discarded: a response crossing the slow limit
+is returned to the caller and only affects future ordering. No speculative
+parallel calls are started. A timed-out remote request can still finish and be
+billed after the local connection is closed, so the behavior is resilient but
+cannot guarantee exactly-once provider billing.
+
+Mutable `execute_code_edit()` / Aider runs are excluded from replay because an
+interrupted process may already have changed the worktree. See the complete
+[runtime failover contract](runtime-failover.md).
 
 ## Provider-visible application identity
 

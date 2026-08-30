@@ -19,6 +19,13 @@
 - Runtime failover never adds a provider/model outside the exact route, never
   starts speculative parallel calls and does not replay mutable Aider edits.
 
+### Documentation
+
+- Add the exact runtime failure matrix, time-budget algorithm, health receipt
+  contract, cost caveat and operator examples.
+- Correct stale Z.AI defaults, provider priorities and statements that described
+  Cursor/OpenRouter as pre-request-only fallbacks.
+
 ## [1.8.1] - 2026-08-29
 
 ### Changed

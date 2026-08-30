@@ -24,23 +24,24 @@ How to force a model given a key source:
 ```toml
 [providers.cursor]
 enabled = true
-priority = 0
+priority = 20
 default_model = "gpt-5.6-sol"
 
 [providers.zai]
 enabled = true
-priority = 10
-default_model = "glm-5.2"
+priority = 0
+default_model = "glm-5.3"
 
 [providers.openrouter]
 enabled = true
-priority = 20
+priority = 30
 default_model = "glm-5.2"
 ```
 
-Lower numeric priority wins. Cursor Sol is never an OpenRouter wire id.
-`SUBLLM_PROVIDER_ORDER` defaults to `cursor,zai,openrouter` when
-`CURSOR_API_KEY` is set, otherwise `zai,openrouter`.
+Lower numeric priority wins. Cursor Sol is never an OpenRouter wire id. When
+`SUBLLM_PROVIDER_ORDER` is empty, the TOML priorities decide the route order.
+The variable is an explicit allowlist and ordering override; unknown or
+duplicate provider names fail closed.
 
 Resolution:
 
@@ -69,6 +70,21 @@ max_attempts = 6
 Use `provider_health()` for secret-free, process-local receipts. A response that
 crosses `slow_response_seconds` is still returned, then its provider cools down
 for later requests. HTTP 400 and other caller/request errors fail closed.
+
+Operational consequences:
+
+- `timeout_seconds` passed to `complete()` is the total wall-clock budget;
+- each attempt gets the smaller of the remaining total budget and
+  `attempt_timeout_seconds`;
+- provider-level errors skip other models on that provider for the current
+  request;
+- after cooldown, the provider returns to its policy position without manual
+  intervention;
+- health is not shared between processes or persisted across restarts;
+- `execute_code_edit()` is not replayed.
+
+See [`runtime-failover.md`](runtime-failover.md) for the exact retry matrix and
+Python examples.
 
 ## Application names and provider logs
 
@@ -102,6 +118,16 @@ subllm resolve doctor-agent repair-proposal --configured
 subllm poa catalog
 subllm serve --host 127.0.0.1 --port 8788
 python -m pytest -q
+```
+
+```python
+from subllm import provider_health, reset_provider_health
+
+for receipt in provider_health():
+    print(receipt.provider, receipt.status, receipt.reason)
+
+# Intended for tests or an explicit operator recovery action.
+reset_provider_health()
 ```
 
 The localhost API is documented in [`poa-api.md`](poa-api.md). Bind only

@@ -7,7 +7,7 @@ onto OpenRouter. Standards HOME: `wellmanifest/{policy-dsl,env-dsl}` profile
 | Credential | Strategy | Transport | Default model | Notes |
 | --- | --- | --- | --- | --- |
 | `CURSOR_API_KEY` | `cursor` | Cursor SDK | `gpt-5.6-sol` | Fallback peer: `grok-4.6`. Never OpenRouter wire ids |
-| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.2` | Coding Plan base URL |
+| `ZAI_API_KEY` | `zai` | OpenAI-compatible | `glm-5.3` | Coding Plan base URL |
 | `OPENROUTER_API_KEY` | `openrouter` | OpenAI-compatible | `glm-5.2` | Allowlisted OpenRouter models only |
 
 Cursor fallback order (same credential): **`gpt-5.6-sol` then `grok-4.6`**.
@@ -23,8 +23,8 @@ uses `glm-5.3`.
 1. Set a real `CURSOR_API_KEY` in `subllm/.env` or the process environment.
 2. Leave `SUBLLM_PROVIDER_ORDER` empty (toml priorities) or set
    `cursor,zai,openrouter`.
-3. Call `resolve(application, function)` — when the route includes the cursor
-   candidate (fleet default), the result has `provider=cursor`,
+3. Call `resolve(application, function)` — when the route includes the Cursor
+   candidate and Cursor wins the configured order, the result has `provider=cursor`,
    `transport=cursor-sdk`, `wire_model=gpt-5.6-sol`.
 4. Use `route.cursor_sdk_kwargs()` with `@cursor/sdk`; do **not** call
    `litellm_kwargs()` for cursor.
@@ -40,6 +40,13 @@ uses `glm-5.3`.
   that wire.
 - Explicit `SUBLLM_PROVIDER_ORDER=openrouter,zai` reorders LiteLLM candidates
   and may omit `cursor`.
+- Runtime health can temporarily move a degraded provider behind a healthy
+  provider, but it never adds a model absent from the route. Use
+  `failover_enabled=false` when exact first-candidate execution is required.
+
+`resolve()` is deterministic and does not consult runtime health.
+`complete()` applies the runtime behavior described in
+[`runtime-failover.md`](runtime-failover.md).
 
 ## Projections
 
