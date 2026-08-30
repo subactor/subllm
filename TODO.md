@@ -18,3 +18,5 @@
   route policy or exposing leased values.
 - [ ] Configure trusted PyPI publishing before distributing
   `subactor-subllm` outside immutable Git commit dependencies.
+- [ ] [`ticket-008`](project/ticket-008/README.md) — allow bounded runtime
+  tuning of provider attempt deadlines without copying the policy catalog.
