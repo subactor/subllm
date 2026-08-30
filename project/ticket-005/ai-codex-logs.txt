@@ -5,3 +5,19 @@ All checks passed; 114 passed; wheel and sdist built successfully.
 2026-08-26T08:58:00+02:00
 git diff --check
 PASS
+
+2026-08-30T18:39:00+02:00
+Added the closed subllm-complete stdin-JSON adapter for issue #29. Focused
+client tests passed 19/19. ./scripts/verify passed Ruff, compileall, 190 tests,
+wheel and sdist build. git diff --check passed.
+
+2026-08-30T18:42:00+02:00
+CI exposed that local Ruff had skipped the gitignored .worktrees checkout and
+that main retained two lint findings. Bound those exact paths into ticket-005,
+made scripts/verify ignore the parent gitignore for explicit source roots and
+fixed only the two reported findings. A fresh full verification follows.
+
+2026-08-30T18:43:00+02:00
+Fresh ./scripts/verify executed Ruff over the explicit ignored worktree roots,
+then compileall, 190 tests, wheel and sdist build; all passed. git diff --check
+passed.

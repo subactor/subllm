@@ -1,5 +1,20 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Expose policy-owned, bounded completion and failover through the closed
+  `subllm-complete` stdin-JSON adapter. Results contain content plus
+  secret-free provider, model and attempt receipts; raw provider responses and
+  credentials are never emitted.
+
+### Fixed
+
+- Ensure `scripts/verify` checks explicit Python roots even from a worktree
+  nested below a gitignored workspace directory, keeping local and CI lint
+  behavior identical.
+
 ## [1.9.0] - 2026-08-30
 
 ### Added
