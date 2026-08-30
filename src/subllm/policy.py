@@ -276,6 +276,11 @@ APPLICATIONS = MappingProxyType(
         "autogrammar-vql": ApplicationSpec(
             id="autogrammar-vql", title="vql", url="https://github.com/autogrammar/vql"
         ),
+        "twinstudio": ApplicationSpec(
+            id="twinstudio",
+            title="TwinStudio",
+            url="https://github.com/subactor/twinstudio",
+        ),
         "platform": ApplicationSpec(
             id="platform",
             title="Subactor Platform",
