@@ -89,7 +89,7 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
     assert policy.providers["cursor"].priority == 20
     assert policy.providers["cursor"].default_model == "gpt-5.6-sol"
     assert policy.providers["openrouter"].priority == 30
-    assert policy.providers["openrouter"].default_model == "glm-5.2"
+    assert policy.providers["openrouter"].default_model == "glm-5.3-flash"
 
 
 def test_zai_uses_the_coding_plan_endpoint() -> None:

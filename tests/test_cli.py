@@ -92,7 +92,7 @@ def test_providers_reports_effective_public_settings(capsys) -> None:
         "priority": 0,
     }
     assert payload["providers"]["openrouter"] == {
-        "default_model": "glm-5.2",
+        "default_model": "glm-5.3-flash",
         "enabled": True,
         "priority": 30,
     }
