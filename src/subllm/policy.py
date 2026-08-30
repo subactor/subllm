@@ -92,6 +92,7 @@ MODELS = MappingProxyType(
         "glm-5.3-flash": ModelSpec(
             id="glm-5.3-flash",
             providers=_provider_models(
+                zai=ProviderModelSpec(litellm_model="zai/glm-5.3-flash", wire_model="glm-5.3-flash"),
                 openrouter=ProviderModelSpec(
                     litellm_model="openrouter/z-ai/glm-5.3-flash",
                     wire_model="z-ai/glm-5.3-flash",

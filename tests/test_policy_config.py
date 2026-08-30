@@ -206,7 +206,7 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["zai"].default_model == "glm-5.3"
     assert policy.providers["cursor"].priority == 20
     assert policy.providers["openrouter"].priority == 30
-    assert policy.providers["openrouter"].default_model == "glm-5.2"
+    assert policy.providers["openrouter"].default_model == "glm-5.3-flash"
     assert policy.execution.failover_enabled is True
     assert policy.execution.attempt_timeout_seconds == 12.0
     assert policy.execution.slow_response_seconds == 10.0

@@ -76,7 +76,7 @@ def test_zai_key_with_duplicate_id_falls_back_to_openrouter() -> None:
         },
     )
     assert route.provider == "openrouter"
-    assert route.model == "glm-5.2"
+    assert route.model == "glm-5.3-flash"
 
 
 def test_openrouter_is_selected_when_zai_key_is_incomplete() -> None:
@@ -189,7 +189,7 @@ def test_koru_routes_fall_back_to_openrouter_without_zai_or_cursor() -> None:
         environ={"OPENROUTER_API_KEY": "openrouter-secret"},
     )
     assert route.provider == "openrouter"
-    assert route.model == "glm-5.2"
+    assert route.model == "glm-5.3-flash"
 
 
 @pytest.mark.parametrize("function", ("preprocess", "execute"))

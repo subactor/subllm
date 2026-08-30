@@ -31,7 +31,7 @@ default_model = "glm-5.3"
 [providers.openrouter]
 enabled = true
 priority = 30
-default_model = "glm-5.2"
+default_model = "glm-5.3-flash"
 
 # The table key is the stable application ID sent as user/user_id. name is the
 # display name used by OpenRouter; url is its attribution identifier.
