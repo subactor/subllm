@@ -12,3 +12,9 @@ worker tests passed 26/26, including a real hanging descendant receipt.
 2026-08-30T17:30:00Z
 Full ./scripts/verify passed Ruff, compileall, 197 tests, wheel and sdist build.
 git diff --check passed and the built package includes openai_worker.py.
+
+2026-08-30T17:33:00Z
+OneDev correctly blocked PR #35 because its minimal container retains killed
+orphans as zombie PIDs and the regression used kill(pid, 0) as a liveness test.
+Changed the receipt to inspect Linux process state: running descendants fail,
+while terminated X/Z states pass. The production systemd init reaps them.

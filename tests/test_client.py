@@ -32,6 +32,15 @@ def _worker_success(content: str, *, usage: dict[str, object] | None = None) -> 
     }
 
 
+def _process_is_running(pid: int) -> bool:
+    """Distinguish an executing process from a dead zombie on minimal containers."""
+    try:
+        state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()[2]
+    except FileNotFoundError:
+        return False
+    return state not in {"X", "Z"}
+
+
 def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
     observed: dict[str, object] = {}
 
@@ -252,13 +261,9 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
 
     child_pid = int(child_pid_file.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            break
+    while time.monotonic() < deadline and _process_is_running(child_pid):
         time.sleep(0.05)
-    else:
+    if _process_is_running(child_pid):
         pytest.fail(f"Cursor worker descendant {child_pid} remained alive")
 
 
@@ -277,13 +282,9 @@ def test_openai_worker_deadline_reaps_real_descendant(monkeypatch, tmp_path) -> 
 
     child_pid = int(child_pid_file.read_text(encoding="utf-8"))
     deadline = time.monotonic() + 2
-    while time.monotonic() < deadline:
-        try:
-            os.kill(child_pid, 0)
-        except ProcessLookupError:
-            break
+    while time.monotonic() < deadline and _process_is_running(child_pid):
         time.sleep(0.05)
-    else:
+    if _process_is_running(child_pid):
         pytest.fail(f"OpenAI worker descendant {child_pid} remained alive")
 
 
