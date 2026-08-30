@@ -1,5 +1,14 @@
 # Changelog
 
+## Unreleased
+
+### Added
+
+- Expose policy-owned, bounded completion and failover through the closed
+  `subllm-complete` stdin-JSON adapter. Results contain content plus
+  secret-free provider, model and attempt receipts; raw provider responses and
+  credentials are never emitted.
+
 ## [1.9.0] - 2026-08-30
 
 ### Added

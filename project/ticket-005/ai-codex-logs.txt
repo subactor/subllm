@@ -5,3 +5,8 @@ All checks passed; 114 passed; wheel and sdist built successfully.
 2026-08-26T08:58:00+02:00
 git diff --check
 PASS
+
+2026-08-30T18:39:00+02:00
+Added the closed subllm-complete stdin-JSON adapter for issue #29. Focused
+client tests passed 19/19. ./scripts/verify passed Ruff, compileall, 190 tests,
+wheel and sdist build. git diff --check passed.
