@@ -10,6 +10,7 @@ Python application that uses `subllm`. It contains no credential values.
 | Credential → strategy catalog (standards) | `wellmanifest/policy-dsl` `profiles/llm-credential` + `wellmanifest/env-dsl` example | Yes |
 | Adopted projections | [`policy/adopted/`](../policy/adopted/) | Yes |
 | Provider enabled state, priority and default model | [`subllm/subllm.toml`](../subllm.toml) | Yes |
+| Runtime timeout, failover and cooldown thresholds | [`subllm/subllm.toml`](../subllm.toml) | Yes |
 | Application display name and attribution URL | [`subllm/subllm.toml`](../subllm.toml) | Yes |
 | Provider/model catalog and routes | `subllm/src/subllm/policy.py` | Yes |
 | Local credentials | `subllm/.env` | No; mode `0600` |
@@ -41,13 +42,33 @@ Lower numeric priority wins. Cursor Sol is never an OpenRouter wire id.
 `SUBLLM_PROVIDER_ORDER` defaults to `cursor,zai,openrouter` when
 `CURSOR_API_KEY` is set, otherwise `zai,openrouter`.
 
-Selection:
+Resolution:
 
 1. load and validate the complete policy;
 2. remove disabled providers;
 3. sort candidates by effective priority;
 4. remove candidates without a valid credential;
 5. return the first remaining route.
+
+Execution through `subllm.complete()` then applies the `[execution]` policy.
+It gives each sequential candidate a bounded slice of the total caller timeout,
+records transport/provider availability and temporarily moves degraded
+providers behind healthy candidates. The executor never invents route members
+and never launches parallel speculative requests.
+
+```toml
+[execution]
+failover_enabled = true
+attempt_timeout_seconds = 12.0
+slow_response_seconds = 10.0
+cooldown_seconds = 60.0
+failure_threshold = 1
+max_attempts = 6
+```
+
+Use `provider_health()` for secret-free, process-local receipts. A response that
+crosses `slow_response_seconds` is still returned, then its provider cools down
+for later requests. HTTP 400 and other caller/request errors fail closed.
 
 ## Application names and provider logs
 

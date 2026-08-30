@@ -55,10 +55,19 @@ parts, never use Cursor SDK, and fail closed on a text route, a missing image,
 or a `file:` / `http:` image URL. Text routes such as
 `autogrammar-nexu/cinema` stay text-only.
 
-`available_routes()` returns these candidates after direct Z.AI. Consumers
-performing requests must advance to the next returned route only for a bounded
-connectivity/provider failure; SubLLM policy resolution itself does not replay
-a paid request.
+`available_routes()` returns these candidates after direct Z.AI.
+`subllm.complete()` executes bounded sequential failover across that exact
+list. It advances after an attempt timeout, connection failure, provider
+authentication/rate/transient HTTP failure, missing wire model or invalid
+completion response. A successful response slower than the configured threshold
+is returned, but that provider is deprioritized for following calls during its
+cooldown. Every successful result includes secret-free `attempts` metadata.
+
+Failover does not issue parallel speculative requests. This avoids knowingly
+duplicating paid calls, although a remote provider may still finish and bill a
+request after the local connection timeout. Non-retryable request errors such as
+HTTP 400 fail closed. Mutable `subllm-code-edit` / Aider execution is never
+replayed automatically.
 
 ## Application identity in provider logs
 
@@ -119,6 +128,26 @@ wins and the Cursor key is valid.
 Provider order and role model selection are separate: `SUBLLM_PROVIDER_ORDER`
 selects the provider sequence, while route membership above selects the model
 used through OpenRouter.
+
+## Runtime resilience
+
+The root [`subllm.toml`](subllm.toml) owns the execution thresholds:
+
+```toml
+[execution]
+failover_enabled = true
+attempt_timeout_seconds = 12.0
+slow_response_seconds = 10.0
+cooldown_seconds = 60.0
+failure_threshold = 1
+max_attempts = 6
+```
+
+The `timeout_seconds` argument of `complete()` is the total caller budget. Each
+provider receives at most `attempt_timeout_seconds` from the remaining budget.
+Health is process-local and self-recovers after cooldown; it is not durable
+authority. Operators can inspect `provider_health()` or clear it with
+`reset_provider_health()`.
 
 ## One local credential file
 

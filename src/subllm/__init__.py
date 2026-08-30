@@ -1,4 +1,4 @@
-from .client import CodeEditResponse, CompletionResponse, complete, execute_code_edit
+from .client import CodeEditResponse, CompletionAttempt, CompletionResponse, complete, execute_code_edit
 from .credential_env import (
     POLICY_ENV_NAMES,
     SUBLLM_ENV_FILE,
@@ -21,6 +21,7 @@ from .errors import (
     SubLLMError,
     UnknownRouteError,
 )
+from .health import ProviderHealthReceipt, provider_health, reset_provider_health
 from .policy import (
     APPLICATIONS,
     CURSOR_API_KEY_ENV,
@@ -34,6 +35,7 @@ from .policy import (
 from .policy_config import (
     SUBLLM_POLICY_FILE,
     ApplicationPolicyConfig,
+    ExecutionPolicyConfig,
     ProviderPolicyConfig,
     RuntimePolicyConfig,
     find_policy_file,
@@ -74,8 +76,10 @@ __all__ = [
     "ROUTES",
     "ApplicationSpec",
     "ApplicationPolicyConfig",
+    "ExecutionPolicyConfig",
     "ConfiguredRoute",
     "CompletionError",
+    "CompletionAttempt",
     "CodeEditResponse",
     "CompletionResponse",
     "CredentialFileError",
@@ -83,6 +87,7 @@ __all__ = [
     "MissingCredentialError",
     "ModelSpec",
     "ProviderModelSpec",
+    "ProviderHealthReceipt",
     "ProviderPolicyConfig",
     "ProviderSpec",
     "ResolvedRoute",
@@ -114,6 +119,8 @@ __all__ = [
     "merged_environment",
     "parse_provider_order",
     "provider_order",
+    "provider_health",
+    "reset_provider_health",
     "resolve",
     "route_policy",
     "validate_policy",

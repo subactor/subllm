@@ -4,10 +4,11 @@ import json
 import subprocess
 import sys
 from types import ModuleType
+from urllib.error import HTTPError
 
 import pytest
 
-from subllm import CompletionError, client, complete, execute_code_edit
+from subllm import CompletionError, client, complete, execute_code_edit, provider_health
 from subllm.client import CodeEditResponse, code_edit_main
 
 
@@ -58,7 +59,7 @@ def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
     assert result.usage == {"total_tokens": 9}
     assert observed["url"] == "https://api.z.ai/api/coding/paas/v4/chat/completions"
     assert observed["authorization"] == "Bearer id.secret"
-    assert observed["timeout"] == 12
+    assert observed["timeout"] == pytest.approx(12, abs=0.01)
     assert observed["body"] == {
         "model": "glm-5.3",
         "messages": [{"role": "user", "content": "Classify this change"}],
@@ -292,6 +293,104 @@ def test_complete_forwards_structured_response_format(monkeypatch) -> None:
     )
 
     assert observed["body"]["response_format"] == {"type": "json_object"}
+
+
+def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeypatch) -> None:
+    providers: list[str] = []
+
+    def open_request(request, *, timeout):
+        providers.append(request.full_url)
+        if "api.z.ai" in request.full_url:
+            raise TimeoutError("simulated stall")
+        return _Response(
+            {"choices": [{"message": {"content": "fallback"}, "finish_reason": "stop"}]}
+        )
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    result = complete(
+        "repair-agent",
+        "repair-plan",
+        [{"role": "user", "content": "repair"}],
+        timeout_seconds=20,
+        environ={
+            "ZAI_API_KEY": "id.secret",
+            "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+        },
+    )
+
+    assert result.provider == "openrouter"
+    assert result.model == "z-ai/glm-5.3"
+    assert [attempt.outcome for attempt in result.attempts] == ["timeout", "success"]
+    assert providers == [
+        "https://api.z.ai/api/coding/paas/v4/chat/completions",
+        "https://openrouter.ai/api/v1/chat/completions",
+    ]
+    zai = next(receipt for receipt in provider_health() if receipt.provider == "zai")
+    assert zai.status == "degraded"
+    assert zai.reason == "timeout"
+
+
+def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
+    providers: list[str] = []
+    failures = 0
+
+    def open_request(request, *, timeout):
+        nonlocal failures
+        providers.append(request.full_url)
+        if failures == 0:
+            failures += 1
+            raise TimeoutError("simulated stall")
+        return _Response(
+            {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
+        )
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    credentials = {
+        "ZAI_API_KEY": "id.secret",
+        "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+    }
+    complete(
+        "todo2code",
+        "semantic",
+        [{"role": "user", "content": "first"}],
+        timeout_seconds=20,
+        environ=credentials,
+    )
+    providers.clear()
+
+    result = complete(
+        "todo2code",
+        "semantic",
+        [{"role": "user", "content": "second"}],
+        timeout_seconds=20,
+        environ=credentials,
+    )
+
+    assert result.provider == "openrouter"
+    assert providers == ["https://openrouter.ai/api/v1/chat/completions"]
+
+
+def test_complete_does_not_replay_non_retryable_bad_request(monkeypatch) -> None:
+    calls = 0
+
+    def open_request(request, *, timeout):
+        nonlocal calls
+        calls += 1
+        raise HTTPError(request.full_url, 400, "bad request", {}, None)
+
+    monkeypatch.setattr(client, "urlopen", open_request)
+    with pytest.raises(CompletionError, match="HTTP 400"):
+        complete(
+            "todo2code",
+            "semantic",
+            [{"role": "user", "content": "bad"}],
+            environ={
+                "ZAI_API_KEY": "id.secret",
+                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+            },
+        )
+
+    assert calls == 1
 
 
 def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypatch, tmp_path) -> None:

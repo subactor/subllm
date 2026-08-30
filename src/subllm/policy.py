@@ -300,8 +300,8 @@ APPLICATIONS = MappingProxyType(
 )
 
 # Prefer direct Z.AI GLM 5.3 for every registered LLM route. Cursor and
-# OpenRouter remain pre-request fallbacks selected only when the preferred
-# credential is unavailable or an operator explicitly overrides provider order.
+# OpenRouter remain declared fallbacks. The runtime executor may advance only
+# through this exact list after a bounded retryable attempt failure.
 _DEFAULT = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),

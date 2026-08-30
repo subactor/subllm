@@ -1,4 +1,15 @@
-schema_version = 2
+schema_version = 3
+
+# Runtime failover is sequential: it never starts duplicate speculative calls.
+# timeout_seconds passed to complete() is the total caller budget; each provider
+# attempt receives at most attempt_timeout_seconds from that remaining budget.
+[execution]
+failover_enabled = true
+attempt_timeout_seconds = 12.0
+slow_response_seconds = 10.0
+cooldown_seconds = 60.0
+failure_threshold = 1
+max_attempts = 6
 
 # Lower priority wins. Set enabled = false to remove a provider from every
 # route. default_model is the logical model ID from src/subllm/policy.py.

@@ -1,5 +1,24 @@
 # Changelog
 
+## [1.9.0] - 2026-08-30
+
+### Added
+
+- Execute sequential, bounded runtime failover in `complete()` when a routed
+  provider stalls, has a transport failure, returns a transient/auth/rate HTTP
+  status, reports a missing model, or produces an invalid completion response.
+- Keep process-local provider health receipts and temporarily prefer healthy
+  route candidates after a failure or an excessively slow successful response.
+- Include secret-free attempt metadata on successful `CompletionResponse`
+  values and bounded provider/model outcomes in terminal errors.
+- Configure attempt timeout, slow-response threshold, cooldown, failure
+  threshold and maximum attempts centrally in `subllm.toml` schema v3.
+
+### Security
+
+- Runtime failover never adds a provider/model outside the exact route, never
+  starts speculative parallel calls and does not replay mutable Aider edits.
+
 ## [1.8.1] - 2026-08-29
 
 ### Changed

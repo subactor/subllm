@@ -6,19 +6,30 @@ import os
 import subprocess
 import tempfile
 import threading
+import time
 from collections.abc import Mapping, Sequence
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
 
 from .errors import CompletionError
+from .health import order_by_health, record_failure, record_success
+from .policy_config import load_policy_config
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 
 MAX_VISION_DATA_URL_CHARS = 4_000_000
 _IMAGE_URL_PREFIXES = ("data:image/", "https://")
+
+
+@dataclass(frozen=True)
+class CompletionAttempt:
+    provider: str
+    model: str
+    outcome: str
+    duration_ms: int
 
 
 @dataclass(frozen=True)
@@ -28,6 +39,7 @@ class CompletionResponse:
     model: str
     usage: Mapping[str, Any] = field(default_factory=dict)
     finish_reason: str = ""
+    attempts: tuple[CompletionAttempt, ...] = ()
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
 
 
@@ -36,6 +48,13 @@ class CodeEditResponse:
     provider: str
     model: str
     response: str
+
+
+class _RetryableAttemptError(CompletionError):
+    def __init__(self, message: str, *, outcome: str, provider_level: bool = True) -> None:
+        super().__init__(message)
+        self.outcome = outcome
+        self.provider_level = provider_level
 
 
 def _completion_url(api_base: str) -> str:
@@ -201,48 +220,14 @@ def _complete_cursor(
     )
 
 
-def complete(
-    application: str,
-    function: str,
+def _complete_openai_compatible(
+    route: ResolvedRoute,
     messages: Sequence[Mapping[str, Any]],
     *,
-    timeout_seconds: float = 30.0,
-    request_id: str | None = None,
-    response_format: Mapping[str, Any] | None = None,
-    environ: Mapping[str, str] | None = None,
-    credentials: Mapping[str, str] | None = None,
-    cwd: str | Path | None = None,
+    timeout_seconds: float,
+    request_id: str | None,
+    response_format: Mapping[str, Any] | None,
 ) -> CompletionResponse:
-    """Execute one policy-resolved chat completion.
-
-    Provider, model and pre-request fallback selection remain owned by
-    SubLLM. A request that has started is never replayed through another paid
-    provider. Cursor receives an empty tool set.
-    """
-    if not messages:
-        raise CompletionError("chat completion requires at least one message")
-    if timeout_seconds <= 0:
-        raise CompletionError("timeout_seconds must be greater than zero")
-
-    routes = available_routes(application, function, environ=environ, credentials=credentials)
-    if not routes:
-        configured = configured_routes(application, function, environ=environ)
-        required = ", ".join(sorted({route.api_key_env for route in configured}))
-        raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
-    route = routes[0]
-    _validate_vision_messages(messages, modality=route.modality)
-    if route.modality == "vision" and route.transport != "openai-compatible":
-        raise CompletionError("vision routes require an OpenAI-compatible transport")
-    if route.transport == "cursor-sdk":
-        return _complete_cursor(
-            route,
-            messages,
-            timeout_seconds=timeout_seconds,
-            cwd=Path(cwd) if cwd is not None else Path.cwd(),
-        )
-    if route.transport != "openai-compatible":
-        raise CompletionError(f"provider {route.provider} uses unsupported transport {route.transport}")
-
     body: dict[str, Any] = {
         "model": route.wire_model,
         "messages": [dict(message) for message in messages],
@@ -265,18 +250,149 @@ def complete(
         with urlopen(request, timeout=timeout_seconds) as response:  # noqa: S310 - fixed policy HTTPS base
             payload = response.read()
     except HTTPError as exc:
-        raise CompletionError(
-            f"{route.provider}/{route.wire_model} request failed with HTTP {exc.code}"
-        ) from exc
+        message = f"{route.provider}/{route.wire_model} request failed with HTTP {exc.code}"
+        if exc.code in {401, 403, 408, 409, 425, 429} or exc.code >= 500:
+            raise _RetryableAttemptError(
+                message,
+                outcome=f"http_{exc.code}",
+                provider_level=exc.code != 404,
+            ) from exc
+        if exc.code == 404:
+            raise _RetryableAttemptError(
+                message,
+                outcome="model_unavailable",
+                provider_level=False,
+            ) from exc
+        raise CompletionError(message) from exc
     except (TimeoutError, URLError, OSError) as exc:
-        raise CompletionError(
-            f"{route.provider}/{route.wire_model} request failed: {type(exc).__name__}"
+        outcome = "timeout" if isinstance(exc, TimeoutError) else "transport_error"
+        raise _RetryableAttemptError(
+            f"{route.provider}/{route.wire_model} request failed: {type(exc).__name__}",
+            outcome=outcome,
         ) from exc
-    return _decode_response(
-        payload,
-        provider=route.provider,
-        model=route.wire_model,
+    try:
+        return _decode_response(payload, provider=route.provider, model=route.wire_model)
+    except CompletionError as exc:
+        raise _RetryableAttemptError(
+            str(exc),
+            outcome="invalid_response",
+            provider_level=False,
+        ) from exc
+
+
+def _complete_route(
+    route: ResolvedRoute,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    timeout_seconds: float,
+    request_id: str | None,
+    response_format: Mapping[str, Any] | None,
+    cwd: Path,
+) -> CompletionResponse:
+    if route.transport == "cursor-sdk":
+        try:
+            return _complete_cursor(route, messages, timeout_seconds=timeout_seconds, cwd=cwd)
+        except CompletionError as exc:
+            raise _RetryableAttemptError(
+                str(exc),
+                outcome="provider_unavailable",
+            ) from exc
+    if route.transport == "openai-compatible":
+        return _complete_openai_compatible(
+            route,
+            messages,
+            timeout_seconds=timeout_seconds,
+            request_id=request_id,
+            response_format=response_format,
+        )
+    raise CompletionError(f"provider {route.provider} uses unsupported transport {route.transport}")
+
+
+def complete(
+    application: str,
+    function: str,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    timeout_seconds: float = 30.0,
+    request_id: str | None = None,
+    response_format: Mapping[str, Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+    credentials: Mapping[str, str] | None = None,
+    cwd: str | Path | None = None,
+) -> CompletionResponse:
+    """Execute a policy-resolved chat completion with bounded runtime failover."""
+    if not messages:
+        raise CompletionError("chat completion requires at least one message")
+    if timeout_seconds <= 0:
+        raise CompletionError("timeout_seconds must be greater than zero")
+
+    routes = available_routes(application, function, environ=environ, credentials=credentials)
+    if not routes:
+        configured = configured_routes(application, function, environ=environ)
+        required = ", ".join(sorted({route.api_key_env for route in configured}))
+        raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
+    runtime_policy = load_policy_config(environ=environ)
+    execution = runtime_policy.execution
+    routes = order_by_health(routes) if execution.failover_enabled else routes[:1]
+    first_route = routes[0]
+    _validate_vision_messages(messages, modality=first_route.modality)
+    if first_route.modality == "vision" and first_route.transport != "openai-compatible":
+        raise CompletionError("vision routes require an OpenAI-compatible transport")
+    started_at = time.monotonic()
+    attempts: list[CompletionAttempt] = []
+    failed_providers: set[str] = set()
+    last_error: CompletionError | None = None
+    for route in routes:
+        if len(attempts) >= execution.max_attempts:
+            break
+        if route.provider in failed_providers:
+            continue
+        elapsed = time.monotonic() - started_at
+        remaining = timeout_seconds - elapsed
+        if remaining <= 0:
+            break
+        attempt_timeout = (
+            min(remaining, execution.attempt_timeout_seconds)
+            if execution.failover_enabled
+            else remaining
+        )
+        attempt_started = time.monotonic()
+        try:
+            response = _complete_route(
+                route,
+                messages,
+                timeout_seconds=attempt_timeout,
+                request_id=request_id,
+                response_format=response_format,
+                cwd=Path(cwd) if cwd is not None else Path.cwd(),
+            )
+        except _RetryableAttemptError as exc:
+            duration = time.monotonic() - attempt_started
+            attempts.append(CompletionAttempt(route.provider, route.wire_model, exc.outcome, round(duration * 1000)))
+            record_failure(
+                route.provider,
+                reason=exc.outcome,
+                latency_seconds=duration,
+                policy=execution,
+            )
+            if exc.provider_level:
+                failed_providers.add(route.provider)
+            last_error = exc
+            if not execution.failover_enabled:
+                raise CompletionError(str(exc)) from exc
+            continue
+        duration = time.monotonic() - attempt_started
+        attempts.append(CompletionAttempt(route.provider, route.wire_model, "success", round(duration * 1000)))
+        record_success(route.provider, latency_seconds=duration, policy=execution)
+        return replace(response, attempts=tuple(attempts))
+
+    summary = ", ".join(
+        f"{attempt.provider}/{attempt.model}:{attempt.outcome}" for attempt in attempts
     )
+    if not summary:
+        summary = "total_timeout"
+    message = f"all bounded candidates failed for {application}/{function}: {summary}"
+    raise CompletionError(message) from last_error
 
 
 def execute_code_edit(
@@ -396,6 +512,6 @@ def code_edit_main(argv: Sequence[str] | None = None) -> int:
 
 
 __all__ = [
-    "CodeEditResponse", "CompletionResponse", "code_edit_main", "complete",
+    "CodeEditResponse", "CompletionAttempt", "CompletionResponse", "code_edit_main", "complete",
     "execute_code_edit",
 ]

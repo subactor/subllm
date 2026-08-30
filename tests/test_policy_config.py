@@ -207,6 +207,12 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["cursor"].priority == 20
     assert policy.providers["openrouter"].priority == 30
     assert policy.providers["openrouter"].default_model == "glm-5.2"
+    assert policy.execution.failover_enabled is True
+    assert policy.execution.attempt_timeout_seconds == 12.0
+    assert policy.execution.slow_response_seconds == 10.0
+    assert policy.execution.cooldown_seconds == 60.0
+    assert policy.execution.failure_threshold == 1
+    assert policy.execution.max_attempts == 6
     assert policy.applications["platform"].name == "Subactor Platform"
     assert policy.applications["twinstudio"].url == "https://github.com/subactor/twinstudio"
     assert policy.applications["szeptnik-one"].name == "Szeptnik One"
@@ -233,6 +239,32 @@ def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> 
     )
     assert configured_routes("semcod-pfix", "repair")[0].model == "glm-5.3"
     assert configured_routes("autogrammar-doql", "translate")[0].provider == "zai"
+
+
+def test_schema_v3_rejects_slow_threshold_above_attempt_timeout(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    policy = _policy_file(tmp_path / "subllm.toml")
+    text = policy.read_text(encoding="utf-8")
+    execution = """\
+[execution]
+failover_enabled = true
+attempt_timeout_seconds = 12.0
+slow_response_seconds = 13.0
+cooldown_seconds = 60.0
+failure_threshold = 1
+max_attempts = 6
+
+"""
+    policy.write_text(
+        text.replace("schema_version = 2\n", f"schema_version = 3\n\n{execution}", 1),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+
+    with pytest.raises(InvalidPolicyError, match="must not exceed"):
+        load_policy_config()
 
 
 def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
