@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import uuid4
 
-Transport = Literal["openai-compatible", "cursor-sdk"]
+Transport = Literal["openai-compatible", "cursor-sdk", "anthropic", "gemini-sdk"]
 Modality = Literal["text", "vision"]
 
 

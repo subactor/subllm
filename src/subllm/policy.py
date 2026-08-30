@@ -21,16 +21,40 @@ def _provider_models(**values: ProviderModelSpec) -> MappingProxyType[str, Provi
 # wellmanifest/env-dsl examples/valid/subllm-credential-strategies.env.
 PROVIDERS = MappingProxyType(
     {
+        "zai": ProviderSpec(
+            id="zai",
+            api_base="https://api.z.ai/api/coding/paas/v4",
+            api_key_env="ZAI_API_KEY",
+        ),
+        "agy": ProviderSpec(
+            id="agy",
+            api_base="https://generativelanguage.googleapis.com/v1beta",
+            api_key_env="GEMINI_API_KEY",
+            transport="gemini-sdk",
+        ),
+        "codex": ProviderSpec(
+            id="codex",
+            api_base="https://api.openai.com/v1",
+            api_key_env="OPENAI_API_KEY",
+            transport="openai-compatible",
+        ),
+        "claude": ProviderSpec(
+            id="claude",
+            api_base="https://api.anthropic.com/v1",
+            api_key_env="ANTHROPIC_API_KEY",
+            transport="anthropic",
+        ),
         "cursor": ProviderSpec(
             id="cursor",
             api_base="https://api.cursor.com",
             api_key_env="CURSOR_API_KEY",
             transport="cursor-sdk",
         ),
-        "zai": ProviderSpec(
-            id="zai",
-            api_base="https://api.z.ai/api/coding/paas/v4",
-            api_key_env="ZAI_API_KEY",
+        "ollama": ProviderSpec(
+            id="ollama",
+            api_base="http://127.0.0.1:11434/v1",
+            api_key_env="OLLAMA_API_KEY",
+            transport="openai-compatible",
         ),
         "openrouter": ProviderSpec(
             id="openrouter",
@@ -46,7 +70,7 @@ EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
 
 # Comma-separated fallback chain. Unknown names fail closed.
 SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
-ORDERABLE_PROVIDER_IDS = ("zai", "cursor", "openrouter")
+ORDERABLE_PROVIDER_IDS = ("zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter")
 
 MODELS = MappingProxyType(
     {
@@ -144,6 +168,75 @@ MODELS = MappingProxyType(
                     litellm_model="openrouter/qwen/qwen3.7-plus",
                     wire_model="qwen/qwen3.7-plus",
                 )
+            ),
+        ),
+        "gemini-2.5-flash": ModelSpec(
+            id="gemini-2.5-flash",
+            providers=_provider_models(
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-2.5-flash",
+                    wire_model="gemini-2.5-flash",
+                ),
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/google/gemini-2.5-flash",
+                    wire_model="google/gemini-2.5-flash",
+                ),
+            ),
+        ),
+        "gemini-2.5-pro": ModelSpec(
+            id="gemini-2.5-pro",
+            providers=_provider_models(
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-2.5-pro",
+                    wire_model="gemini-2.5-pro",
+                ),
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/google/gemini-2.5-pro",
+                    wire_model="google/gemini-2.5-pro",
+                ),
+            ),
+        ),
+        "gpt-5.5": ModelSpec(
+            id="gpt-5.5",
+            providers=_provider_models(
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-5.5",
+                    wire_model="gpt-5.5",
+                ),
+                cursor=ProviderModelSpec(
+                    litellm_model="cursor/gpt-5.5",
+                    wire_model="gpt-5.5",
+                ),
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/openai/gpt-5.5",
+                    wire_model="openai/gpt-5.5",
+                ),
+            ),
+        ),
+        "claude-3.7-sonnet": ModelSpec(
+            id="claude-3.7-sonnet",
+            providers=_provider_models(
+                claude=ProviderModelSpec(
+                    litellm_model="anthropic/claude-3-7-sonnet-20250219",
+                    wire_model="claude-3-7-sonnet-20250219",
+                ),
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/anthropic/claude-3.7-sonnet",
+                    wire_model="anthropic/claude-3.7-sonnet",
+                ),
+            ),
+        ),
+        "qwen2.5-coder": ModelSpec(
+            id="qwen2.5-coder",
+            providers=_provider_models(
+                ollama=ProviderModelSpec(
+                    litellm_model="ollama/qwen2.5-coder",
+                    wire_model="qwen2.5-coder",
+                ),
+                openrouter=ProviderModelSpec(
+                    litellm_model="openrouter/qwen/qwen-2.5-coder-32b-instruct",
+                    wire_model="qwen/qwen-2.5-coder-32b-instruct",
+                ),
             ),
         ),
         "gemini-3.1-pro-preview": ModelSpec(

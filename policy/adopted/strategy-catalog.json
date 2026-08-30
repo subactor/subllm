@@ -28,7 +28,7 @@
       "provider": "openrouter",
       "transport": "openai-compatible",
       "apiBase": "https://openrouter.ai/api/v1",
-      "defaultModel": "glm-5.2",
+      "defaultModel": "glm-5.3-flash",
       "allowedModels": [
         "glm-5.2",
         "glm-5.3",
@@ -40,6 +40,46 @@
       ],
       "forbiddenModels": ["gpt-5.6-sol"],
       "notes": "OpenRouter models only. Cursor Sol must not appear as openai/gpt-5.6-sol."
+    },
+    {
+      "id": "agy",
+      "credentialEnv": "GEMINI_API_KEY",
+      "provider": "agy",
+      "transport": "gemini-sdk",
+      "apiBase": "https://generativelanguage.googleapis.com/v1beta",
+      "defaultModel": "gemini-2.5-flash",
+      "allowedModels": ["gemini-2.5-flash", "gemini-2.5-pro"],
+      "notes": "Google Antigravity / Gemini CLI path."
+    },
+    {
+      "id": "codex",
+      "credentialEnv": "OPENAI_API_KEY",
+      "provider": "codex",
+      "transport": "openai-compatible",
+      "apiBase": "https://api.openai.com/v1",
+      "defaultModel": "gpt-5.5",
+      "allowedModels": ["gpt-5.5"],
+      "notes": "OpenAI Codex CLI path."
+    },
+    {
+      "id": "claude",
+      "credentialEnv": "ANTHROPIC_API_KEY",
+      "provider": "claude",
+      "transport": "anthropic",
+      "apiBase": "https://api.anthropic.com/v1",
+      "defaultModel": "claude-3.7-sonnet",
+      "allowedModels": ["claude-3.7-sonnet"],
+      "notes": "Claude Code CLI / Anthropic path."
+    },
+    {
+      "id": "ollama",
+      "credentialEnv": "OLLAMA_API_KEY",
+      "provider": "ollama",
+      "transport": "openai-compatible",
+      "apiBase": "http://127.0.0.1:11434/v1",
+      "defaultModel": "qwen2.5-coder",
+      "allowedModels": ["qwen2.5-coder"],
+      "notes": "Ollama local model path."
     }
   ],
   "defaultProviderOrder": {

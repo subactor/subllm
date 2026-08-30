@@ -24,9 +24,10 @@ def parse_provider_order(raw: str) -> tuple[str, ...]:
 
 
 def default_provider_order(*, environ: Mapping[str, str]) -> tuple[str, ...]:
-    if credential_is_valid("cursor", environ.get(CURSOR_API_KEY_ENV)):
-        return ORDERABLE_PROVIDER_IDS
-    return tuple(name for name in ORDERABLE_PROVIDER_IDS if name != "cursor")
+    return tuple(
+        name for name in ORDERABLE_PROVIDER_IDS
+        if credential_is_valid(name, environ.get(PROVIDERS[name].api_key_env)) or name == "openrouter"
+    )
 
 
 def explicit_provider_order(*, environ: Mapping[str, str]) -> tuple[str, ...] | None:
