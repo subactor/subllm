@@ -9,7 +9,6 @@ import sys
 import time
 from pathlib import Path
 from types import SimpleNamespace
-from urllib.error import HTTPError
 
 import pytest
 
@@ -23,38 +22,24 @@ from subllm.client import (
 )
 
 
-class _Response:
-    def __init__(self, payload: dict[str, object]) -> None:
-        self.payload = payload
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *_args) -> None:
-        return None
-
-    def read(self) -> bytes:
-        return json.dumps(self.payload).encode("utf-8")
+def _worker_success(content: str, *, usage: dict[str, object] | None = None) -> dict[str, object]:
+    return {
+        "schema": "subllm.openai-worker-result/v1",
+        "status": "SUCCESS",
+        "content": content,
+        "usage": usage or {},
+        "finish_reason": "stop",
+    }
 
 
 def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
     observed: dict[str, object] = {}
 
-    def open_request(request, *, timeout):
-        observed["url"] = request.full_url
-        observed["authorization"] = request.get_header("Authorization")
-        observed["body"] = json.loads(request.data.decode("utf-8"))
-        observed["timeout"] = timeout
-        return _Response(
-            {
-                "choices": [
-                    {"message": {"content": '{"ok":true}'}, "finish_reason": "stop"}
-                ],
-                "usage": {"total_tokens": 9},
-            }
-        )
+    def run_worker(request, **kwargs):
+        observed.update(request=request, **kwargs)
+        return _worker_success('{"ok":true}', usage={"total_tokens": 9})
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     result = complete(
         "todo2code",
         "semantic",
@@ -68,15 +53,12 @@ def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
     assert result.provider == "zai"
     assert result.model == "glm-5.3"
     assert result.usage == {"total_tokens": 9}
-    assert observed["url"] == "https://api.z.ai/api/coding/paas/v4/chat/completions"
-    assert observed["authorization"] == "Bearer id.secret"
-    assert observed["timeout"] == pytest.approx(12, abs=0.01)
-    assert observed["body"] == {
-        "model": "glm-5.3",
-        "messages": [{"role": "user", "content": "Classify this change"}],
-        "request_id": "todo2code-test-0001",
-        "user_id": "todo2code",
-    }
+    assert observed["timeout_seconds"] == pytest.approx(12, abs=0.01)
+    request = observed["request"]
+    assert request["api_base"] == "https://api.z.ai/api/coding/paas/v4"
+    assert request["wire_model"] == "glm-5.3"
+    assert request["messages"] == [{"role": "user", "content": "Classify this change"}]
+    assert request["request_fields"] == {"request_id": "todo2code-test-0001", "user_id": "todo2code"}
     assert "id.secret" not in repr(result)
 
 
@@ -87,17 +69,11 @@ def test_complete_sends_vision_image_parts_on_nexu_route(monkeypatch) -> None:
         "image_url": {"url": "data:image/png;base64,aaa"},
     }
 
-    def open_request(request, *, timeout):
-        observed["url"] = request.full_url
-        observed["title"] = request.get_header("X-openrouter-title")
-        observed["body"] = json.loads(request.data.decode("utf-8"))
-        return _Response(
-            {
-                "choices": [{"message": {"content": "a button"}, "finish_reason": "stop"}],
-            }
-        )
+    def run_worker(request, **kwargs):
+        observed.update(request=request, **kwargs)
+        return _worker_success("a button")
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     result = complete(
         "autogrammar-nexu",
         "vision",
@@ -108,9 +84,11 @@ def test_complete_sends_vision_image_parts_on_nexu_route(monkeypatch) -> None:
     assert result.content == "a button"
     assert result.provider == "openrouter"
     assert result.model == "z-ai/glm-4.5v"
-    assert observed["url"] == "https://openrouter.ai/api/v1/chat/completions"
-    assert observed["body"]["messages"][0]["content"][0] == image
-    assert observed["body"]["model"] == "z-ai/glm-4.5v"
+    request = observed["request"]
+    assert request["api_base"] == "https://openrouter.ai/api/v1"
+    assert request["messages"][0]["content"][0] == image
+    assert request["wire_model"] == "z-ai/glm-4.5v"
+    assert request["extra_headers"]["X-OpenRouter-Title"] == "nexu"
 
 
 def test_complete_rejects_images_on_text_routes() -> None:
@@ -284,19 +262,39 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
         pytest.fail(f"Cursor worker descendant {child_pid} remained alive")
 
 
+def test_openai_worker_deadline_reaps_real_descendant(monkeypatch, tmp_path) -> None:
+    assert os.name == "posix", "the governed completion runtime requires POSIX process groups"
+    child_pid_file = tmp_path / "openai-child.pid"
+    fixture_root = Path(__file__).resolve().parent / "fixtures" / "hanging_openai_worker"
+    monkeypatch.setenv("PYTHONPATH", str(fixture_root))
+    monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
+
+    with pytest.raises(CompletionError, match="worker timed out"):
+        client._run_openai_worker(
+            {"schema": "subllm.openai-worker-request/v1"},
+            timeout_seconds=1.0,
+        )
+
+    child_pid = int(child_pid_file.read_text(encoding="utf-8"))
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            os.kill(child_pid, 0)
+        except ProcessLookupError:
+            break
+        time.sleep(0.05)
+    else:
+        pytest.fail(f"OpenAI worker descendant {child_pid} remained alive")
+
+
 def test_complete_executes_nfo_analysis_through_direct_zai(monkeypatch) -> None:
     observed: dict[str, object] = {}
 
-    def open_request(request, *, timeout):
-        observed["body"] = json.loads(request.data.decode("utf-8"))
-        return _Response(
-            {
-                "choices": [{"message": {"content": "root cause"}, "finish_reason": "stop"}],
-                "usage": {"total_tokens": 5},
-            }
-        )
+    def run_worker(request, **kwargs):
+        observed.update(request=request, **kwargs)
+        return _worker_success("root cause", usage={"total_tokens": 5})
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     result = complete(
         "semcod-nfo",
         "analyze",
@@ -308,11 +306,10 @@ def test_complete_executes_nfo_analysis_through_direct_zai(monkeypatch) -> None:
     assert result.provider == "zai"
     assert result.model == "glm-5.3"
     assert result.content == "root cause"
-    assert observed["body"] == {
-        "model": "glm-5.3",
-        "messages": [{"role": "user", "content": "Analyze this error"}],
-        "request_id": "nfo-test-0001",
-        "user_id": "semcod-nfo",
+    assert observed["request"]["wire_model"] == "glm-5.3"
+    assert observed["request"]["messages"] == [{"role": "user", "content": "Analyze this error"}]
+    assert observed["request"]["request_fields"] == {
+        "request_id": "nfo-test-0001", "user_id": "semcod-nfo",
     }
 
 
@@ -324,13 +321,11 @@ def test_complete_rejects_empty_messages() -> None:
 def test_complete_forwards_structured_response_format(monkeypatch) -> None:
     observed = {}
 
-    def open_request(request, timeout):
-        observed["body"] = json.loads(request.data.decode("utf-8"))
-        return _Response(
-            {"choices": [{"message": {"content": "{}"}, "finish_reason": "stop"}]}
-        )
+    def run_worker(request, **kwargs):
+        observed.update(request=request, **kwargs)
+        return _worker_success("{}")
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     complete(
         "autogrammar-hillm",
         "invoke",
@@ -339,21 +334,25 @@ def test_complete_forwards_structured_response_format(monkeypatch) -> None:
         environ={"ZAI_API_KEY": "id.secret"},
     )
 
-    assert observed["body"]["response_format"] == {"type": "json_object"}
+    assert observed["request"]["response_format"] == {"type": "json_object"}
 
 
 def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeypatch) -> None:
     providers: list[str] = []
 
-    def open_request(request, *, timeout):
-        providers.append(request.full_url)
-        if "api.z.ai" in request.full_url:
-            raise TimeoutError("simulated stall")
-        return _Response(
-            {"choices": [{"message": {"content": "fallback"}, "finish_reason": "stop"}]}
-        )
+    def run_worker(request, **_kwargs):
+        providers.append(request["api_base"])
+        if request["provider"] == "zai":
+            return {
+                "schema": "subllm.openai-worker-result/v1",
+                "status": "ERROR",
+                "outcome": "timeout",
+                "provider_level": True,
+                "retryable": True,
+            }
+        return _worker_success("fallback")
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     result = complete(
         "repair-agent",
         "repair-plan",
@@ -369,8 +368,8 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
     assert result.model == "z-ai/glm-5.3"
     assert [attempt.outcome for attempt in result.attempts] == ["timeout", "success"]
     assert providers == [
-        "https://api.z.ai/api/coding/paas/v4/chat/completions",
-        "https://openrouter.ai/api/v1/chat/completions",
+        "https://api.z.ai/api/coding/paas/v4",
+        "https://openrouter.ai/api/v1",
     ]
     zai = next(receipt for receipt in provider_health() if receipt.provider == "zai")
     assert zai.status == "degraded"
@@ -381,17 +380,21 @@ def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
     providers: list[str] = []
     failures = 0
 
-    def open_request(request, *, timeout):
+    def run_worker(request, **_kwargs):
         nonlocal failures
-        providers.append(request.full_url)
+        providers.append(request["api_base"])
         if failures == 0:
             failures += 1
-            raise TimeoutError("simulated stall")
-        return _Response(
-            {"choices": [{"message": {"content": "ok"}, "finish_reason": "stop"}]}
-        )
+            return {
+                "schema": "subllm.openai-worker-result/v1",
+                "status": "ERROR",
+                "outcome": "timeout",
+                "provider_level": True,
+                "retryable": True,
+            }
+        return _worker_success("ok")
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     credentials = {
         "ZAI_API_KEY": "id.secret",
         "OPENROUTER_API_KEY": "sk-or-v1-testkey",
@@ -414,18 +417,24 @@ def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
     )
 
     assert result.provider == "openrouter"
-    assert providers == ["https://openrouter.ai/api/v1/chat/completions"]
+    assert providers == ["https://openrouter.ai/api/v1"]
 
 
 def test_complete_does_not_replay_non_retryable_bad_request(monkeypatch) -> None:
     calls = 0
 
-    def open_request(request, *, timeout):
+    def run_worker(_request, **_kwargs):
         nonlocal calls
         calls += 1
-        raise HTTPError(request.full_url, 400, "bad request", {}, None)
+        return {
+            "schema": "subllm.openai-worker-result/v1",
+            "status": "ERROR",
+            "outcome": "http_400",
+            "provider_level": True,
+            "retryable": False,
+        }
 
-    monkeypatch.setattr(client, "urlopen", open_request)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
     with pytest.raises(CompletionError, match="HTTP 400"):
         complete(
             "todo2code",

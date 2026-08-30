@@ -1,0 +1,14 @@
+2026-08-30T17:21:25Z
+Live Supervisor readback on merged SubLLM 0f432c4 proved Cursor descendants are
+reaped, but the single completion process still reached the outer 120-second
+deadline with no child process. This isolates the remaining hang to urllib's
+per-operation socket timeout in an OpenAI-compatible attempt.
+
+2026-08-30T17:28:00Z
+Moved each OpenAI-compatible request into a fixed stdin/stdout worker with a
+new session and hard wall-clock process-group cleanup. Focused client and
+worker tests passed 26/26, including a real hanging descendant receipt.
+
+2026-08-30T17:30:00Z
+Full ./scripts/verify passed Ruff, compileall, 197 tests, wheel and sdist build.
+git diff --check passed and the built package includes openai_worker.py.
