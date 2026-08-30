@@ -3,12 +3,13 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import sys
 import tempfile
-import threading
 import time
 from collections.abc import Mapping, Sequence
+from contextlib import suppress
 from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
@@ -23,6 +24,7 @@ from .types import ResolvedRoute
 
 MAX_VISION_DATA_URL_CHARS = 4_000_000
 MAX_COMPLETION_REQUEST_BYTES = 1_000_000
+MAX_CURSOR_WORKER_RESULT_BYTES = 1_000_000
 _IMAGE_URL_PREFIXES = ("data:image/", "https://")
 
 
@@ -134,41 +136,68 @@ def _message_text(messages: Sequence[Mapping[str, Any]]) -> str:
     return "\n\n".join(rendered)
 
 
-def _wait_for_cursor_run(run: Any, timeout_seconds: float) -> tuple[Any | None, str | None]:
-    completed: list[Any] = []
-    errors: list[BaseException] = []
-
-    def wait() -> None:
-        try:
-            completed.append(run.wait())
-        except BaseException as exc:  # noqa: BLE001 - converted into safe transport evidence
-            errors.append(exc)
-
-    waiter = threading.Thread(target=wait, name="subllm-cursor-run", daemon=True)
-    waiter.start()
-    waiter.join(timeout_seconds)
-    if waiter.is_alive():
-        try:
-            if run.supports("cancel"):
-                run.cancel()
-        except Exception:  # noqa: BLE001 - timeout remains the primary failure
-            pass
-        return None, f"Cursor SDK run timed out after {timeout_seconds:g}s"
-    if errors:
-        return None, type(errors[0]).__name__
-    return (completed[0] if completed else None), None
-
-
-def _cursor_usage(result: Any) -> Mapping[str, Any]:
-    usage = getattr(result, "usage", None)
-    if usage is None:
-        return {}
-    if isinstance(usage, Mapping):
-        return dict(usage)
+def _terminate_cursor_worker(process: subprocess.Popen[bytes]) -> None:
+    """Terminate the isolated worker and every Cursor bridge descendant."""
     try:
-        return asdict(usage)
-    except TypeError:
-        return {}
+        if os.name == "posix":
+            os.killpg(process.pid, signal.SIGTERM)
+        else:  # pragma: no cover - production runners are POSIX
+            process.terminate()
+    except ProcessLookupError:
+        return
+    with suppress(subprocess.TimeoutExpired):
+        process.wait(timeout=0.5)
+    try:
+        if os.name == "posix":
+            # The worker may have exited while its bridge descendants retained
+            # the process group, so always reap the remaining group members.
+            os.killpg(process.pid, signal.SIGKILL)
+        else:  # pragma: no cover - production runners are POSIX
+            process.kill()
+    except ProcessLookupError:
+        pass
+    process.wait()
+
+
+def _run_cursor_worker(
+    request: Mapping[str, Any],
+    *,
+    timeout_seconds: float,
+    cwd: Path,
+) -> Mapping[str, Any]:
+    encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
+        [sys.executable, "-m", "subllm.cursor_worker"],
+        cwd=str(cwd),
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.DEVNULL,
+        start_new_session=True,
+    )
+    try:
+        output, _ = process.communicate(input=encoded, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        _terminate_cursor_worker(process)
+        raise CompletionError(f"Cursor SDK worker timed out after {timeout_seconds:g}s") from exc
+    if process.returncode != 0:
+        raise CompletionError("Cursor SDK worker failed")
+    if len(output) > MAX_CURSOR_WORKER_RESULT_BYTES:
+        raise CompletionError("Cursor SDK worker result exceeds 1000000 bytes")
+    try:
+        result = json.loads(output.decode("utf-8"))
+    except (UnicodeDecodeError, json.JSONDecodeError) as exc:
+        raise CompletionError("Cursor SDK worker returned invalid JSON") from exc
+    if not isinstance(result, Mapping) or set(result) != {
+        "schema", "status", "content", "usage", "finish_reason", "run_id",
+    }:
+        raise CompletionError("Cursor SDK worker returned an invalid result")
+    if result.get("schema") != "subllm.cursor-worker-result/v1" or result.get("status") != "SUCCESS":
+        raise CompletionError("Cursor SDK worker did not return success")
+    if not isinstance(result.get("content"), str) or not result["content"]:
+        raise CompletionError("Cursor SDK worker returned empty content")
+    if not isinstance(result.get("usage"), Mapping):
+        raise CompletionError("Cursor SDK worker returned invalid usage")
+    return result
 
 
 def _complete_cursor(
@@ -178,46 +207,30 @@ def _complete_cursor(
     timeout_seconds: float,
     cwd: Path,
 ) -> CompletionResponse:
-    """Execute a selected Cursor candidate without tools or shell access."""
-    try:
-        from cursor_sdk import Agent, AgentOptions, LocalAgentOptions
-    except ImportError as exc:
-        raise CompletionError(
-            "provider cursor requires the optional dependency "
-            "'subactor-subllm[cursor]'"
-        ) from exc
-
+    """Execute Cursor in a bounded process group without tools or shell access."""
     cursor = route.cursor_sdk_kwargs()
-    option_values = {
-        "model": cursor["model"],
-        "api_key": cursor["api_key"],
-        "local": LocalAgentOptions(cwd=str(cwd), setting_sources=[]),
-        "tools": [],
-        "name": f"subllm-{route.application}-{route.function}",
-    }
-    options = AgentOptions(**option_values)
-    try:
-        with Agent.create(options) as agent:
-            result, wait_error = _wait_for_cursor_run(agent.send(_message_text(messages)), timeout_seconds)
-    except Exception as exc:  # noqa: BLE001 - do not expose SDK internals or credentials
-        raise CompletionError(f"{route.provider}/{route.wire_model} Cursor SDK request failed") from exc
-    if wait_error:
-        raise CompletionError(f"{route.provider}/{route.wire_model} {wait_error}")
-    if result is None:
-        raise CompletionError(f"{route.provider}/{route.wire_model} Cursor SDK returned no result")
-    status = str(getattr(getattr(result, "status", ""), "value", getattr(result, "status", ""))).lower()
-    content = str(getattr(result, "result", "") or "")
-    if status != "finished" or not content:
-        raise CompletionError(f"{route.provider}/{route.wire_model} Cursor SDK ended with status {status or 'unknown'}")
+    result = _run_cursor_worker(
+        {
+            "schema": "subllm.cursor-worker-request/v1",
+            "model": cursor["model"],
+            "api_key": cursor["api_key"],
+            "cwd": str(cwd),
+            "name": f"subllm-{route.application}-{route.function}",
+            "prompt": _message_text(messages),
+        },
+        timeout_seconds=timeout_seconds,
+        cwd=cwd,
+    )
     return CompletionResponse(
-        content=content,
+        content=str(result["content"]),
         provider=route.provider,
         model=route.wire_model,
-        usage=_cursor_usage(result),
+        usage=dict(result["usage"]),
+        finish_reason=str(result["finish_reason"]),
         raw={
             "transport": "cursor-sdk",
-            "run_id": str(getattr(result, "id", "") or ""),
-            "status": status,
+            "run_id": str(result["run_id"]),
+            "status": "finished",
         },
     )
 

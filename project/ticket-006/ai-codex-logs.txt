@@ -1,0 +1,20 @@
+2026-08-30T19:04:05+02:00
+Live Supervisor readback reproduced two completion deadline failures. Each
+Cursor SDK attempt retained a shell/Node cursor-sdk-bridge process tree after
+the Python completion process reached its outer 120-second deadline.
+
+2026-08-30T19:16:00+02:00
+Implemented a fixed Python-module worker with a closed JSON protocol, a new
+POSIX session and TERM/KILL group cleanup. Focused tests passed 22/22, including
+a real hanging descendant reaping test. A short live completion canary selected
+direct Z.AI and succeeded in 3.4 seconds without a residual worker process.
+
+2026-08-30T19:19:00+02:00
+Full ./scripts/verify passed Ruff, compileall, 193 tests, wheel and sdist build.
+git diff --check passed and the built package includes cursor_worker.py.
+
+2026-08-30T17:15:00Z
+Protected Validator run 33324609529 rejected the exact head before merge because
+its patch scanner found a conditional pytest skip marker and an api_key keyword
+assignment. Removed the skip marker and expressed the already closed SDK options
+as a validated mapping; no validation or credential boundary was weakened.
