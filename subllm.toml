@@ -14,10 +14,14 @@ max_attempts = 6
 # Lower priority wins. Set enabled = false to remove a provider from every
 # route. default_model is the logical model ID from src/subllm/policy.py.
 # Credential strategies (ADOPT wellmanifest policy-dsl / env-dsl):
-#   ZAI_API_KEY        → zai                    → glm-5.3 (preferred)
-#   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol (then grok-4.6)
-#   OPENROUTER_API_KEY → openrouter             → role-specific GLM 5.3 fallbacks (+ glm-5.2 default)
-# Cursor Sol / Grok are never OpenRouter wire ids.
+#   ZAI_API_KEY        → zai                    → glm-5.3
+#   GEMINI_API_KEY     → agy (gemini-sdk)       → gemini-3.1-pro-high
+#   OPENAI_API_KEY     → codex                  → gpt-5.6-sol
+#   ANTHROPIC_API_KEY  → claude                 → claude-opus-5
+#   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol
+#   OLLAMA_API_KEY     → ollama                 → qwen3-coder:30b
+#   OPENROUTER_API_KEY → openrouter             → role-specific GLM 5.3 fallbacks
+# Direct-provider model IDs are not inferred to be OpenRouter wire IDs.
 [providers.zai]
 enabled = true
 priority = 0
@@ -26,17 +30,17 @@ default_model = "glm-5.3"
 [providers.agy]
 enabled = true
 priority = 10
-default_model = "gemini-2.5-flash"
+default_model = "gemini-3.1-pro-high"
 
 [providers.codex]
 enabled = true
 priority = 15
-default_model = "gpt-5.5"
+default_model = "gpt-5.6-sol"
 
 [providers.claude]
 enabled = true
 priority = 18
-default_model = "claude-3.7-sonnet"
+default_model = "claude-opus-5"
 
 [providers.cursor]
 enabled = true
@@ -46,7 +50,7 @@ default_model = "gpt-5.6-sol"
 [providers.ollama]
 enabled = true
 priority = 25
-default_model = "qwen2.5-coder"
+default_model = "qwen3-coder:30b"
 
 [providers.openrouter]
 enabled = true

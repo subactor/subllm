@@ -74,25 +74,6 @@ ORDERABLE_PROVIDER_IDS = ("zai", "agy", "codex", "claude", "cursor", "ollama", "
 
 MODELS = MappingProxyType(
     {
-        "gpt-5.6-sol": ModelSpec(
-            id="gpt-5.6-sol",
-            providers=_provider_models(
-                cursor=ProviderModelSpec(
-                    litellm_model="cursor/gpt-5.6-sol",
-                    wire_model="gpt-5.6-sol",
-                )
-            ),
-        ),
-        # Cursor SDK slug confirmed via Cursor.models.list(); not an OpenRouter wire id.
-        "grok-4.6": ModelSpec(
-            id="grok-4.6",
-            providers=_provider_models(
-                cursor=ProviderModelSpec(
-                    litellm_model="cursor/grok-4.6",
-                    wire_model="grok-4.6",
-                )
-            ),
-        ),
         "glm-5.2": ModelSpec(
             id="glm-5.2",
             providers=_provider_models(
@@ -178,6 +159,100 @@ MODELS = MappingProxyType(
                     litellm_model="openrouter/qwen/qwen3.7-plus",
                     wire_model="qwen/qwen3.7-plus",
                 )
+            ),
+        ),
+        "gemini-3.1-pro-high": ModelSpec(
+            id="gemini-3.1-pro-high",
+            providers=_provider_models(
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-3.1-pro-high",
+                    wire_model="gemini-3.1-pro-high",
+                ),
+            ),
+        ),
+        "gemini-3.7-flash-medium": ModelSpec(
+            id="gemini-3.7-flash-medium",
+            providers=_provider_models(
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-3.7-flash-medium",
+                    wire_model="gemini-3.7-flash-medium",
+                ),
+            ),
+        ),
+        "claude-opus-5": ModelSpec(
+            id="claude-opus-5",
+            providers=_provider_models(
+                claude=ProviderModelSpec(
+                    litellm_model="anthropic/claude-opus-5",
+                    wire_model="claude-opus-5",
+                ),
+            ),
+        ),
+        "claude-sonnet-5": ModelSpec(
+            id="claude-sonnet-5",
+            providers=_provider_models(
+                claude=ProviderModelSpec(
+                    litellm_model="anthropic/claude-sonnet-5",
+                    wire_model="claude-sonnet-5",
+                ),
+            ),
+        ),
+        "gpt-5.6-sol": ModelSpec(
+            id="gpt-5.6-sol",
+            providers=_provider_models(
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-5.6-sol",
+                    wire_model="gpt-5.6-sol",
+                ),
+                cursor=ProviderModelSpec(
+                    litellm_model="cursor/gpt-5.6-sol",
+                    wire_model="gpt-5.6-sol",
+                ),
+            ),
+        ),
+        "gpt-5.6-terra": ModelSpec(
+            id="gpt-5.6-terra",
+            providers=_provider_models(
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-5.6-terra",
+                    wire_model="gpt-5.6-terra",
+                ),
+            ),
+        ),
+        "gpt-5.6-luna": ModelSpec(
+            id="gpt-5.6-luna",
+            providers=_provider_models(
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-5.6-luna",
+                    wire_model="gpt-5.6-luna",
+                ),
+            ),
+        ),
+        "qwen3-coder:30b": ModelSpec(
+            id="qwen3-coder:30b",
+            providers=_provider_models(
+                ollama=ProviderModelSpec(
+                    litellm_model="ollama/qwen3-coder:30b",
+                    wire_model="qwen3-coder:30b",
+                ),
+            ),
+        ),
+        "grok-4.6": ModelSpec(
+            id="grok-4.6",
+            providers=_provider_models(
+                cursor=ProviderModelSpec(
+                    litellm_model="cursor/grok-4.6",
+                    wire_model="grok-4.6",
+                ),
+            ),
+        ),
+        "composer-2.5": ModelSpec(
+            id="composer-2.5",
+            providers=_provider_models(
+                cursor=ProviderModelSpec(
+                    litellm_model="cursor/composer-2.5",
+                    wire_model="composer-2.5",
+                ),
             ),
         ),
         "gemini-2.5-flash": ModelSpec(
@@ -519,6 +594,13 @@ _ROUTE_VALUES = (
     RoutePolicy("autogrammar-redsl", "evaluate", _DEFAULT),
     RoutePolicy("autogrammar-vql", "generate", _DEFAULT),
     RoutePolicy("autogrammar-vql", "vision", _VISION, modality="vision"),
+    # TwinStudio keeps the EDA output schema and candidate boundary locally;
+    # SubLLM selects only the provider/model for those typed requests.  Missing
+    # routes used to make a panel labelled "Edycja przez LLM" silently fall
+    # back to a three-pattern local parser.
+    RoutePolicy("twinstudio", "eda-nl2dsl", _DEFAULT),
+    RoutePolicy("twinstudio", "eda-firmware-audit", _DEFAULT),
+    RoutePolicy("twinstudio", "eda-conflict-chat", _DEFAULT),
     RoutePolicy(
         "platform",
         "interactive",

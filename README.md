@@ -44,6 +44,7 @@ unavailable, role-specific OpenRouter candidates are:
 | `validator-agent/patch-review` | `z-ai/glm-5.3-flash` |
 | `validator-agent/direct-pr-review` | `z-ai/glm-5.3-flash` |
 | `onedev-agent/code-edit` (host coding-agent) | `z-ai/glm-5.3` |
+| `twinstudio/{eda-nl2dsl,eda-firmware-audit,eda-conflict-chat}` | `z-ai/glm-5.3-flash` |
 | `autogrammar-nexu/vision` | `z-ai/glm-4.5v` |
 | `autogrammar-nlp2cmd/vision` | `z-ai/glm-4.5v` |
 | `autogrammar-vql/vision` | `z-ai/glm-4.5v` |

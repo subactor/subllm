@@ -4,6 +4,9 @@
 
 ### Added
 
+- Register the August 2026 direct-provider model catalog and the three typed
+  TwinStudio EDA routes without inventing OpenRouter aliases for direct-only
+  model identifiers.
 - Expose policy-owned, bounded completion and failover through the closed
   `subllm-complete` stdin-JSON adapter. Results contain content plus
   secret-free provider, model and attempt receipts; raw provider responses and

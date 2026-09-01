@@ -50,11 +50,11 @@ class RuntimePolicyConfig:
 _DEFAULTS = MappingProxyType(
     {
         "zai": ProviderPolicyConfig(enabled=True, priority=0, default_model="glm-5.3"),
-        "agy": ProviderPolicyConfig(enabled=True, priority=10, default_model="gemini-2.5-flash"),
-        "codex": ProviderPolicyConfig(enabled=True, priority=15, default_model="gpt-5.5"),
-        "claude": ProviderPolicyConfig(enabled=True, priority=18, default_model="claude-3.7-sonnet"),
+        "agy": ProviderPolicyConfig(enabled=True, priority=10, default_model="gemini-3.1-pro-high"),
+        "codex": ProviderPolicyConfig(enabled=True, priority=15, default_model="gpt-5.6-sol"),
+        "claude": ProviderPolicyConfig(enabled=True, priority=18, default_model="claude-opus-5"),
         "cursor": ProviderPolicyConfig(enabled=True, priority=20, default_model="gpt-5.6-sol"),
-        "ollama": ProviderPolicyConfig(enabled=True, priority=25, default_model="qwen2.5-coder"),
+        "ollama": ProviderPolicyConfig(enabled=True, priority=25, default_model="qwen3-coder:30b"),
         "openrouter": ProviderPolicyConfig(enabled=True, priority=30, default_model="glm-5.3-flash"),
     }
 )

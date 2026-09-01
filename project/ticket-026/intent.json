@@ -1,0 +1,31 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-026",
+  "workstream": "routing",
+  "deliveryClass": "S",
+  "goal": "Align SubLLM model bindings, operator defaults, and TwinStudio EDA routes",
+  "allowedPaths": [
+    "CHANGELOG.md",
+    "README.md",
+    "TODO.md",
+    "project/TICKETS.md",
+    "project/ticket-026/**",
+    "src/subllm/policy.py",
+    "src/subllm/policy_config.py",
+    "subllm.toml",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*",
+    "policy/adopted/**"
+  ],
+  "acceptance": [
+    "Bind every declared direct-provider model to its exact transport",
+    "Do not infer OpenRouter aliases for direct-only model identifiers",
+    "Keep built-in and operator-controlled defaults synchronized",
+    "Register every typed TwinStudio EDA route",
+    "Pass the repository verification suite"
+  ]
+}

@@ -84,12 +84,70 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
     path = find_policy_file(cwd=Path(__file__).resolve().parents[1])
     assert path is not None
     policy = load_policy_config(cwd=path.parent)
+    assert {
+        provider: settings.default_model
+        for provider, settings in policy.providers.items()
+    } == {
+        "zai": "glm-5.3",
+        "agy": "gemini-3.1-pro-high",
+        "codex": "gpt-5.6-sol",
+        "claude": "claude-opus-5",
+        "cursor": "gpt-5.6-sol",
+        "ollama": "qwen3-coder:30b",
+        "openrouter": "glm-5.3-flash",
+    }
     assert policy.providers["zai"].priority == 0
-    assert policy.providers["zai"].default_model == "glm-5.3"
     assert policy.providers["cursor"].priority == 20
-    assert policy.providers["cursor"].default_model == "gpt-5.6-sol"
     assert policy.providers["openrouter"].priority == 30
-    assert policy.providers["openrouter"].default_model == "glm-5.3-flash"
+
+
+@pytest.mark.parametrize(
+    ("model", "provider", "litellm_model", "wire_model"),
+    (
+        ("gemini-3.1-pro-high", "agy", "gemini/gemini-3.1-pro-high", "gemini-3.1-pro-high"),
+        (
+            "gemini-3.7-flash-medium",
+            "agy",
+            "gemini/gemini-3.7-flash-medium",
+            "gemini-3.7-flash-medium",
+        ),
+        ("claude-opus-5", "claude", "anthropic/claude-opus-5", "claude-opus-5"),
+        ("claude-sonnet-5", "claude", "anthropic/claude-sonnet-5", "claude-sonnet-5"),
+        ("gpt-5.6-sol", "codex", "openai/gpt-5.6-sol", "gpt-5.6-sol"),
+        ("gpt-5.6-sol", "cursor", "cursor/gpt-5.6-sol", "gpt-5.6-sol"),
+        ("gpt-5.6-terra", "codex", "openai/gpt-5.6-terra", "gpt-5.6-terra"),
+        ("gpt-5.6-luna", "codex", "openai/gpt-5.6-luna", "gpt-5.6-luna"),
+        ("qwen3-coder:30b", "ollama", "ollama/qwen3-coder:30b", "qwen3-coder:30b"),
+        ("grok-4.6", "cursor", "cursor/grok-4.6", "grok-4.6"),
+        ("composer-2.5", "cursor", "cursor/composer-2.5", "composer-2.5"),
+    ),
+)
+def test_three_tier_direct_model_catalog_has_exact_transport_bindings(
+    model: str,
+    provider: str,
+    litellm_model: str,
+    wire_model: str,
+) -> None:
+    binding = MODELS[model].providers[provider]
+
+    assert binding.litellm_model == litellm_model
+    assert binding.wire_model == wire_model
+
+
+def test_direct_tier_models_do_not_invent_openrouter_aliases() -> None:
+    for model in (
+        "gemini-3.1-pro-high",
+        "gemini-3.7-flash-medium",
+        "claude-opus-5",
+        "claude-sonnet-5",
+        "gpt-5.6-sol",
+        "gpt-5.6-terra",
+        "gpt-5.6-luna",
+        "qwen3-coder:30b",
+        "grok-4.6",
+        "composer-2.5",
+    ):
+        assert "openrouter" not in MODELS[model].providers
 
 
 def test_zai_uses_the_coding_plan_endpoint() -> None:
@@ -173,3 +231,11 @@ def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, fun
     assert route.model == "glm-5.3"
     assert route.wire_model == "glm-5.3"
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
+
+
+def test_twinstudio_declares_every_runtime_route() -> None:
+    assert {
+        function
+        for application, function in ROUTES
+        if application == "twinstudio"
+    } == {"eda-nl2dsl", "eda-firmware-audit", "eda-conflict-chat"}

@@ -21,19 +21,19 @@ def _policy_file(
     zai_model: str = "glm-5.3",
     agy_enabled: bool = True,
     agy_priority: int = 10,
-    agy_model: str = "gemini-2.5-flash",
+    agy_model: str = "gemini-3.1-pro-high",
     codex_enabled: bool = True,
     codex_priority: int = 15,
-    codex_model: str = "gpt-5.5",
+    codex_model: str = "gpt-5.6-sol",
     claude_enabled: bool = True,
     claude_priority: int = 18,
-    claude_model: str = "claude-3.7-sonnet",
+    claude_model: str = "claude-opus-5",
     cursor_enabled: bool = True,
     cursor_priority: int = 20,
     cursor_model: str = "gpt-5.6-sol",
     ollama_enabled: bool = True,
     ollama_priority: int = 25,
-    ollama_model: str = "qwen2.5-coder",
+    ollama_model: str = "qwen3-coder:30b",
     openrouter_enabled: bool = True,
     openrouter_priority: int = 30,
     openrouter_model: str = "glm-5.3-flash",
@@ -236,7 +236,12 @@ def test_repository_policy_file_is_discovered() -> None:
     policy = load_policy_config(cwd=path.parent)
     assert policy.providers["zai"].priority == 0
     assert policy.providers["zai"].default_model == "glm-5.3"
+    assert policy.providers["agy"].default_model == "gemini-3.1-pro-high"
+    assert policy.providers["codex"].default_model == "gpt-5.6-sol"
+    assert policy.providers["claude"].default_model == "claude-opus-5"
     assert policy.providers["cursor"].priority == 20
+    assert policy.providers["cursor"].default_model == "gpt-5.6-sol"
+    assert policy.providers["ollama"].default_model == "qwen3-coder:30b"
     assert policy.providers["openrouter"].priority == 30
     assert policy.providers["openrouter"].default_model == "glm-5.3-flash"
     assert policy.execution.failover_enabled is True
@@ -261,7 +266,12 @@ def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> 
     assert policy.source is None
     assert policy.providers["zai"].priority == 0
     assert policy.providers["zai"].default_model == "glm-5.3"
+    assert policy.providers["agy"].default_model == "gemini-3.1-pro-high"
+    assert policy.providers["codex"].default_model == "gpt-5.6-sol"
+    assert policy.providers["claude"].default_model == "claude-opus-5"
     assert policy.providers["cursor"].priority == 20
+    assert policy.providers["cursor"].default_model == "gpt-5.6-sol"
+    assert policy.providers["ollama"].default_model == "qwen3-coder:30b"
     assert policy.providers["openrouter"].priority == 30
     assert policy.applications["todo2code"].url == "https://github.com/autogrammar/todo2code"
     assert policy.applications["twinstudio"].name == "TwinStudio"

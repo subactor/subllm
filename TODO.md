@@ -1,5 +1,10 @@
 # TODO
 
+- [ ] [`ticket-026`](project/ticket-026/README.md) — align the SubLLM catalog
+  and operator defaults with the declared three-tier provider strategy, and
+  register TwinStudio's typed EDA routes. Status: `IN_PROGRESS`; workstream:
+  `routing`.
+
 - [x] [`ticket-023`](project/ticket-023/README.md) — bounded runtime failover for
   slow or transiently unavailable LLM providers, with process-local health
   receipts and operator-owned execution thresholds. Status: `IN_PROGRESS / EDIT`;
