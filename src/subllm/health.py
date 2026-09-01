@@ -182,7 +182,12 @@ def order_by_health(
             provider: state.cooldown_until > observed_at
             for provider, state in _HEALTH.items()
         }
-    return tuple(sorted(routes, key=lambda route: cooling.get(route.provider, False)))
+    # A cooldown is a circuit-breaker decision, not merely a preference hint.
+    # Retrying a cooling provider from every short-lived CLI process defeats
+    # the shared health projection and recreates the original timeout chain.
+    # Malformed or unavailable state still reads as empty, so advisory health
+    # can never create an indefinite lockout.
+    return tuple(route for route in routes if not cooling.get(route.provider, False))
 
 
 def record_failure(

@@ -28,8 +28,8 @@ LLM strategies are assigned by **API-key source** (ADOPT
 continue with later candidates.
 
 Koru planning, queue, reflection and DSL routes use the shared declared
-Z.AI → Cursor → OpenRouter chain. Runtime health may reorder only candidates
-already present in each exact route.
+Z.AI → Cursor → OpenRouter chain. Runtime health may temporarily exclude only
+cooling candidates already present in each exact route.
 
 Gemini 3.1 Pro Preview is blocked in the catalog. Provider, model, application
 and route definitions live in `src/subllm/policy.py`. See
@@ -59,8 +59,10 @@ or a `file:` / `http:` image URL. Text routes such as
 list. It advances after an attempt timeout, connection failure, provider
 authentication/rate/transient HTTP failure, missing wire model or invalid
 completion response. A successful response slower than the configured threshold
-is returned, but that provider is deprioritized for following calls during its
-cooldown. Every successful result includes secret-free `attempts` metadata.
+is returned, but that provider is excluded from following calls during its
+cooldown. If every candidate is cooling, the call fails immediately and a later
+call restores routes after expiry. Every successful result includes secret-free
+`attempts` metadata.
 
 Failover does not issue parallel speculative requests. This avoids knowingly
 duplicating paid calls, although a remote provider may still finish and bill a

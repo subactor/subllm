@@ -49,6 +49,30 @@ def test_provider_recovers_to_policy_order_after_cooldown() -> None:
     assert order_by_health(routes, now=161.0)[0].provider == "zai"
 
 
+def test_cooling_providers_are_not_retried_by_the_next_process() -> None:
+    routes = _routes()
+    record_failure(
+        "zai",
+        reason="timeout",
+        latency_seconds=12.0,
+        policy=_POLICY,
+        now=100.0,
+    )
+    record_failure(
+        "openrouter",
+        reason="timeout",
+        latency_seconds=12.0,
+        policy=_POLICY,
+        now=100.0,
+    )
+
+    assert order_by_health(routes, now=101.0) == ()
+    assert [route.provider for route in order_by_health(routes, now=161.0)] == [
+        "zai",
+        "openrouter",
+    ]
+
+
 def test_slow_success_is_returned_but_marks_provider_degraded() -> None:
     record_success("zai", latency_seconds=10.5, policy=_POLICY, now=100.0)
 

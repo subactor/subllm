@@ -1,0 +1,28 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-025",
+  "workstream": "runtime",
+  "deliveryClass": "S",
+  "goal": "Do not retry providers while a process-shared cooldown is active",
+  "allowedPaths": [
+    "project/TICKETS.md",
+    "project/ticket-025/**",
+    "src/subllm/health.py",
+    "src/subllm/client.py",
+    "tests/test_health.py",
+    "tests/test_client.py",
+    "README.md",
+    "docs/runtime-failover.md"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*",
+    "policy/adopted/**"
+  ],
+  "acceptance": [
+    "Skip every provider with an unexpired shared cooldown",
+    "Fail closed without a transport attempt when every provider is cooling",
+    "Restore deterministic policy eligibility after expiry",
+    "Pass the repository verification suite"
+  ]
+}
