@@ -145,8 +145,11 @@ max_attempts = 6
 
 The `timeout_seconds` argument of `complete()` is the total caller budget. Each
 provider receives at most `attempt_timeout_seconds` from the remaining budget.
-Health is process-local and self-recovers after cooldown; it is not durable
-authority. Operators can inspect `provider_health()` or clear it with
+Health is shared across completion processes and self-recovers after cooldown;
+it is secret-free routing memory, not durable authority. The default state file
+is `${XDG_STATE_HOME:-$HOME/.local/state}/subllm/provider-health.json` and an
+absolute `SUBLLM_HEALTH_STATE_FILE` overrides that location. Operators can
+inspect `provider_health()` or explicitly clear it with
 `reset_provider_health()`.
 
 The full retry classification, ordering algorithm, response receipts and cost
