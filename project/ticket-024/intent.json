@@ -1,0 +1,28 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-024",
+  "workstream": "runtime",
+  "deliveryClass": "S",
+  "goal": "Persist secret-free SubLLM provider health across completion processes",
+  "allowedPaths": [
+    "project/TICKETS.md",
+    "project/ticket-024/**",
+    "src/subllm/health.py",
+    "tests/conftest.py",
+    "tests/test_health.py",
+    "README.md",
+    "docs/runtime-failover.md"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*",
+    "policy/adopted/**"
+  ],
+  "acceptance": [
+    "Persist only bounded provider health diagnostics",
+    "Serialize concurrent processes and write state atomically",
+    "Retain cooldown routing across a fresh process",
+    "Recover safely from malformed state",
+    "Pass the repository verification suite"
+  ]
+}

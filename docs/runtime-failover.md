@@ -97,10 +97,18 @@ for health in provider_health():
 ```
 
 Attempt and health receipts contain no credentials, request headers, messages,
-response content or provider exception bodies. Health is protected by a
-process-local lock, is not persisted and is not shared across workers.
+response content or provider exception bodies. Health contains only the
+provider name, bounded counters, an expiry timestamp, latency and a closed
+reason label. It is serialized with a process-shared lock and written
+atomically to `${XDG_STATE_HOME:-$HOME/.local/state}/subllm/provider-health.json`.
+`SUBLLM_HEALTH_STATE_FILE` may select another absolute runtime path.
 
-`reset_provider_health()` clears the local projection. It is intended for
+The state is advisory routing memory, never an authority or credential source.
+A missing, read-only or malformed file safely degrades to an empty/in-memory
+projection and cannot block every declared model route. The next successful
+write replaces malformed data with the closed schema.
+
+`reset_provider_health()` clears the shared projection. It is intended for
 tests or an explicit operator recovery action, not as a normal request step.
 
 ## Cost and mutation boundary
