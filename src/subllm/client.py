@@ -424,6 +424,11 @@ def complete(
     runtime_policy = load_policy_config(environ=environ)
     execution = runtime_policy.execution
     routes = order_by_health(routes) if execution.failover_enabled else routes[:1]
+    if not routes:
+        raise CompletionError(
+            f"all providers cooling down for {application}/{function}",
+            diagnostic_code=PROVIDER_CHAIN_EXHAUSTED_CODE,
+        )
     first_route = routes[0]
     _validate_vision_messages(messages, modality=first_route.modality)
     if first_route.modality == "vision" and first_route.transport != "openai-compatible":

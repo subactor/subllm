@@ -1,0 +1,1 @@
+Bounded evidence only. Raw command and model transcripts are intentionally not tracked.

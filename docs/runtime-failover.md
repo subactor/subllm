@@ -9,8 +9,9 @@ application/function pair.
 
 1. Load and validate the complete `subllm.toml` policy.
 2. Resolve route candidates, provider enablement and credentials.
-3. Move providers in active cooldown behind healthy providers while preserving
-   policy order inside both groups.
+3. Exclude providers in active cooldown and preserve policy order among the
+   remaining candidates. If every candidate is cooling, fail immediately so a
+   later caller can retry after cooldown instead of repeating the timeout chain.
 4. Start one request. Its timeout is the smaller of the remaining total caller
    budget and `attempt_timeout_seconds`.
 5. Return the first successful response. If the response was slow, return it
@@ -43,6 +44,11 @@ A provider-level failure skips any later model candidate using the same
 provider during that call. This prevents repeating a connection or account
 failure against a second model endpoint. Model-level failures leave another
 declared model on that provider eligible.
+
+Cooldown is process-shared circuit-breaker state. A provider in cooldown is not
+called, even when it is the last declared candidate. This makes recurring CLI
+and Supervisor calls return a bounded failure quickly when no route is
+currently healthy. Expiry restores eligibility without an operator action.
 
 ## Time and attempt budgets
 
@@ -104,9 +110,10 @@ atomically to `${XDG_STATE_HOME:-$HOME/.local/state}/subllm/provider-health.json
 `SUBLLM_HEALTH_STATE_FILE` may select another absolute runtime path.
 
 The state is advisory routing memory, never an authority or credential source.
-A missing, read-only or malformed file safely degrades to an empty/in-memory
-projection and cannot block every declared model route. The next successful
-write replaces malformed data with the closed schema.
+A valid active cooldown can temporarily defer every declared route. A missing,
+read-only or malformed file safely degrades to an empty/in-memory projection,
+so damaged state cannot create an indefinite lockout. The next successful write
+replaces malformed data with the closed schema.
 
 `reset_provider_health()` clears the shared projection. It is intended for
 tests or an explicit operator recovery action, not as a normal request step.

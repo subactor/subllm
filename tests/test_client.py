@@ -458,6 +458,21 @@ def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
     assert raised.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
     assert calls == 2
 
+    with pytest.raises(CompletionError, match="all providers cooling down") as deferred:
+        complete(
+            "todo2code",
+            "semantic",
+            [{"role": "user", "content": "classify again"}],
+            timeout_seconds=20,
+            environ={
+                "ZAI_API_KEY": "id.secret",
+                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+            },
+        )
+
+    assert deferred.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
+    assert calls == 2
+
 
 def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
     providers: list[str] = []
