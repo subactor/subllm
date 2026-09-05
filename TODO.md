@@ -25,3 +25,5 @@
   `subactor-subllm` outside immutable Git commit dependencies.
 - [x] [`ticket-008`](project/ticket-008/README.md) — allow bounded runtime
   tuning of provider attempt deadlines without copying the policy catalog.
+
+Documentation deliverables follow [AGENTS.md](AGENTS.md) and the [documentation index](docs/README.md).

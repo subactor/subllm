@@ -1,0 +1,27 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-043",
+  "summary": "Adopt canonical documentation placement while preserving routing instructions",
+  "workstream": "documentation",
+  "allowedPaths": [
+    "AGENTS.md",
+    "README.md",
+    "TODO.md",
+    "docs/README.md",
+    ".governance/docs.json",
+    "project/ticket-043/**"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md",
+    ".env",
+    ".env.*",
+    "subllm.toml",
+    "src/**"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "stacks": [
+    "python"
+  ]
+}
