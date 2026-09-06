@@ -17,7 +17,7 @@
   "evidence": [
     "https://docs.z.ai/guides/llm/glm-5.3",
     "https://github.com/subactor/subllm/issues/45",
-    "sha256:9a0ee28c45bd089dad1d0ea6932b1d0d0ed5902580a2fcaa5f99bb3c9013ea97"
+    "receipt:sha256:9a0ee28c45bd089dad1d0ea6932b1d0d0ed5902580a2fcaa5f99bb3c9013ea97"
   ]
 }
 ---
