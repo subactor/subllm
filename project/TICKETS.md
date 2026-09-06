@@ -21,3 +21,5 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | ticket-008 | Allow bounded runtime tuning of attempt deadlines | DONE | runtime |
 | ticket-010 | Register semcod/prellm routes for direct Z.AI GLM 5.3 | IN_PROGRESS | routing |
 | ticket-012 | Release SubLLM 1.4.1 with PreLLM routes | IN_PROGRESS | release |
+
+| ticket-045 | Bound periodic supervisor assessment reasoning | IN_PROGRESS | routing |

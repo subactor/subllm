@@ -2,7 +2,7 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 1,
+  "version": 2,
   "status": "current",
   "updated": "2026-09-06"
 }
@@ -19,3 +19,5 @@ Follow the [repository agent instructions](../AGENTS.md). Durable information be
 - [Runtime Failover](runtime-failover.md)
 
 Existing documentation retains its historical format.
+
+- [Supervisor assessment latency](analysis/supervisor-assessment-latency.md)

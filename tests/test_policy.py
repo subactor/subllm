@@ -239,3 +239,25 @@ def test_twinstudio_declares_every_runtime_route() -> None:
         for application, function in ROUTES
         if application == "twinstudio"
     } == {"eda-nl2dsl", "eda-firmware-audit", "eda-conflict-chat"}
+
+
+def test_supervisor_assessment_bounds_only_direct_zai_reasoning() -> None:
+    assessment = configured_routes("supervisor", "assessment")
+    delegation = configured_routes("supervisor", "delegation")
+    assert [(r.provider, r.model, r.wire_model) for r in assessment] == [
+        (r.provider, r.model, r.wire_model) for r in delegation
+    ]
+    for current, previous in zip(assessment, delegation, strict=True):
+        assert dict(current.model_parameters) == (
+            {"reasoning_effort": "low"}
+            if current.provider == "zai" else dict(previous.model_parameters)
+        )
+    for function in ("delegation", "review"):
+        assert all(
+            "reasoning_effort" not in r.model_parameters
+            for r in configured_routes("supervisor", function)
+        )
+    assert all(
+        "reasoning_effort" not in r.model_parameters
+        for r in configured_routes("repair-agent", "repair-plan")
+    )
