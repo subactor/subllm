@@ -1,0 +1,25 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-045",
+  "workstream": "routing",
+  "deliveryClass": "S",
+  "goal": "Bound direct ZAI reasoning effort for periodic supervisor assessments",
+  "allowedPaths": [
+    "src/subllm/policy.py",
+    "tests/test_policy.py",
+    "docs/README.md",
+    "docs/analysis/supervisor-assessment-latency.md",
+    "project/ticket-045/**",
+    "project/TICKETS.md"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*",
+    "policy/adopted/**"
+  ],
+  "acceptance": [
+    "Only supervisor/assessment direct ZAI gets reasoning_effort=low; route identity, ordering and fallbacks are unchanged.",
+    "Other supervisor functions and coding/repair routes preserve model parameters.",
+    "Policy, transport and documentation checks pass; live schema-valid assessment readback after protected publication."
+  ]
+}

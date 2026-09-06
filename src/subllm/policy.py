@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from types import MappingProxyType
 
 from .types import (
@@ -488,6 +489,15 @@ _DEFAULT = (
     RouteCandidate(provider="openrouter"),
 )
 
+# Periodic assessment is bounded triage; GLM-5.3 defaults to max effort.
+# Preserve the shared candidates and other routes, changing only this role's
+# direct ZAI parameter. Planning, coding and repair retain their defaults.
+_SUPERVISOR_ASSESSMENT = tuple(
+    replace(candidate, model_parameters=MappingProxyType({"reasoning_effort": "low"}))
+    if candidate.provider == "zai" else candidate
+    for candidate in _DEFAULT
+)
+
 # Role-specific OpenRouter fallbacks are selected from the current benchmark:
 # GLM 5.3 for repair structured JSON; GLM 5.3 Flash for validator review.
 _REPAIR = (
@@ -619,7 +629,7 @@ _ROUTE_VALUES = (
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
-    RoutePolicy("supervisor", "assessment", _DEFAULT),
+    RoutePolicy("supervisor", "assessment", _SUPERVISOR_ASSESSMENT),
     RoutePolicy("supervisor", "delegation", _DEFAULT),
     RoutePolicy("supervisor", "review", _DEFAULT),
 )
