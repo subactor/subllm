@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 2,
+  "version": 3,
   "status": "current",
-  "updated": "2026-09-06"
+  "updated": "2026-09-08"
 }
 ---
 
@@ -21,3 +21,5 @@ Follow the [repository agent instructions](../AGENTS.md). Durable information be
 Existing documentation retains its historical format.
 
 - [Supervisor assessment latency](analysis/supervisor-assessment-latency.md)
+
+- [Local Codex CLI integration and verification](analysis/codex-cli-integration.md)
