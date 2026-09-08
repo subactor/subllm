@@ -12,8 +12,12 @@ ADOPTED = ROOT / "policy" / "adopted"
 def test_adopted_catalog_matches_python_providers() -> None:
     catalog = json.loads((ADOPTED / "strategy-catalog.json").read_text(encoding="utf-8"))
     by_id = {row["id"]: row for row in catalog["strategies"]}
-    assert set(by_id) == set(PROVIDERS)
-    for provider_id, provider in PROVIDERS.items():
+    # The adopted pack describes API credential strategies, not CLI-owned login.
+    credential_providers = {key: value for key, value in PROVIDERS.items() if value.api_key_env}
+    assert set(by_id) == set(credential_providers)
+    assert {key for key, value in PROVIDERS.items() if not value.api_key_env} == {"codex-cli"}
+    assert PROVIDERS["codex-cli"].transport == "codex-cli"
+    for provider_id, provider in credential_providers.items():
         row = by_id[provider_id]
         assert row["credentialEnv"] == provider.api_key_env
         assert row["provider"] == provider.id
