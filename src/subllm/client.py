@@ -378,6 +378,11 @@ def _complete_route(
     response_format: Mapping[str, Any] | None,
     cwd: Path,
 ) -> CompletionResponse:
+    if route.transport == "codex-cli":
+        from .codex_cli import invoke
+
+        content, usage = invoke(route.wire_model, messages, timeout_seconds, response_format)
+        return CompletionResponse(content, route.provider, route.wire_model, usage, "stop")
     if route.transport == "cursor-sdk":
         try:
             return _complete_cursor(route, messages, timeout_seconds=timeout_seconds, cwd=cwd)

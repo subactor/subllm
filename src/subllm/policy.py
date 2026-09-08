@@ -33,6 +33,9 @@ PROVIDERS = MappingProxyType(
             api_key_env="GEMINI_API_KEY",
             transport="gemini-sdk",
         ),
+        "codex-cli": ProviderSpec(
+            id="codex-cli", api_base="", api_key_env="", transport="codex-cli",
+        ),
         "codex": ProviderSpec(
             id="codex",
             api_base="https://api.openai.com/v1",
@@ -71,7 +74,7 @@ EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
 
 # Comma-separated fallback chain. Unknown names fail closed.
 SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
-ORDERABLE_PROVIDER_IDS = ("zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter")
+ORDERABLE_PROVIDER_IDS = ("zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli")
 
 MODELS = MappingProxyType(
     {
@@ -201,6 +204,7 @@ MODELS = MappingProxyType(
         "gpt-5.6-sol": ModelSpec(
             id="gpt-5.6-sol",
             providers=_provider_models(
+                **{"codex-cli": ProviderModelSpec(litellm_model="", wire_model="gpt-5.6-sol")},
                 codex=ProviderModelSpec(
                     litellm_model="openai/gpt-5.6-sol",
                     wire_model="gpt-5.6-sol",
@@ -340,6 +344,10 @@ MODELS = MappingProxyType(
 
 APPLICATIONS = MappingProxyType(
     {
+        "organism-guard": ApplicationSpec(
+            id="organism-guard", title="Organism Guard",
+            url="https://github.com/subactor/organism-guard",
+        ),
         "doctor-agent": ApplicationSpec(
             id="doctor-agent",
             title="doctor-agent",
@@ -537,6 +545,7 @@ _SZEPTNIK = (
 )
 
 _ROUTE_VALUES = (
+    RoutePolicy("organism-guard", "refactor", (RouteCandidate(provider="codex-cli"),)),
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
     RoutePolicy("repair-agent", "repair-plan", _REPAIR),
     RoutePolicy(

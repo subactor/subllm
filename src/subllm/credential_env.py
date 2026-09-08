@@ -28,7 +28,7 @@ def credential_names() -> tuple[str, ...]:
     return tuple(
         dict.fromkeys(
             (
-                *(provider.api_key_env for provider in PROVIDERS.values()),
+                *(provider.api_key_env for provider in PROVIDERS.values() if provider.api_key_env),
                 *EXTRA_CREDENTIAL_ENV,
             )
         )

@@ -216,3 +216,6 @@ See `docs/architecture.md`, `docs/operations.md` and
 `docs/runtime-failover.md`.
 
 Documentation deliverables follow [AGENTS.md](AGENTS.md) and the [documentation index](docs/README.md).
+
+
+Local Codex: [integration, configuration and verification](docs/analysis/codex-cli-integration.md).

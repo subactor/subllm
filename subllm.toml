@@ -32,6 +32,11 @@ enabled = true
 priority = 10
 default_model = "gemini-3.1-pro-high"
 
+[providers.codex-cli]
+enabled = true
+priority = 16
+default_model = "gpt-5.6-sol"
+
 [providers.codex]
 enabled = true
 priority = 15
@@ -203,3 +208,7 @@ url = "https://github.com/tom-sapletta-com/watch"
 [applications.supervisor]
 name = "Subactor Supervisor"
 url = "https://github.com/subactor/supervisor"
+
+[applications.organism-guard]
+name = "Organism Guard"
+url = "https://github.com/subactor/organism-guard"

@@ -1,0 +1,23 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-048",
+  "workstream": "codex-cli-integration",
+  "goal": "Integrate local Codex CLI through SubLLM and verify real Guard proposals",
+  "authorization": "SESSION_EXECUTION_AUTHORIZATION: wdrazaj i tetsuj",
+  "allowedPaths": [
+    "src/subllm/**",
+    "tests/**",
+    "subllm.toml",
+    "organism_guard/fastlane/cli.py",
+    "organism_guard/pivot/subllm_completion.py",
+    "README.md",
+    "docs/**",
+    ".gitignore",
+    "project/ticket-048/**",
+    "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}

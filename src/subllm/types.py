@@ -5,7 +5,7 @@ from dataclasses import dataclass, field
 from typing import Any, Literal
 from uuid import uuid4
 
-Transport = Literal["openai-compatible", "cursor-sdk", "anthropic", "gemini-sdk"]
+Transport = Literal["openai-compatible", "cursor-sdk", "anthropic", "gemini-sdk", "codex-cli"]
 Modality = Literal["text", "vision"]
 
 
@@ -141,6 +141,8 @@ class ResolvedRoute(ConfiguredRoute):
     api_key: str = field(repr=False)
 
     def litellm_kwargs(self, *, request_id: str | None = None) -> dict[str, Any]:
+        if self.transport == "codex-cli":
+            raise ValueError("codex-cli uses local Codex login; invoke through subllm.complete()")
         if self.transport == "cursor-sdk":
             raise ValueError(
                 "provider cursor uses Cursor SDK transport; call cursor_sdk_kwargs() "

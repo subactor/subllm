@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import shutil
 from collections.abc import Mapping
 
 from .credential_env import credential_is_valid, merged_environment
@@ -141,7 +142,11 @@ def available_routes(
     resolved: list[ResolvedRoute] = []
     for route in configured_routes(application, function, environ=environment):
         api_key = explicit.get(route.provider, environment.get(route.api_key_env, ""))
-        if not credential_is_valid(route.provider, api_key):
+        if route.transport == "codex-cli":
+            if shutil.which("codex", path=environment.get("PATH")) is None:
+                continue
+            api_key = ""  # Authentication stays in the Codex CLI credential store.
+        elif not credential_is_valid(route.provider, api_key):
             continue
         resolved.append(
             ResolvedRoute(

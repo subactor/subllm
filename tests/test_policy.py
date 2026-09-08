@@ -91,6 +91,7 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
         "zai": "glm-5.3",
         "agy": "gemini-3.1-pro-high",
         "codex": "gpt-5.6-sol",
+        "codex-cli": "gpt-5.6-sol",
         "claude": "claude-opus-5",
         "cursor": "gpt-5.6-sol",
         "ollama": "qwen3-coder:30b",
@@ -218,6 +219,11 @@ def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
 @pytest.mark.parametrize(("application", "function"), sorted(ROUTES))
 def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, function: str) -> None:
     policy = ROUTES[(application, function)]
+    if (application, function) == ("organism-guard", "refactor"):
+        route = configured_routes(application, function)[0]
+        assert route.provider == route.transport == "codex-cli"
+        assert route.model == "gpt-5.6-sol"
+        return
     if policy.modality == "vision":
         route = configured_routes(application, function)[0]
         assert route.provider == "openrouter"
