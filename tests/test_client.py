@@ -577,7 +577,7 @@ def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypa
     assert command[0] == "aider"
     assert "--no-auto-commits" in command
     assert "--no-auto-test" in command
-    assert command[command.index("--map-tokens") + 1] == "2048"
+    assert command[command.index("--map-tokens") + 1] == "0"
     assert command[command.index("--file") + 1] == "src/fix.py"
     assert "id.secret" not in repr(command)
     child_environment = observed["env"]
