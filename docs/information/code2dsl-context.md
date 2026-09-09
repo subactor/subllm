@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 1,
+  "version": 2,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-09",
   "review_after": "2026-10-09",
-  "source_revision": "bcf2a3d7a64512c63c59bc73ac27b1d9e5db47a1",
+  "source_revision": "5d72899f1c5e9f6cd867c840da524de955192496",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -42,7 +42,7 @@ This delivery supports Python and JavaScript/TypeScript (including JSX/TSX). It 
 
 A live synthetic canary on 2026-09-09 used Z.AI GLM-5.3 for both selection and editing. The fixture had 51 tracked files and an `auth.py` of 300,033 bytes. The selection payload contained 1,638 UTF-8 bytes; the editing payload contained 1,763 bytes, including the task and DSL records. These measurements exclude the short system instructions. The model changed `allow(user)` to reject `None`; local assertions checked both `None` and an empty dictionary and verified all 15,000 unrelated padding lines remained unchanged. Execution took 21.19 seconds. This is a synthetic canary, not a production ticket execution receipt.
 
-The private canary receipt is bound by its SHA-256 in metadata. It contains model names, request sizes and digests, selected IDs, source/build pins and before/after source digests; it does not contain credentials or raw LLM transcripts. `./scripts/verify` passed: 253 tests, lint, bytecode compilation, wheel and sdist builds. The packaged wheel contains the Node bridge. Regression tests cover semantic selection across large inventories, paged reduction, invalid model IDs, path boundaries, stale source, digest mismatches, overlapping edits, truncated excerpts, Python syntax, real Python/JS extraction and preserved operator ignore rules.
+The private canary receipt is bound by its SHA-256 in metadata. It contains model names, request sizes and digests, selected IDs, source/build pins and before/after source digests; it does not contain credentials or raw LLM transcripts. The initial validation passed 253 tests on Python 3.11, 3.12 and 3.13. The final suite separates 251 hermetic tests in `./scripts/verify` from two real-runtime integration tests in `./scripts/verify-code2dsl`; neither suite skips tests. The integration command fails without all three runtime pins. Lint, bytecode compilation, wheel and sdist builds also passed. The packaged wheel contains the Node bridge. The required OneDev profile runs the hermetic suite. Its image does not include the pinned external todo2code runtime; the two real-runtime tests are separately observed local integration evidence, not claimed as deployed CI coverage. Regression tests cover semantic selection across large inventories, paged reduction, invalid model IDs, path boundaries, stale source, digest mismatches, overlapping edits, truncated excerpts, Python syntax, real Python/JS extraction and preserved operator ignore rules.
 
 <!-- docs:section content -->
 ## Content
@@ -54,7 +54,7 @@ The private canary receipt is bound by its SHA-256 in metadata. It contains mode
 5. The editing LLM returns record IDs, original file hashes and replacements for those exact line ranges. Validate every edit, reject unknown IDs and overlapping ranges, check Python syntax, and reobserve source bytes before writing. Preserve all bytes outside selected ranges and preserve file modes. Replace individual files atomically; the outer worktree/lease remains responsible for excluding concurrent writers and for recovery after interruption.
 6. Return a secret-free `subllm.dsl-edit-receipt/v1` inside the existing result's `response`: extractor pins, query provider/model and byte counts, request digests, selected record IDs and edit digests. A receipt is evidence of local edits, not merge or deployment authority.
 
-Configure the trusted worker environment with all three values:
+Configure the trusted worker environment with all three values. Run `./scripts/verify-code2dsl` with the same pins to verify real extraction and ignore-policy preservation; missing runtime configuration is an error, never a skip:
 
 ```text
 SUBLLM_CODE2DSL_RUNTIME=<absolute path to the verified todo2code runtime>

@@ -1,0 +1,6 @@
+#!/bin/sh
+set -eu
+: "${SUBLLM_CODE2DSL_RUNTIME:?Set the independently verified todo2code runtime path}"
+: "${SUBLLM_CODE2DSL_SHA:?Set the reviewed source SHA}"
+: "${SUBLLM_CODE2DSL_BUILD_SHA256:?Set the independently verified build SHA256}"
+python -m pytest -q tests/integration_code2dsl.py
