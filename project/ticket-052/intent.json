@@ -1,0 +1,16 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-052",
+  "workstream": "aider-source-context",
+  "goal": "Do not treat Unicode word prefixes or over-budget bare directory words as the selected Aider context when the prompt already names slash-containing paths.",
+  "authorization": "Session execution authorization: implement Layer A, test, publish via local Validator.",
+  "allowedPaths": [
+    "src/subllm/code_context.py",
+    "tests/test_code_context.py",
+    "project/ticket-052/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}
