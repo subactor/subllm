@@ -1,0 +1,18 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-049",
+  "workstream": "aider-source-context",
+  "goal": "Give the policy-routed Aider executor bounded repository source context so noninteractive edits can produce a material result.",
+  "authorization": "User: investigate and unblock autonomous ticket execution; implement, test and publish.",
+  "allowedPaths": [
+    "src/subllm/code_context.py",
+    "src/subllm/client.py",
+    "tests/test_code_context.py",
+    "tests/test_client.py",
+    "project/ticket-049/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}
