@@ -547,48 +547,46 @@ def test_complete_does_not_replay_non_retryable_bad_request(monkeypatch) -> None
     assert calls == 1
 
 
-def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypatch, tmp_path) -> None:
+def test_code_edit_uses_llm_selection_and_dsl_edit_routes(monkeypatch, tmp_path) -> None:
+    from subllm import dsl_edit
+    from subllm.code_context import CodeContext
+
     (tmp_path / ".git").mkdir()
-    observed: dict[str, object] = {}
+    source = b"def allow(user):\n    return True\n"
+    (tmp_path / "auth.py").write_bytes(source)
+    record = {
+        "schemaVersion": "t2c.intent/v1", "id": "auth",
+        "statement": {"kind": "python_symbol_fact", "text": "declare allow"},
+        "epistemic": {"class": "fact"},
+        "source": {"path": "auth.py", "lines": {"start": 1, "end": 2}, "symbol": "allow",
+                   "extractor": "t2c/python-ast@5", "rawExcerpt": source.decode().rstrip("\n")},
+    }
+    context = CodeContext([record], {"auth.py": source}, {"source_sha": "a" * 40})
+    monkeypatch.setattr(dsl_edit, "extract_context", lambda *args: context)
+    calls = []
 
-    def run(command, **kwargs):
-        if command[0] == "git":
-            return subprocess.CompletedProcess(command, 0, b"src/fix.py\0", b"")
-        observed["command"] = command
-        observed.update(kwargs)
-        observed["ignore_path"] = Path(command[command.index("--aiderignore") + 1])
-        observed["ignore_content"] = observed["ignore_path"].read_text()
-        return subprocess.CompletedProcess(command, 0, "Applied edit", "")
+    def completion(application, function, messages, **kwargs):
+        calls.append((application, function, messages, kwargs))
+        if function == "code-context":
+            assert "rawExcerpt" not in json.dumps(messages)
+            content = {"ids": ["auth"]}
+        else:
+            selected = json.loads(messages[1]["content"])["records"][0]
+            content = {"edits": [{"id": "auth", "file_sha256": selected["file_sha256"],
+                                  "replacement": "def allow(user):\n    return user is not None\n"}],
+                       "summary": "Fixed authentication"}
+        return CompletionResponse(json.dumps(content), "zai", "glm-5.3")
 
-    monkeypatch.setattr(client.subprocess, "run", run)
-    (tmp_path / "src").mkdir()
-    (tmp_path / "src/fix.py").write_text("value = 1\n")
-    result = execute_code_edit(
-        "onedev-agent",
-        "code-edit",
-        "Fix the governed ticket in src",
-        worktree=tmp_path,
-        provider="zai",
-        environ={"ZAI_API_KEY": "id.secret"},
-    )
-
-    assert result.provider == "zai"
-    assert result.model == "glm-5.3"
-    assert result.response == "Applied edit"
-    command = observed["command"]
-    assert command[0] == "aider"
-    assert "--no-auto-commits" in command
-    assert "--no-auto-test" in command
-    assert command[command.index("--map-tokens") + 1] == "0"
-    assert command[command.index("--file") + 1] == "src/fix.py"
-    assert "src/fix.py" not in observed["ignore_content"]
-    assert not observed["ignore_path"].exists()
-    assert "id.secret" not in repr(command)
-    child_environment = observed["env"]
-    assert child_environment["AIDER_OPENAI_API_KEY"] == "id.secret"
-    assert child_environment["AIDER_OPENAI_API_BASE"] == "https://api.z.ai/api/coding/paas/v4"
-    assert child_environment["AIDER_MODEL"] == "openai/glm-5.3"
+    monkeypatch.setattr(client, "complete", completion)
+    result = execute_code_edit("onedev-agent", "code-edit", "Fix authentication; run tests and docs",
+                               worktree=tmp_path, provider="zai", environ={"ZAI_API_KEY": "id.secret"})
+    assert [call[1] for call in calls] == ["code-context", "code-edit"]
+    assert all(call[3]["environ"]["SUBLLM_PROVIDER_ORDER"] == "zai" for call in calls)
     assert "id.secret" not in repr(result)
+    assert "id.secret" not in repr([call[2] for call in calls])
+    assert result.provider == "zai"
+    assert (tmp_path / "auth.py").read_text() == "def allow(user):\n    return user is not None\n"
+    assert json.loads(result.response)["schema"] == "subllm.dsl-edit-receipt/v1"
 
 
 def test_code_edit_rejects_a_generic_executable(tmp_path) -> None:

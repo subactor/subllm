@@ -1,147 +1,179 @@
+import os
 import subprocess
-from pathlib import Path
 
 import pytest
 
-from subllm.code_context import select_code_context, write_aider_context_ignore
+from subllm.code_context import CodeContext, encode, extract_context, pages, safe_path, select_code_context
+from subllm.dsl_edit import apply_edits, editing_records
 from subllm.errors import CompletionError
 
 
-@pytest.fixture
-def repo(tmp_path):
-    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    return tmp_path
+def context_record(name='src/auth.py', identity='auth', body='def allow(user):\n    return True\n'):
+    return {
+        'schemaVersion': 't2c.intent/v1', 'id': identity,
+        'statement': {'kind': 'python_symbol_fact', 'action': 'declare', 'object': 'allow', 'text': 'declare allow'},
+        'source': {'path': name, 'lines': {'start': 1, 'end': len(body.splitlines())},
+                   'symbol': 'allow', 'extractor': 't2c/python-ast@5', 'rawExcerpt': body.rstrip('\n')},
+        'epistemic': {'class': 'fact'}, 'metadata': {'arguments': ['user']},
+    }
 
 
-def tracked(repo, name, content="export const value = 1;\n"):
-    file = repo / name
-    file.parent.mkdir(parents=True, exist_ok=True)
-    file.write_text(content)
-    subprocess.run(["git", "add", "--", name], cwd=repo, check=True)
-    return file
+def fixture_context(root):
+    source = b'def allow(user):\n    return True\n'
+    file = root / 'src/auth.py'
+    file.parent.mkdir(exist_ok=True)
+    file.write_bytes(source)
+    context = CodeContext([context_record()], {'src/auth.py': source}, {'source_sha': 'a' * 40})
+    return context, file
 
 
-def test_directory_reference_supplies_source_and_tests_without_unrelated_files(repo):
-    tracked(repo, "services/gateway/src/server.mjs")
-    tracked(repo, "services/gateway/tests/server.test.mjs")
-    tracked(repo, "services/gateway-other/server.mjs")
-    tracked(repo, "private/service.py")
-    assert select_code_context(repo, "Fix `services/gateway` and run its tests.") == [
-        "services/gateway/src/server.mjs", "services/gateway/tests/server.test.mjs",
-    ]
+def test_prose_tests_and_docs_select_only_model_chosen_record():
+    records = [context_record()]
+    sources = {'src/auth.py': b'def allow(user):\n    return True\n'}
+    for i in range(80):
+        name = f'tests/unrelated_{i}.py'
+        body = '# Unrelated large file\n' * 4000
+        records.append(context_record(name, f'other-{i}', body))
+        sources[name] = body.encode()
+    context = CodeContext(records, sources, {})
+    seen = []
+
+    def query(function, instruction, payload):
+        seen.extend(r['id'] for r in payload['records'])
+        assert 'rawExcerpt' not in encode(payload)
+        assert 'Unrelated large file' not in encode(payload)
+        return {'ids': ['auth'] if any(r['id'] == 'auth' for r in payload['records']) else []}
+
+    selected = select_code_context(context, 'Fix authentication; update tests and docs, uruchom testów.', query)
+    assert [r['id'] for r in selected] == ['auth']
+    assert set(seen) == {r['id'] for r in records}
+    assert sum(map(len, sources.values())) > 262144
 
 
-def test_explicit_preallocated_ticket_files_are_available_without_adding_all_untracked(repo):
-    ticket = repo / "project/ticket-012"
-    ticket.mkdir(parents=True)
-    (ticket / "intent.json").write_text('{"allowedPaths": ["src/**"]}')
-    (ticket / "README.md").write_text("Ticket purpose")
-    (repo / "untracked.py").write_text("private content")
-    assert select_code_context(repo, "Update project/ticket-012/intent.json") == [
-        "project/ticket-012/intent.json",
-    ]
+@pytest.mark.parametrize('answer', [{'ids': ['../private.py']}, {'ids': ['auth', 'auth']},
+                                   {'ids': ['auth'], 'shell': 'touch evil'}, {'ids': 'auth'}])
+def test_model_cannot_invent_selection(tmp_path, answer):
+    context, _ = fixture_context(tmp_path)
+    with pytest.raises(CompletionError, match='invalid record IDs'):
+        select_code_context(context, 'repair', lambda *args: answer)
 
 
-def test_context_excludes_secrets_symlinks_binary_and_external_paths(repo, tmp_path_factory):
-    tracked(repo, "src/safe.py")
-    tracked(repo, "src/.env.py", "private value")
-    tracked(repo, "src/credentials.json", "private value")
-    tracked(repo, "src/binary.py", "bad\x00content")
-    external = tmp_path_factory.mktemp("external") / "external.py"
-    external.write_text("private value")
-    (repo / "src/linked.py").symlink_to(external)
-    subprocess.run(["git", "add", "src/linked.py"], cwd=repo, check=True)
-    assert select_code_context(repo, f"Edit src, ../external.py and {external}") == ["src/safe.py"]
+def test_every_page_is_queried_and_reduction_is_model_driven():
+    records = [context_record(identity=f'node-{i}') for i in range(60)]
+    context = CodeContext(records, {'src/auth.py': b'def allow(user):\n    return True\n'}, {})
+    calls = []
+
+    def query(function, instruction, payload):
+        calls.append(instruction)
+        ids = [r['id'] for r in payload['records']]
+        return {'ids': ids[:4 if 'reduction pass' in instruction else 32]}
+
+    # Enough nodes to force multi-page selection and a semantic reduction.
+    for r in records:
+        r['statement']['text'] = 'semantic description ' * 80
+    chosen = select_code_context(context, 'repair', query)
+    assert len(chosen) <= 32
+    assert any('reduction pass' in c for c in calls)
 
 
-def test_file_and_byte_limits_fail_before_invoking_editor(repo):
-    tracked(repo, "src/a.py", "a" * 10)
-    tracked(repo, "src/b.py", "b" * 10)
-    with pytest.raises(CompletionError, match="context exceeds"):
-        select_code_context(repo, "Edit src", max_files=1)
-    with pytest.raises(CompletionError, match="context exceeds"):
-        select_code_context(repo, "Edit src", max_bytes=15)
+def test_page_byte_budget_uses_utf8_and_has_no_silent_truncation():
+    records = [{'id': str(i), 'text': 'ą' * 30} for i in range(3)]
+    result = pages(records, budget=100)
+    assert [r for p in result for r in p] == records
+    assert all(len(encode(p).encode()) <= 100 for p in result)
+    with pytest.raises(CompletionError, match='single record'):
+        pages([{'text': 'x' * 100}], budget=100)
 
 
-def test_urls_and_path_substrings_do_not_select_files(repo):
-    tracked(repo, "src/server.py")
-    assert select_code_context(repo, "See https://example.com/src/server.py and other/src") == []
+def test_source_boundary_excludes_secret_paths_symlinks_and_traversal(tmp_path):
+    for name in ['../auth.py', '.env.py', 'vendor/auth.py', '/tmp/auth.py', 'x/../../auth.py', 'a\\b.py']:
+        with pytest.raises(CompletionError):
+            safe_path(tmp_path, name)
+    (tmp_path / 'linked').symlink_to(tmp_path, target_is_directory=True)
+    with pytest.raises(CompletionError, match='symlink'):
+        safe_path(tmp_path, 'linked/auth.py')
 
 
-def test_exact_filename_and_directory_reference_are_deduplicated(repo):
-    tracked(repo, "src/server.py")
-    assert select_code_context(repo, "Fix src/server.py within src.") == ["src/server.py"]
+def edit_for(record, replacement='def allow(user):\n    return user is not None\n'):
+    return {'edits': [{'id': record['id'], 'file_sha256': record['file_sha256'], 'replacement': replacement}],
+            'summary': 'Reject missing identity'}
 
 
-def test_unicode_word_is_not_a_directory_reference(repo):
-    tracked(repo, "test/producer-coverage.test.mjs")
-    tracked(repo, "src/server.py")
-    assert select_code_context(
-        repo, "Zaktualizuj testów ingest i src/server.py.",
-    ) == ["src/server.py"]
+def test_applies_only_exact_node_and_preserves_unrelated_source(tmp_path):
+    context, file = fixture_context(tmp_path)
+    file.write_bytes(file.read_bytes() + b'\nUNCHANGED = 42\n')
+    context.sources['src/auth.py'] = file.read_bytes()
+    selected = editing_records(context, [context.projection(context.records[0])])
+    receipts = apply_edits(tmp_path, context, selected, edit_for(selected[0]))
+    assert file.read_text() == 'def allow(user):\n    return user is not None\n\nUNCHANGED = 42\n'
+    assert receipts[0]['before_sha256'] != receipts[0]['after_sha256']
 
 
-def test_over_budget_bare_directory_falls_back_to_explicit_paths(repo):
-    tracked(repo, "docs/README.md", "readme\n")
-    tracked(repo, "docs/analysis/producer-auth.md", "analysis\n")
-    for index in range(20):
-        tracked(repo, f"test/extra-{index:02d}.mjs", "x" * 20)
-    tracked(repo, "services/analytics/src/ops-sodl-ingest.mjs", "ingest\n")
-    selected = select_code_context(
-        repo,
-        "See wellmanifest docs 0.1.0 and the test directory plus "
-        "services/analytics/src/ops-sodl-ingest.mjs",
-        max_files=5,
-        max_bytes=400,
-    )
-    assert selected == ["services/analytics/src/ops-sodl-ingest.mjs"]
+@pytest.mark.parametrize('failure', ['stale', 'digest', 'unknown', 'overlap', 'syntax', 'truncated'])
+def test_rejects_unsafe_edits_without_writing(tmp_path, failure):
+    context, file = fixture_context(tmp_path)
+    if failure == 'truncated':
+        context.records[0]['source']['rawExcerpt'] = 'def allow(user):'
+    selected = editing_records(context, [context.projection(context.records[0])])
+    answer = edit_for(selected[0])
+    if failure == 'stale':
+        file.write_text('changed by another writer\n')
+    elif failure == 'digest':
+        answer['edits'][0]['file_sha256'] = '0' * 64
+    elif failure == 'unknown':
+        answer['edits'][0]['id'] = 'outside'
+    elif failure == 'overlap':
+        answer['edits'].append(answer['edits'][0])
+    elif failure == 'syntax':
+        answer['edits'][0]['replacement'] = 'def invalid(\n'
+    before = file.read_bytes()
+    with pytest.raises(CompletionError):
+        apply_edits(tmp_path, context, selected, answer)
+    assert file.read_bytes() == before
 
 
-def test_discovery_projection_preserves_existing_restrictions_and_hides_other_files(repo, tmp_path_factory):
-    tracked(repo, "src/server.py")
-    tracked(repo, "src/restricted.py")
-    tracked(repo, "README.md")
-    tracked(repo, "TODO.md")
-    original = repo / ".aiderignore"
-    original.write_text("# operator restriction\nsrc/restricted.py\n")
-    before = original.read_bytes()
-    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
-    write_aider_context_ignore(repo, ["src/server.py", "src/restricted.py"], destination)
-    assert destination.read_text() == (
-        "# operator restriction\nsrc/restricted.py\n\n/README.md\n/TODO.md\n"
-    )
-    assert original.read_bytes() == before
-    assert not (repo / "context.aiderignore").exists()
+def test_missing_runtime_does_not_fall_back_to_source(tmp_path):
+    with pytest.raises(CompletionError, match='independent build'):
+        extract_context(tmp_path, {})
 
 
-def test_discovery_projection_treats_tracked_filenames_as_literal_patterns(repo, tmp_path_factory):
-    tracked(repo, "src/item[1]*?.py")
-    tracked(repo, "src/with space.py")
-    tracked(repo, "!notice.md")
-    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
-    write_aider_context_ignore(repo, [], destination)
-    assert destination.read_text().splitlines() == [
-        "", "/!notice.md", r"/src/item\[1\]\*\?.py", r"/src/with\ space.py",
-    ]
+@pytest.mark.skipif(not os.environ.get('SUBLLM_CODE2DSL_RUNTIME'), reason='requires pinned code2dsl runtime')
+def test_real_canonical_code2dsl_extracts_python_and_js_without_full_file_context(tmp_path):
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    body = 'def allow(user):\n    return user is not None\n' + '# PRIVATE_UNRELATED_SENTINEL\n' * 15000
+    (tmp_path / 'auth.py').write_text(body)
+    (tmp_path / 'auth.mjs').write_text('export function allow(user) { return user !== null; }\n')
+    (tmp_path / '.env.py').write_text('PRIVATE_CREDENTIAL_SENTINEL = "secret"\n')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True)
+    context = extract_context(tmp_path, os.environ)
+    assert {r['source']['path'] for r in context.records} == {'auth.py', 'auth.mjs'}
+    sent = encode([context.projection(r) for r in context.records])
+    assert 'PRIVATE_UNRELATED_SENTINEL' not in sent
+    assert 'PRIVATE_CREDENTIAL_SENTINEL' not in sent
+    assert len(sent.encode()) < len(body.encode()) / 10
+    assert any(r['source']['symbol'] == 'allow' for r in context.records)
+    assert not (tmp_path / '.intent').exists()
+    assert not context.warnings
 
 
-def test_discovery_projection_respects_an_operator_selected_ignore_file(repo, tmp_path_factory):
-    tracked(repo, "src/server.py")
-    (repo / "operator.ignore").write_text("src/server.py\n")
-    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
-    write_aider_context_ignore(repo, ["src/server.py"], destination, original=Path("operator.ignore"))
-    assert destination.read_text().startswith("src/server.py\n")
+@pytest.mark.skipif(not os.environ.get('SUBLLM_CODE2DSL_RUNTIME'), reason='requires pinned code2dsl runtime')
+def test_real_extraction_preserves_operator_ignore_policy(tmp_path):
+    subprocess.run(['git', 'init', '-q', str(tmp_path)], check=True)
+    (tmp_path / 'auth.py').write_text('def allow(user):\n    return True\n')
+    (tmp_path / 'restricted.py').write_text('def private_credentials():\n    return "DO_NOT_SEND"\n')
+    (tmp_path / '.aiderignore').write_text('restricted.py\n')
+    subprocess.run(['git', 'add', '.'], cwd=tmp_path, check=True)
+    context = extract_context(tmp_path, os.environ)
+    assert {r['source']['path'] for r in context.records} == {'auth.py'}
+    assert 'DO_NOT_SEND' not in encode([context.projection(r) for r in context.records])
 
 
-def test_discovery_projection_rejects_symlinked_rules_and_multiline_names(repo, tmp_path_factory):
-    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
-    (repo / "rules").write_text("src/private.py\n")
-    original = repo / ".aiderignore"
-    original.symlink_to(repo / "rules")
-    with pytest.raises(CompletionError, match="not a regular file"):
-        write_aider_context_ignore(repo, [], destination)
-    original.unlink()
-    tracked(repo, "line\nbreak.py")
-    with pytest.raises(CompletionError, match="unsupported filename"):
-        write_aider_context_ignore(repo, [], destination)
-    assert not destination.exists()
+def test_runtime_pin_mismatch_is_rejected_before_extraction(tmp_path, monkeypatch):
+    from subllm import code_context
+
+    monkeypatch.setattr(code_context.subprocess, 'run',
+                        lambda *args, **kwargs: subprocess.CompletedProcess([], 0, b'b' * 40))
+    with pytest.raises(CompletionError, match='pin mismatch'):
+        extract_context(tmp_path, {'SUBLLM_CODE2DSL_RUNTIME': str(tmp_path),
+                                  'SUBLLM_CODE2DSL_SHA': 'a' * 40,
+                                  'SUBLLM_CODE2DSL_BUILD_SHA256': '0' * 64})

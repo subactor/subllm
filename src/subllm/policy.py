@@ -559,6 +559,7 @@ _ROUTE_VALUES = (
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     # Host coding-agent invokes this canonical route through subllm-code-edit.
     RoutePolicy("onedev-agent", "code-edit", _CODING),
+    RoutePolicy("onedev-agent", "code-context", _CODING),
     RoutePolicy("todo2code", "semantic", _DEFAULT),
     RoutePolicy("szeptnik-one", "program-generation", _SZEPTNIK),
     RoutePolicy("szeptnik-one", "voice-programming", _SZEPTNIK),

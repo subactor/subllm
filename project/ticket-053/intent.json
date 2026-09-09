@@ -1,0 +1,18 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-053",
+  "workstream": "llm-code2dsl-context",
+  "goal": "Replace prompt path heuristics and whole-file LLM context with canonical code2dsl records, model-selected context and source-bound edits.",
+  "authorization": "SESSION_EXECUTION_AUTHORIZATION: napraw problem poprzez inteligentne query LLM i reprezentacje DSL poprzez code2dsl",
+  "allowedPaths": [
+    "src/subllm/**",
+    "tests/**",
+    "docs/**",
+    "pyproject.toml",
+    "project/ticket-053/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}

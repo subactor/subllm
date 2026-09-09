@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subactor-subllm"
-version = "1.9.0+codex.1"
+version = "1.9.1"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -39,7 +39,7 @@ subllm-complete = "subllm.client:completion_main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-subllm = ["py.typed"]
+subllm = ["py.typed", "code2dsl_bridge.mjs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

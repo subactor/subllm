@@ -181,6 +181,7 @@ def test_role_specific_openrouter_fallbacks_match_benchmark_recommendations() ->
         ("validator-agent", "direct-pr-review"): "glm-5.3-flash",
         # Host coding-agent invokes this canonical route through subllm-code-edit.
         ("onedev-agent", "code-edit"): "glm-5.3",
+        ("onedev-agent", "code-context"): "glm-5.3",
     }
     for (application, function), model in expected.items():
         route = next(item for item in configured_routes(application, function) if item.provider == "openrouter")
