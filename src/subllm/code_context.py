@@ -20,6 +20,47 @@ _EXCLUDED_NAMES = frozenset({"credentials.json", "credentials.yaml", "secrets.js
 _EXCLUDED_PARTS = frozenset({"node_modules", "vendor", "__pycache__"})
 
 
+def _tracked_files(root: Path) -> list[str]:
+    try:
+        result = subprocess.run(
+            ["git", "ls-files", "--cached", "-z"], cwd=root,
+            capture_output=True, check=True, timeout=10,
+        )
+        return [name for name in result.stdout.decode("utf-8").split("\0") if name]
+    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
+        raise CompletionError("code edit repository context inventory failed") from exc
+
+
+def write_aider_context_ignore(
+    root: Path, selected: list[str], destination: Path, *, original: Path | None = None,
+) -> None:
+    """Keep extra tracked-file mentions from replacing an un-applied response.
+
+    Aider adds mentioned files before applying edits. Its follow-up can discard
+    the original patch. Preserve the repository ignore rules, then hide tracked
+    files outside the explicitly selected context from automatic discovery.
+    This affects discovery only; the outer executor still validates write scope.
+    """
+    original = original or root / ".aiderignore"
+    if not original.is_absolute():
+        original = root / original
+    try:
+        if original.is_symlink() or (original.exists() and not original.is_file()):
+            raise CompletionError("code edit original Aider ignore file is not a regular file")
+        inherited = original.read_text("utf-8") if original.is_file() else ""
+        excluded = sorted(set(_tracked_files(root)) - set(selected))
+        patterns = []
+        for name in excluded:
+            if "\n" in name or "\r" in name:
+                raise CompletionError("code edit context inventory contains an unsupported filename")
+            # Anchor exact names; do not interpret repository filenames as globs.
+            escaped = re.sub(r"([\\*?\[\] ])", r"\\\1", name)
+            patterns.append("/" + escaped)
+        destination.write_text(inherited + "\n" + "\n".join(patterns) + "\n", "utf-8")
+    except (OSError, UnicodeError) as exc:
+        raise CompletionError("code edit Aider ignore projection failed") from exc
+
+
 def _safe_file(root: Path, name: str) -> Path | None:
     path = PurePosixPath(name)
     if path.is_absolute() or any(
@@ -49,14 +90,7 @@ def select_code_context(
             re.sub(r"https?://\S+", "", prompt),
         ) if not value.startswith(".")
     }
-    try:
-        result = subprocess.run(
-            ["git", "ls-files", "--cached", "-z"], cwd=root,
-            capture_output=True, check=True, timeout=10,
-        )
-        tracked = result.stdout.decode("utf-8").split("\0")
-    except (OSError, subprocess.SubprocessError, UnicodeError) as exc:
-        raise CompletionError("code edit repository context inventory failed") from exc
+    tracked = _tracked_files(root)
     candidates = set(references)
     for name in tracked:
         path = PurePosixPath(name)

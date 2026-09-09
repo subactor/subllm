@@ -14,7 +14,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from .code_context import select_code_context
+from .code_context import select_code_context, write_aider_context_ignore
 from .errors import (
     CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
@@ -553,6 +553,12 @@ def execute_code_edit(
         "AIDER_MODEL": f"openai/{route.wire_model}",
     })
     with tempfile.TemporaryDirectory(prefix="subllm-aider-") as temporary:
+        ignore_file = Path(temporary) / "context.aiderignore"
+        original_ignore = child_environment.get("AIDER_AIDERIGNORE")
+        write_aider_context_ignore(
+            root, context_files, ignore_file,
+            original=Path(original_ignore) if original_ignore else None,
+        )
         command = [
             aider_bin,
             "--message", prompt,
@@ -564,6 +570,7 @@ def execute_code_edit(
             "--no-check-update",
             "--no-gitignore",
             "--map-tokens", "0",
+            "--aiderignore", str(ignore_file),
             "--no-analytics",
             "--chat-history-file", str(Path(temporary) / "chat.history"),
             "--input-history-file", str(Path(temporary) / "input.history"),

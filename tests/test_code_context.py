@@ -1,8 +1,9 @@
 import subprocess
+from pathlib import Path
 
 import pytest
 
-from subllm.code_context import select_code_context
+from subllm.code_context import select_code_context, write_aider_context_ignore
 from subllm.errors import CompletionError
 
 
@@ -70,3 +71,53 @@ def test_urls_and_path_substrings_do_not_select_files(repo):
 def test_exact_filename_and_directory_reference_are_deduplicated(repo):
     tracked(repo, "src/server.py")
     assert select_code_context(repo, "Fix src/server.py within src.") == ["src/server.py"]
+
+
+def test_discovery_projection_preserves_existing_restrictions_and_hides_other_files(repo, tmp_path_factory):
+    tracked(repo, "src/server.py")
+    tracked(repo, "src/restricted.py")
+    tracked(repo, "README.md")
+    tracked(repo, "TODO.md")
+    original = repo / ".aiderignore"
+    original.write_text("# operator restriction\nsrc/restricted.py\n")
+    before = original.read_bytes()
+    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
+    write_aider_context_ignore(repo, ["src/server.py", "src/restricted.py"], destination)
+    assert destination.read_text() == (
+        "# operator restriction\nsrc/restricted.py\n\n/README.md\n/TODO.md\n"
+    )
+    assert original.read_bytes() == before
+    assert not (repo / "context.aiderignore").exists()
+
+
+def test_discovery_projection_treats_tracked_filenames_as_literal_patterns(repo, tmp_path_factory):
+    tracked(repo, "src/item[1]*?.py")
+    tracked(repo, "src/with space.py")
+    tracked(repo, "!notice.md")
+    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
+    write_aider_context_ignore(repo, [], destination)
+    assert destination.read_text().splitlines() == [
+        "", "/!notice.md", r"/src/item\[1\]\*\?.py", r"/src/with\ space.py",
+    ]
+
+
+def test_discovery_projection_respects_an_operator_selected_ignore_file(repo, tmp_path_factory):
+    tracked(repo, "src/server.py")
+    (repo / "operator.ignore").write_text("src/server.py\n")
+    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
+    write_aider_context_ignore(repo, ["src/server.py"], destination, original=Path("operator.ignore"))
+    assert destination.read_text().startswith("src/server.py\n")
+
+
+def test_discovery_projection_rejects_symlinked_rules_and_multiline_names(repo, tmp_path_factory):
+    destination = tmp_path_factory.mktemp("private-editor") / "context.aiderignore"
+    (repo / "rules").write_text("src/private.py\n")
+    original = repo / ".aiderignore"
+    original.symlink_to(repo / "rules")
+    with pytest.raises(CompletionError, match="not a regular file"):
+        write_aider_context_ignore(repo, [], destination)
+    original.unlink()
+    tracked(repo, "line\nbreak.py")
+    with pytest.raises(CompletionError, match="unsupported filename"):
+        write_aider_context_ignore(repo, [], destination)
+    assert not destination.exists()
