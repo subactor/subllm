@@ -1,0 +1,18 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-051",
+  "workstream": "aider-patch-application",
+  "goal": "Prevent automatic unrelated-file mentions from discarding an Aider code response before patch application. Preserve explicitly selected context and existing ignore restrictions.",
+  "authorization": "Session execution authorization: continue repair, test actual autonomous execution, publish GitHub.",
+  "allowedPaths": [
+    "src/subllm/code_context.py",
+    "src/subllm/client.py",
+    "tests/test_code_context.py",
+    "tests/test_client.py",
+    "project/ticket-051/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}

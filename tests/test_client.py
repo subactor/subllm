@@ -556,6 +556,8 @@ def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypa
             return subprocess.CompletedProcess(command, 0, b"src/fix.py\0", b"")
         observed["command"] = command
         observed.update(kwargs)
+        observed["ignore_path"] = Path(command[command.index("--aiderignore") + 1])
+        observed["ignore_content"] = observed["ignore_path"].read_text()
         return subprocess.CompletedProcess(command, 0, "Applied edit", "")
 
     monkeypatch.setattr(client.subprocess, "run", run)
@@ -579,6 +581,8 @@ def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypa
     assert "--no-auto-test" in command
     assert command[command.index("--map-tokens") + 1] == "0"
     assert command[command.index("--file") + 1] == "src/fix.py"
+    assert "src/fix.py" not in observed["ignore_content"]
+    assert not observed["ignore_path"].exists()
     assert "id.secret" not in repr(command)
     child_environment = observed["env"]
     assert child_environment["AIDER_OPENAI_API_KEY"] == "id.secret"
