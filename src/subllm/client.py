@@ -6,7 +6,6 @@ import os
 import signal
 import subprocess
 import sys
-import tempfile
 import time
 from collections.abc import Mapping, Sequence
 from contextlib import suppress
@@ -14,7 +13,6 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
-from .code_context import select_code_context, write_aider_context_ignore
 from .errors import (
     CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
@@ -522,84 +520,28 @@ def execute_code_edit(
     timeout_seconds: float = 2700.0,
     environ: Mapping[str, str] | None = None,
 ) -> CodeEditResponse:
-    """Run one policy-routed OpenAI-compatible model through fixed Aider editing.
+    """Execute model-selected code2dsl edits through the canonical completion routes.
 
-    SubLLM owns provider/model/credential resolution.  The credential is passed
-    only in the child environment, never in argv, output, or an artifact.
-    Aider cannot commit, run tests, or use an interactive shell in this adapter.
+    ``aider_bin`` remains a validated compatibility input for deployed workers;
+    no Aider process receives source files or executes in this implementation.
     """
+    from .credential_env import merged_environment
+    from .dsl_edit import execute_dsl_edit
+
     root = Path(worktree).resolve()
     if not root.is_dir() or not (root / ".git").exists():
         raise CompletionError("code edit worktree must be an existing Git worktree")
-    if not prompt.strip() or len(prompt.encode("utf-8")) > 1_000_000:
-        raise CompletionError("code edit prompt must contain 1 to 1000000 UTF-8 bytes")
+    if not prompt.strip() or len(prompt.encode("utf-8")) > 100_000:
+        raise CompletionError("code edit task must contain 1 to 100000 UTF-8 bytes")
     if Path(aider_bin).name != "aider":
-        raise CompletionError("code edit adapter requires an aider executable")
-    routes = [
-        route for route in available_routes(application, function, environ=environ)
-        if route.transport == "openai-compatible" and (provider is None or route.provider == provider)
-    ]
-    if not routes:
-        raise CompletionError(
-            f"no available OpenAI-compatible route for {application}/{function}"
-        )
-    route = routes[0]
-    context_files = select_code_context(root, prompt)
-    child_environment = dict(os.environ if environ is None else environ)
-    child_environment.update({
-        "AIDER_ANALYTICS": "false",
-        "AIDER_OPENAI_API_BASE": route.api_base,
-        "AIDER_OPENAI_API_KEY": route.api_key,
-        "AIDER_MODEL": f"openai/{route.wire_model}",
-    })
-    with tempfile.TemporaryDirectory(prefix="subllm-aider-") as temporary:
-        ignore_file = Path(temporary) / "context.aiderignore"
-        original_ignore = child_environment.get("AIDER_AIDERIGNORE")
-        write_aider_context_ignore(
-            root, context_files, ignore_file,
-            original=Path(original_ignore) if original_ignore else None,
-        )
-        command = [
-            aider_bin,
-            "--message", prompt,
-            "--yes-always",
-            "--no-auto-commits",
-            "--no-dirty-commits",
-            "--no-auto-lint",
-            "--no-auto-test",
-            "--no-check-update",
-            "--no-gitignore",
-            "--map-tokens", "0",
-            "--aiderignore", str(ignore_file),
-            "--no-analytics",
-            "--chat-history-file", str(Path(temporary) / "chat.history"),
-            "--input-history-file", str(Path(temporary) / "input.history"),
-        ]
-        for context_file in context_files:
-            command.extend(["--file", context_file])
-        try:
-            completed = subprocess.run(
-                command,
-                cwd=root,
-                env=child_environment,
-                text=True,
-                capture_output=True,
-                timeout=timeout_seconds,
-                check=False,
-            )
-        except (OSError, subprocess.TimeoutExpired) as exc:
-            raise CompletionError(
-                f"{route.provider}/{route.wire_model} Aider execution failed: {type(exc).__name__}"
-            ) from exc
-    if completed.returncode != 0:
-        raise CompletionError(
-            f"{route.provider}/{route.wire_model} Aider exited with status {completed.returncode}"
-        )
-    return CodeEditResponse(
-        provider=route.provider,
-        model=route.wire_model,
-        response=(completed.stdout or "")[-100_000:],
+        raise CompletionError("code edit adapter requires an aider executable compatibility value")
+    if (application, function) != ("onedev-agent", "code-edit"):
+        raise CompletionError("code2dsl editing requires the registered onedev-agent/code-edit route")
+    selected_provider, model, response = execute_dsl_edit(
+        root, prompt, provider=provider, environ=merged_environment(environ=environ),
+        timeout_seconds=timeout_seconds, complete=complete,
     )
+    return CodeEditResponse(selected_provider, model, response)
 
 
 def code_edit_main(argv: Sequence[str] | None = None) -> int:

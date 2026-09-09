@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 3,
+  "version": 4,
   "status": "current",
-  "updated": "2026-09-08"
+  "updated": "2026-09-09"
 }
 ---
 
@@ -23,3 +23,5 @@ Existing documentation retains its historical format.
 - [Supervisor assessment latency](analysis/supervisor-assessment-latency.md)
 
 - [Local Codex CLI integration and verification](analysis/codex-cli-integration.md)
+
+- [LLM selection over code2dsl context](information/code2dsl-context.md)
