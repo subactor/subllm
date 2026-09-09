@@ -14,6 +14,7 @@ from dataclasses import asdict, dataclass, field, replace
 from pathlib import Path
 from typing import Any
 
+from .code_context import select_code_context
 from .errors import (
     CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
@@ -543,6 +544,7 @@ def execute_code_edit(
             f"no available OpenAI-compatible route for {application}/{function}"
         )
     route = routes[0]
+    context_files = select_code_context(root, prompt)
     child_environment = dict(os.environ if environ is None else environ)
     child_environment.update({
         "AIDER_ANALYTICS": "false",
@@ -561,11 +563,14 @@ def execute_code_edit(
             "--no-auto-test",
             "--no-check-update",
             "--no-gitignore",
-            "--map-tokens", "0",
+            "--map-tokens", "2048",
+            "--map-refresh", "always",
             "--no-analytics",
             "--chat-history-file", str(Path(temporary) / "chat.history"),
             "--input-history-file", str(Path(temporary) / "input.history"),
         ]
+        for context_file in context_files:
+            command.extend(["--file", context_file])
         try:
             completed = subprocess.run(
                 command,

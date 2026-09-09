@@ -552,15 +552,19 @@ def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypa
     observed: dict[str, object] = {}
 
     def run(command, **kwargs):
+        if command[0] == "git":
+            return subprocess.CompletedProcess(command, 0, b"src/fix.py\0", b"")
         observed["command"] = command
         observed.update(kwargs)
         return subprocess.CompletedProcess(command, 0, "Applied edit", "")
 
     monkeypatch.setattr(client.subprocess, "run", run)
+    (tmp_path / "src").mkdir()
+    (tmp_path / "src/fix.py").write_text("value = 1\n")
     result = execute_code_edit(
         "onedev-agent",
         "code-edit",
-        "Fix the governed ticket",
+        "Fix the governed ticket in src",
         worktree=tmp_path,
         provider="zai",
         environ={"ZAI_API_KEY": "id.secret"},
@@ -573,7 +577,8 @@ def test_code_edit_routes_zai_credential_only_through_child_environment(monkeypa
     assert command[0] == "aider"
     assert "--no-auto-commits" in command
     assert "--no-auto-test" in command
-    assert command[command.index("--map-tokens") + 1] == "0"
+    assert command[command.index("--map-tokens") + 1] == "2048"
+    assert command[command.index("--file") + 1] == "src/fix.py"
     assert "id.secret" not in repr(command)
     child_environment = observed["env"]
     assert child_environment["AIDER_OPENAI_API_KEY"] == "id.secret"
