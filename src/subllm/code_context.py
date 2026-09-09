@@ -1,7 +1,7 @@
 """Bounded file context for the noninteractive editing adapter.
 
-Only task-referenced repository paths select content. The repository map remains
-available for discovery; this selection does not grant write or shell authority.
+Only task-referenced repository paths select content. This selection does not
+grant write or shell authority.
 """
 from __future__ import annotations
 

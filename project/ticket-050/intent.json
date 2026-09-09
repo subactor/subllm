@@ -1,0 +1,17 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-050",
+  "workstream": "aider-context-without-cache",
+  "goal": "Retain explicit bounded source context without generating repository-map cache inside the delivery checkout.",
+  "authorization": "User request to unblock ticket execution, test and publish.",
+  "allowedPaths": [
+    "src/subllm/client.py",
+    "src/subllm/code_context.py",
+    "tests/test_client.py",
+    "project/ticket-050/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}
