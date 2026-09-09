@@ -76,20 +76,24 @@ def _safe_file(root: Path, name: str) -> Path | None:
     return file if file.is_file() else None
 
 
-def select_code_context(
-    root: Path, prompt: str, *, max_files: int = 48, max_bytes: int = 262_144,
-) -> list[str]:
-    """Select tracked files below exact task paths, plus explicitly named new files.
+_PATH_TOKEN = re.compile(
+    r"(?<![\w/@:.-])[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*(?![\w])"
+)
 
-    An over-budget context fails visibly rather than silently omitting source
-    files. Never recurse through untracked directories or dependency caches.
-    """
-    references = {
-        value.rstrip(".") for value in re.findall(
-            r"(?<![\w/@:.-])[A-Za-z0-9_.-]+(?:/[A-Za-z0-9_.-]+)*",
-            re.sub(r"https?://\S+", "", prompt),
-        ) if not value.startswith(".")
+
+def _prompt_path_references(prompt: str) -> set[str]:
+    """Extract path tokens without splitting Unicode words such as 'testów'."""
+    stripped = re.sub(r"https?://\S+", "", prompt)
+    return {
+        value.rstrip(".")
+        for value in _PATH_TOKEN.findall(stripped)
+        if not value.startswith(".")
     }
+
+
+def _select_referenced_files(
+    root: Path, references: set[str], *, max_files: int, max_bytes: int,
+) -> list[str]:
     tracked = _tracked_files(root)
     candidates = set(references)
     for name in tracked:
@@ -115,3 +119,29 @@ def select_code_context(
         selected.append(name)
         total += len(content)
     return selected
+
+
+def select_code_context(
+    root: Path, prompt: str, *, max_files: int = 48, max_bytes: int = 262_144,
+) -> list[str]:
+    """Select tracked files below exact task paths, plus explicitly named new files.
+
+    An over-budget context fails visibly rather than silently omitting source
+    files. Bare directory words that explode a tree are dropped in favor of
+    slash-containing paths before that failure. Never recurse through untracked
+    directories or dependency caches.
+    """
+    references = _prompt_path_references(prompt)
+    try:
+        return _select_referenced_files(
+            root, references, max_files=max_files, max_bytes=max_bytes,
+        )
+    except CompletionError as exc:
+        if "budget" not in str(exc):
+            raise
+        explicit = {ref for ref in references if "/" in ref}
+        if not explicit or explicit == references:
+            raise
+        return _select_referenced_files(
+            root, explicit, max_files=max_files, max_bytes=max_bytes,
+        )

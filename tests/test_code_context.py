@@ -73,6 +73,30 @@ def test_exact_filename_and_directory_reference_are_deduplicated(repo):
     assert select_code_context(repo, "Fix src/server.py within src.") == ["src/server.py"]
 
 
+def test_unicode_word_is_not_a_directory_reference(repo):
+    tracked(repo, "test/producer-coverage.test.mjs")
+    tracked(repo, "src/server.py")
+    assert select_code_context(
+        repo, "Zaktualizuj testów ingest i src/server.py.",
+    ) == ["src/server.py"]
+
+
+def test_over_budget_bare_directory_falls_back_to_explicit_paths(repo):
+    tracked(repo, "docs/README.md", "readme\n")
+    tracked(repo, "docs/analysis/producer-auth.md", "analysis\n")
+    for index in range(20):
+        tracked(repo, f"test/extra-{index:02d}.mjs", "x" * 20)
+    tracked(repo, "services/analytics/src/ops-sodl-ingest.mjs", "ingest\n")
+    selected = select_code_context(
+        repo,
+        "See wellmanifest docs 0.1.0 and the test directory plus "
+        "services/analytics/src/ops-sodl-ingest.mjs",
+        max_files=5,
+        max_bytes=400,
+    )
+    assert selected == ["services/analytics/src/ops-sodl-ingest.mjs"]
+
+
 def test_discovery_projection_preserves_existing_restrictions_and_hides_other_files(repo, tmp_path_factory):
     tracked(repo, "src/server.py")
     tracked(repo, "src/restricted.py")
