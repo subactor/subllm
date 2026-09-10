@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 4,
+  "version": 5,
   "status": "current",
-  "updated": "2026-09-09"
+  "updated": "2026-09-10"
 }
 ---
 
@@ -25,3 +25,5 @@ Existing documentation retains its historical format.
 - [Local Codex CLI integration and verification](analysis/codex-cli-integration.md)
 
 - [LLM selection over code2dsl context](information/code2dsl-context.md)
+
+- [Versioned routing contract](information/routing-contract.md)

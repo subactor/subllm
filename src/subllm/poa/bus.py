@@ -12,6 +12,7 @@ from subllm.policy import ROUTES
 from subllm.policy_config import load_policy_config
 from subllm.provider_order import provider_order
 from subllm.resolver import configured_route, configured_routes, resolve, validate_policy
+from subllm.routing_contract import export_routing_contract
 
 from .canonical import digest_document
 from .errors import PoaContractError
@@ -38,6 +39,7 @@ from .registry import (
     EDIT_PROCESS_REF,
     EDIT_PROCESS_URI,
     EVENTS_URI,
+    EXPORT_CONTRACT_URI,
     IMPORT_CREDENTIALS_URI,
     INSPECT_URI,
     LIST_APPLICATIONS_URI,
@@ -90,6 +92,7 @@ class PolicyBus:
         self._queries: dict[str, QueryHandler] = {
             INSPECT_URI: self._query_inspect,
             LIST_ROUTES_URI: self._query_list_routes,
+            EXPORT_CONTRACT_URI: self._query_export_contract,
             LIST_PROVIDERS_URI: self._query_list_providers,
             LIST_APPLICATIONS_URI: self._query_list_applications,
             CONFIGURED_ROUTE_URI: self._query_configured_route,
@@ -155,6 +158,10 @@ class PolicyBus:
             "process_uri": get_process_uri(payload["process_ref"]),
             "ready": True,
         }
+
+    def _query_export_contract(self, document: dict[str, Any]) -> dict[str, Any]:
+        payload = exact(document, {"schema", "process_uri", "application", "function"})
+        return export_routing_contract(payload["application"], payload["function"])
 
     def _query_list_routes(self, document: dict[str, Any]) -> dict[str, Any]:
         exact(document, {"schema", "process_uri"})
