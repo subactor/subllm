@@ -8,6 +8,10 @@ from subllm import reset_provider_health
 @pytest.fixture(autouse=True)
 def _isolate_provider_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> None:
     """Keep resolve() hermetic when the operator shell exports live keys."""
+    credential_file = tmp_path / "empty-credentials.env"
+    credential_file.write_text("# No operator credentials in tests.\n", encoding="utf-8")
+    credential_file.chmod(0o600)
+    monkeypatch.setenv("SUBLLM_ENV_FILE", str(credential_file))
     monkeypatch.setenv("SUBLLM_HEALTH_STATE_FILE", str(tmp_path / "provider-health.json"))
     monkeypatch.delenv("SUBLLM_PROVIDER_ORDER", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)

@@ -1,0 +1,4 @@
+{
+  "schema": "doctor.repository-environment/v1",
+  "profile": "python-library"
+}
