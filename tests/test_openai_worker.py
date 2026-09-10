@@ -64,9 +64,10 @@ def test_execute_preserves_policy_owned_request_fields(monkeypatch) -> None:
     assert "id.secret" not in repr(result)
 
 
-def test_execute_returns_secret_free_retryable_http_receipt(monkeypatch) -> None:
+@pytest.mark.parametrize("status", [402, 429])
+def test_execute_returns_secret_free_retryable_http_receipt(monkeypatch, status) -> None:
     def open_request(request):
-        raise HTTPError(request.full_url, 429, "limited", {}, None)
+        raise HTTPError(request.full_url, status, "limited", {}, None)
 
     monkeypatch.setattr(openai_worker, "urlopen", open_request)
     result = openai_worker._execute(_source())
@@ -74,7 +75,7 @@ def test_execute_returns_secret_free_retryable_http_receipt(monkeypatch) -> None
     assert result == {
         "schema": "subllm.openai-worker-result/v1",
         "status": "ERROR",
-        "outcome": "http_429",
+        "outcome": f"http_{status}",
         "provider_level": True,
         "retryable": True,
     }
@@ -87,3 +88,14 @@ def test_request_rejects_non_policy_provider_base() -> None:
 
     with pytest.raises(CompletionError, match="not policy-approved"):
         openai_worker._request(source)
+
+
+@pytest.mark.parametrize("status", [400, 422])
+def test_invalid_request_remains_terminal(monkeypatch, status) -> None:
+    def open_request(request):
+        raise HTTPError(request.full_url, status, "invalid request", {}, None)
+
+    monkeypatch.setattr(openai_worker, "urlopen", open_request)
+    result = openai_worker._execute(_source())
+    assert result["retryable"] is False
+    assert result["outcome"] == f"http_{status}"

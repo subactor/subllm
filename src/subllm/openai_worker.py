@@ -104,7 +104,7 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         status = exc.code
         if status == 404:
             return _error("model_unavailable", provider_level=False, retryable=True)
-        retryable = status in {401, 403, 408, 409, 425, 429} or status >= 500
+        retryable = status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
         return _error(f"http_{status}", provider_level=True, retryable=retryable)
     except (TimeoutError, URLError, OSError) as exc:
         return _error(
