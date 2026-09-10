@@ -31,6 +31,7 @@ def test_workspace_discovery_and_process_precedence(tmp_path: Path, monkeypatch:
     application = tmp_path / "repair-agent"
     application.mkdir()
     monkeypatch.chdir(application)
+    monkeypatch.delenv("SUBLLM_ENV_FILE", raising=False)
     monkeypatch.setenv("OPENROUTER_API_KEY", "or-from-process")
 
     assert find_env_file() == shared
@@ -46,7 +47,7 @@ def test_subactor_workspace_discovery_from_sibling_project(tmp_path: Path) -> No
     project = tmp_path / "semcod" / "koru"
     project.mkdir(parents=True)
 
-    assert find_env_file(cwd=project) == shared
+    assert find_env_file(environ={}, cwd=project) == shared
 
 
 def test_explicit_environment_keeps_resolution_hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -148,6 +149,7 @@ def test_cursor_api_key_loads_from_shared_file(tmp_path: Path, monkeypatch: pyte
     shared.parent.mkdir()
     _private_file(shared, "CURSOR_API_KEY=cursor_test-not-a-secret\nZAI_API_KEY=id.secret\n")
     monkeypatch.chdir(tmp_path / "subllm")
+    monkeypatch.delenv("SUBLLM_ENV_FILE", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 
     assert load_env_file(shared)[CURSOR_API_KEY_ENV] == "cursor_test-not-a-secret"
