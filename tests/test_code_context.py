@@ -149,3 +149,44 @@ def test_runtime_pin_mismatch_is_rejected_before_extraction(tmp_path, monkeypatc
         extract_context(tmp_path, {'SUBLLM_CODE2DSL_RUNTIME': str(tmp_path),
                                   'SUBLLM_CODE2DSL_SHA': 'a' * 40,
                                   'SUBLLM_CODE2DSL_BUILD_SHA256': '0' * 64})
+
+
+def test_identical_canonical_facts_coalesce_but_conflicting_ids_fail():
+    import copy
+
+    from subllm.code_context import unique_records
+    record = context_record()
+    assert unique_records([record, copy.deepcopy(record)]) == [record]
+    conflict = copy.deepcopy(record)
+    conflict['source']['rawExcerpt'] = 'different source'
+    with pytest.raises(CompletionError, match='conflicting source identity'):
+        unique_records([record, conflict])
+
+
+def test_large_inventory_uses_llm_file_selection_before_details():
+    from subllm.code_context import file_inventory
+    records = []
+    sources = {}
+    for i in range(100):
+        name = f'docs/file-{i}.py'
+        sources[name] = b'def allow(user):\n    return True\n'
+        r = context_record(name, f'node-{i}')
+        r['metadata']['detail'] = 'unrelated internal fact ' * 200
+        records.append(r)
+    context = CodeContext(records, sources, {})
+    assert len(file_inventory(context)) == 100
+    stages = []
+
+    def query(function, instruction, payload):
+        inventory = 'file inventory stage' in instruction
+        stages.append(inventory)
+        if inventory:
+            assert len(payload['records']) == 100
+            assert 'unrelated internal fact' not in encode(payload)
+            return {'ids': ['node-73']}
+        assert [r['id'] for r in payload['records']] == ['node-73']
+        return {'ids': ['node-73']}
+
+    selected = select_code_context(context, 'Fix tests and docs without expanding directories', query)
+    assert [r['id'] for r in selected] == ['node-73']
+    assert stages == [True, False]
