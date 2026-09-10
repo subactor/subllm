@@ -747,3 +747,35 @@ def test_cursor_worker_error_keeps_model_scope_only_for_exact_error_envelope(mon
         with pytest.raises(error_type) as caught:
             client._run_cursor_worker({}, timeout_seconds=1, cwd=tmp_path)
         assert type(caught.value) is error_type
+
+
+def test_payment_required_uses_worker_classification_and_next_allowed_provider(monkeypatch) -> None:
+    from urllib.error import HTTPError
+
+    from subllm import openai_worker
+
+    providers = []
+
+    def reject_payment(request):
+        raise HTTPError(request.full_url, 402, "payment required", {}, None)
+
+    def run_worker(request, **_kwargs):
+        providers.append(request["provider"])
+        if request["provider"] == "openrouter":
+            return openai_worker._execute(request)
+        return _worker_success("fallback")
+
+    monkeypatch.setattr(openai_worker, "urlopen", reject_payment)
+    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    result = complete(
+        "onedev-agent", "code-edit", [{"role": "user", "content": "repair"}],
+        timeout_seconds=20,
+        environ={"SUBLLM_PROVIDER_ORDER": "openrouter,zai",
+                 "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+    )
+    assert result.provider == "zai"
+    assert providers == ["openrouter", "zai"]
+    assert [attempt.outcome for attempt in result.attempts] == ["http_402", "success"]
+    receipt = next(row for row in provider_health() if row.provider == "openrouter")
+    assert receipt.reason == "http_402"
+    assert receipt.status == "degraded"
