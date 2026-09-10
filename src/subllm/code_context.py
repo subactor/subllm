@@ -91,7 +91,7 @@ def extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
 
 
 def read_extraction(output: Path) -> dict:
-    """Bound both the lossless local transport and its expanded canonical JSON."""
+    """Bound the local transport and its expanded evidence projection."""
     if output.stat().st_size > MAX_DSL_BYTES:
         raise CompletionError('code2dsl output exceeds extraction budget')
     try:
@@ -179,16 +179,32 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
             raise CompletionError('code2dsl extraction failed; no source-text fallback')
         envelope = read_extraction(output)
     records = unique_records(envelope['records'])
+    source_lines: dict[str, list[str]] = {}
     for record in records:
         source = record['source']
         if record['schemaVersion'] != 't2c.intent/v1' or source['path'] not in sources:
             raise CompletionError('code2dsl returned invalid source identity')
+        if source['path'] not in source_lines:
+            source_lines[source['path']] = sources[source['path']].decode().split('\n')
+        file_lines = source_lines[source['path']]
         lines = source['lines']
         if (not isinstance(lines, dict) or type(lines.get('start')) is not int
                 or type(lines.get('end')) is not int
-                or not 1 <= lines['start'] <= lines['end'] <= len(sources[source['path']].decode().split('\n'))):
+                or not 1 <= lines['start'] <= lines['end'] <= len(file_lines)):
             raise CompletionError('code2dsl returned invalid source range')
+        restore_excerpt(source, file_lines)
     return CodeContext(records, sources, {'source_sha': revision, 'build_sha256': build}, envelope['warnings'])
+
+
+def restore_excerpt(source: dict, lines: list[str]) -> None:
+    """Reconstruct only an exact bounded canonical excerpt bound by the extractor."""
+    if 'excerpt_sha256' not in source:
+        return
+    span = source['lines']
+    excerpt = '\n'.join(lines[span['start'] - 1:span['end']])
+    if len(excerpt) > 2000 or digest(excerpt.encode()) != source['excerpt_sha256']:
+        raise CompletionError('code2dsl canonical excerpt digest mismatch')
+    source['rawExcerpt'] = excerpt
 
 
 def unique_records(records: list[dict]) -> list[dict]:

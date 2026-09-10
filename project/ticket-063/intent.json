@@ -1,0 +1,31 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-063",
+  "summary": "Bound canonical code2dsl transport with the existing semantic projection",
+  "workstream": "runtime",
+  "classification": {
+    "kind": "FIX",
+    "priority": "P1",
+    "origin": "founder"
+  },
+  "allowedPaths": [
+    "pyproject.toml",
+    "src/subllm/code2dsl_bridge.mjs",
+    "src/subllm/code2dsl_projection.mjs",
+    "src/subllm/code_context.py",
+    "tests/test_code2dsl_projection.py",
+    "tests/integration_code2dsl.py",
+    "project/ticket-063/**"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python",
+    "node",
+    "code2dsl"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

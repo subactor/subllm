@@ -39,7 +39,7 @@ subllm-complete = "subllm.client:completion_main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-subllm = ["py.typed", "code2dsl_bridge.mjs"]
+subllm = ["py.typed", "code2dsl_bridge.mjs", "code2dsl_projection.mjs"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
