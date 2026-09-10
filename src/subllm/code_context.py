@@ -19,7 +19,7 @@ MAX_DSL_BYTES = 16 * 1024 * 1024
 PAGE_BYTES = 48_000
 MAX_PAGES = 128
 MAX_SELECTED = 32
-_SUFFIXES = frozenset({'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx'})
+_SUFFIXES = frozenset({'.py', '.js', '.mjs', '.cjs', '.ts', '.tsx', '.jsx', '.md', '.json', '.toml', '.yaml', '.yml'})
 _EXCLUDED = frozenset({'node_modules', 'vendor', '__pycache__'})
 
 
@@ -58,7 +58,7 @@ class CodeContext:
             'schemaVersion': record['schemaVersion'], 'id': record['id'],
             'statement': record['statement'], 'epistemic': record['epistemic'],
             'metadata': {k: v for k, v in record.get('metadata', {}).items() if k != 'generation'},
-            'source': {key: source[key] for key in ('path', 'lines', 'symbol', 'extractor')},
+            'source': {key: source.get(key) for key in ('path', 'lines', 'symbol', 'extractor')},
             'file_sha256': digest(self.sources[source['path']]),
         }
 
@@ -172,8 +172,6 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
                 or type(lines.get('end')) is not int
                 or not 1 <= lines['start'] <= lines['end'] <= len(sources[source['path']].decode().split('\n'))):
             raise CompletionError('code2dsl returned invalid source range')
-    if not records:
-        raise CompletionError('code2dsl returned no supported code evidence')
     return CodeContext(records, sources, {'source_sha': revision, 'build_sha256': build}, envelope['warnings'])
 
 
@@ -207,32 +205,34 @@ def select_code_context(context: CodeContext, prompt: str, query: Callable[..., 
         f'Return JSON {{"ids":[...]}} with at most {MAX_SELECTED} IDs, or an empty list if unrelated. '
         'Do not select everything merely because a directory name occurs in the task.'
     )
+    def choose(page: list[dict], maximum: int, message: str) -> list[str]:
+        available = {r['id'] for r in page}
+        for attempt in range(2):
+            correction = (' The previous selection violated the schema or referenced unknown IDs. '
+                          'Copy only exact unique IDs from this page, or return an empty list.' if attempt else '')
+            answer = query('code-context', message + correction, {'task': prompt, 'records': page})
+            ids = answer.get('ids')
+            if (set(answer) == {'ids'} and isinstance(ids, list) and len(ids) <= maximum
+                    and all(isinstance(i, str) and i in available for i in ids)
+                    and len(set(ids)) == len(ids)):
+                return ids
+        raise CompletionError('code2dsl LLM selection contains invalid record IDs after 2 bounded attempts')
+
     for page in pages([context.projection(r) for r in context.records]):
-        answer = query('code-context', instruction, {'task': prompt, 'records': page})
-        ids = answer.get('ids')
+        ids = choose(page, MAX_SELECTED, instruction)
         available = {r['id']: r for r in page}
-        if (set(answer) != {'ids'} or not isinstance(ids, list) or len(ids) > MAX_SELECTED
-                or any(not isinstance(i, str) or i not in available for i in ids)
-                or len(set(ids)) != len(ids)):
-            raise CompletionError('code2dsl LLM selection contains invalid record IDs')
         selected.update((i, available[i]) for i in ids)
     if not selected:
-        raise CompletionError('code2dsl LLM found no relevant code evidence')
+        return []  # The edit contract can propose an absent file; paths remain validated locally.
     candidates = list(selected.values())
     for _ in range(6):
         if len(candidates) <= MAX_SELECTED and len(encode(candidates).encode()) <= PAGE_BYTES:
             break
         reduced: list[dict] = []
         for page in pages(candidates):
-            answer = query('code-context', instruction + ' This is a reduction pass: return at most 4 IDs '
-                           'essential to the task, preferring precise editable nodes over module summaries.',
-                           {'task': prompt, 'records': page})
-            ids = answer.get('ids')
+            ids = choose(page, 4, instruction + ' This is a reduction pass: return at most 4 IDs '
+                         'essential to the task, preferring precise editable nodes over module summaries.')
             available = {r['id']: r for r in page}
-            if (set(answer) != {'ids'} or not isinstance(ids, list) or len(ids) > 4
-                    or any(not isinstance(i, str) or i not in available for i in ids)
-                    or len(set(ids)) != len(ids)):
-                raise CompletionError('code2dsl LLM reduction contains invalid record IDs')
             reduced.extend(available[i] for i in ids)
         if not reduced or len(reduced) >= len(candidates):
             raise CompletionError('code2dsl LLM could not reduce selected evidence')

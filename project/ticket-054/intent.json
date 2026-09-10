@@ -1,0 +1,18 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-054",
+  "workstream": "dsl-edit-contract-v2",
+  "goal": "Extend canonical DSL edits with new files, documentation/configuration and bounded edits inside large nodes; bounded invalid-JSON repair; deploy central provider routing and verify production delivery.",
+  "authorization": "SESSION_EXECUTION_AUTHORIZATION: wykonaj zadania; prior push, protected merge, test and deploy authorization retained",
+  "allowedPaths": [
+    "src/subllm/**",
+    "tests/**",
+    "docs/**",
+    "pyproject.toml",
+    "project/ticket-054/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*"
+  ]
+}

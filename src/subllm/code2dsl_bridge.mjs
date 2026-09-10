@@ -5,7 +5,7 @@ import path from 'node:path';
 
 const [runtime, root, output] = process.argv.slice(2);
 try {
-  const { code2dsl, getConfig, assertIntentRecords } = await import(
+  const { code2dsl, docs2dsl, config2dsl, getConfig, assertIntentRecords } = await import(
     pathToFileURL(path.join(runtime, 'dist/src/index.js')).href
   );
   const config = getConfig(root);
@@ -15,7 +15,8 @@ try {
     enablePythonAst: true, enableGoAst: false, enableJavaAst: false,
     enablePhpAst: false, enableRustAst: false,
   });
-  const result = await code2dsl({ root }, config);
+  const results = await Promise.all([code2dsl({ root }, config), docs2dsl({ root }, config), config2dsl({ root }, config)]);
+  const result = { records: results.flatMap(r => r.records), warnings: results.flatMap(r => r.warnings) };
   assertIntentRecords(result.records);
   await writeFile(output, JSON.stringify({ records: result.records, warnings: result.warnings }), { mode: 0o600 });
 } catch {
