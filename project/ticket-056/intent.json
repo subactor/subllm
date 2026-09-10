@@ -1,0 +1,14 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-056",
+  "workstream": "draft-configuration-context",
+  "goal": "Represent preallocated untracked drafts through canonical config2dsl and allow source-bound addition of absent JSON fields; validate real coding worker context. Preserve structured Cursor model-run failures so a usable second model is tried before abandoning the provider; live Sol quota and successful Grok run justify this repair.",
+  "authorization": "SESSION_EXECUTION_AUTHORIZATION: wykonaj zadania; publication and deployment authorized",
+  "allowedPaths": [
+    "src/subllm/**",
+    "tests/**",
+    "docs/information/code2dsl-context.md",
+    "pyproject.toml",
+    "project/ticket-056/**"
+  ]
+}

@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 4,
+  "version": 5,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "7ac58f2c95d7749cb3e2557312e9c3c0842d0985",
+  "source_revision": "f046bb58302936e24cd51bae65ad9309bbb6c923",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -48,7 +48,7 @@ The private canary receipt is bound by its SHA-256 in metadata. It contains mode
 <!-- docs:section content -->
 ## Content
 
-1. Inventory tracked eligible source files and copy them into a private temporary snapshot. Exclude hidden paths, dependency caches, symlinks and binary data. Preserve `.gitignore`, `.dockerignore`, `.intentignore` and the operator's Aider ignore policy. Neither source import nor extraction executes repository code.
+1. Inventory tracked and nonignored untracked eligible source files and copy them into a private temporary snapshot. Exclude hidden paths, dependency caches, symlinks and binary data. Preserve `.gitignore`, `.dockerignore`, `.intentignore` and the operator's Aider ignore policy. Neither source import nor extraction executes repository code.
 2. Verify the explicitly configured todo2code source SHA and independent runtime build digest. The build digest covers executable JavaScript, Python helpers, TypeScript parser files and the runtime package metadata. Call `code2dsl` through the packaged Node bridge without credentials, `.env` loading, caches or an LLM in extraction.
 3. Send paged DSL projections to the registered selection LLM. When detailed inventory exceeds four page budgets, first ask the same LLM to select files from structural projections of their canonical records (paths, kinds, symbols and record counts); only then query detail pages for the chosen files. Every inventory file is represented; task prose never drives path matching. These contain source IDs/ranges, symbols, semantic statements and metadata; selection does not receive `rawExcerpt` or source file buffers. Identical repeated canonical facts are coalesced; conflicting records with the same ID remain an extraction error. Validate every returned ID against its exact page. If necessary, ask the LLM to reduce the candidates in bounded additional passes. There is no regex/path fallback.
 4. For selected records, use the canonical DSL's bounded node excerpts for editing. A record is editable only when its excerpt covers the complete source range, is at most 2,000 characters, and is not a module summary. Incomplete records can provide context but cannot replace unseen code. This is intentionally different from attaching every selected source file. Small nodes may naturally contain all code in a very small file.
@@ -68,6 +68,16 @@ The observed canary runtime source was `89e72ce991e3f2518b323d2d5e45ff7368b46acf
 ### Production inventory follow-up
 
 PR #55 was independently merged at `7ac58f2c95d7749cb3e2557312e9c3c0842d0985` and activated on 2026-09-10 with central provider routing. The systemd fixture passed, including one corrective edit request after an empty plan. Real production task PLF-13811 then exposed 43 identical repeated canonical facts in observability and a 120-page detailed inventory. Ticket-055 adds exact record coalescing and budget-triggered semantic file selection. These observations do not establish completion of PLF-13811.
+
+### Cursor model failover
+
+Production initially lacked the declared optional Cursor SDK dependency. Installing pinned `cursor-sdk` 1.0.31 restored the transport, and live SDK observation showed Sol had exhausted its usage allowance while Grok remained usable. The worker now returns a closed, secret-free model-run failure envelope; the client tries the next registered model before abandoning the provider. A live central-route canary observed Sol `model_unavailable` followed by Grok success. Provider/transport failures retain their existing circuit breaker. No spend limit or provider authority was changed.
+
+### Draft configuration context
+
+A production worker preallocates its governance ticket as untracked Markdown/JSON. The adapter now includes nonignored source drafts in its private snapshot and passes explicit configuration paths to the canonical `config2dsl` API. This requires the upstream explicit-input implementation from todo2code PR #118 (ticket-097); the old runtime at `89e72ce` does not provide this option. Operator ignore rules, path/symlink checks and source-size limits continue to apply.
+
+A selected JSON file aggregate can authorize an operation adding an absent top-level field, such as a draft intent delivery block. Existing properties still require their own selected field records. Local application rechecks absence and original file hash; the operation grants no publication authority.
 
 ### Edit plan v2
 

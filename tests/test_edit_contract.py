@@ -177,3 +177,18 @@ def test_selection_repair_uses_exact_page_ids(tmp_path):
 
     assert select_code_context(context, "fix", query)[0]["id"] == "auth"
     assert len(calls) == 2 and "unknown IDs" in calls[1]
+
+
+def test_json_aggregate_can_add_only_absent_root_fields(tmp_path):
+    body = '{"allowedPaths": ["src/auth.py"]}\n'
+    record = context_record(name="config/intent.json", body=body)
+    record["statement"]["kind"] = "configuration_file_fact"
+    record["metadata"] = {"format": "json"}
+    context, selected, file = fixture(tmp_path, body, "config/intent.json", record)
+    assert selected[0]["json_additions"]
+    op = dict(id="auth", file_sha256=digest(body.encode()), pointer=["delivery"], value={"acceptedBaseSha": "a" * 40})
+    for pointer in [["allowedPaths"], ["delivery", "acceptedBaseSha"]]:
+        with pytest.raises(CompletionError, match="absent top-level"):
+            apply_plan(tmp_path, context, selected, plan(json_updates=[op | {"pointer": pointer}]), {})
+    apply_plan(tmp_path, context, selected, plan(json_updates=[op]), {})
+    assert json.loads(file.read_text()) == {"allowedPaths": ["src/auth.py"], "delivery": {"acceptedBaseSha": "a" * 40}}
