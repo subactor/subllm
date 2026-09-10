@@ -1,11 +1,13 @@
 """LLM selection over canonical code2dsl evidence; source stays local."""
 from __future__ import annotations
 
+import gzip
 import hashlib
 import json
 import os
 import subprocess
 import tempfile
+import zlib
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from pathlib import Path, PurePosixPath
@@ -16,6 +18,7 @@ from .errors import CompletionError
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 MAX_FILE_BYTES = 8 * 1024 * 1024
 MAX_DSL_BYTES = 16 * 1024 * 1024
+MAX_EXPANDED_DSL_BYTES = 64 * 1024 * 1024
 PAGE_BYTES = 48_000
 MAX_PAGES = 128
 MAX_SELECTED = 32
@@ -87,6 +90,20 @@ def extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
         raise CompletionError('code2dsl extraction or runtime observation failed') from exc
 
 
+def read_extraction(output: Path) -> dict:
+    """Bound both the lossless local transport and its expanded canonical JSON."""
+    if output.stat().st_size > MAX_DSL_BYTES:
+        raise CompletionError('code2dsl output exceeds extraction budget')
+    try:
+        with gzip.open(output, 'rb') as stream:
+            payload = stream.read(MAX_EXPANDED_DSL_BYTES + 1)
+    except (OSError, EOFError, zlib.error) as exc:
+        raise CompletionError('code2dsl compressed extraction is invalid') from exc
+    if len(payload) > MAX_EXPANDED_DSL_BYTES:
+        raise CompletionError('code2dsl expanded output exceeds extraction budget')
+    return json.loads(payload)
+
+
 def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
     """Run the pinned public code2dsl API against an isolated nonignored source snapshot."""
     location = environ.get('SUBLLM_CODE2DSL_RUNTIME', '')
@@ -149,7 +166,7 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_bytes(data)
         child_env = {k: v for k, v in os.environ.items() if k in {'PATH', 'SYSTEMROOT', 'LANG'}}
-        output = Path(temporary) / 'records.json'
+        output = Path(temporary) / 'records.json.gz'
         configuration_paths = Path(temporary) / 'configuration-paths.json'
         configuration_paths.write_text(encode([name for name in sources
                                                if Path(name).suffix in {'.json', '.toml', '.yaml', '.yml'}]))
@@ -160,9 +177,7 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
         )
         if completed.returncode or not output.is_file():
             raise CompletionError('code2dsl extraction failed; no source-text fallback')
-        if output.stat().st_size > MAX_DSL_BYTES:
-            raise CompletionError('code2dsl output exceeds extraction budget')
-        envelope = json.loads(output.read_text('utf-8'))
+        envelope = read_extraction(output)
     records = unique_records(envelope['records'])
     for record in records:
         source = record['source']

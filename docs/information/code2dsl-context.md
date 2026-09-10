@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 5,
+  "version": 6,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "f046bb58302936e24cd51bae65ad9309bbb6c923",
+  "source_revision": "183838eca7f76066fb19f6c6f9a13a8dc887bf82",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -19,12 +19,45 @@
     "repo://subactor/subllm/tests/test_client.py",
     "repo://subactor/subllm/tests/test_edit_contract.py",
     "repo://autogrammar/todo2code/89e72ce991e3f2518b323d2d5e45ff7368b46acf/src/extractors/ast.ts",
-    "receipt:sha256:3c5f255bff00e070d9c3f54d88323abd8cde28747c15206af0a026f25e08e8de"
+    "receipt:sha256:3c5f255bff00e070d9c3f54d88323abd8cde28747c15206af0a026f25e08e8de",
+    "receipt:sha256:3bd94f546a7aaac70d522e00c0e1fa1ec694bb86d6be2bd4ab88460b87b45994",
+    "repo://subactor/subllm/project/ticket-057/intent.json",
+    "https://github.com/autogrammar/todo2code/commit/1e986f8953ba21973c6b68c914db8db149b8949a"
   ]
 }
 ---
 
 # LLM-selected code2dsl editing context
+
+### PLF-13849 extraction transport repair
+
+On 2026-09-10, PLF-13849 remained failed after three attempts with
+`code2dsl output exceeds extraction budget`. Reproduction on todo2code PR #119
+at `1e986f8953ba21973c6b68c914db8db149b8949a` produced 31,820,078 JSON bytes
+with the earlier code-only bridge. The current bridge also extracts documentation
+and configuration: its complete envelope measured 41,045,212 bytes in normalized
+JSON, compressed to 3,717,450 bytes, with 30,723 unique records across 555 files.
+No warnings were returned. Source/build pins are recorded in the receipt above.
+
+Ticket-057 uses gzip only for the private bridge-to-Python transport. Canonical
+records, bounded source excerpts, generation evidence, warnings and conflicting-ID
+checks are preserved. The transport remains capped at 16 MiB. A separate explicit
+64 MiB expanded-JSON cap bounds decompression, including concatenated gzip members;
+invalid streams and over-budget outputs fail closed. This increases the supported
+expanded local evidence size from 16 to 64 MiB. Source snapshot limits, model query
+pages, selection limits, timeouts and attempts are unchanged. This does not eliminate
+the extractor's own in-memory allocation before serialization.
+
+The ticket originally bound PR #119 to `0208cb7c0244a7dfec28fd947b8f2041c24737f1`.
+The newer PR head had successful `koru / code-review` and verification checks during
+this readback. Reopening the old repair requires current-head reconciliation; passing
+extraction alone does not mean that the repair ticket ran or the PR was merged.
+
+The deployed extractor `89e72ce` passes four of five current real-runtime tests but
+fails the preallocated untracked configuration case. The explicit-input API needed
+by the previously merged SubLLM ticket-056 is still in upstream todo2code PR #118.
+That dependency gap is separate from compressed extraction and must be resolved
+before claiming full production integration.
 
 <!-- docs:section purpose -->
 ## Purpose

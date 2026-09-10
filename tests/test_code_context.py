@@ -1,3 +1,4 @@
+import gzip
 import subprocess
 
 import pytest
@@ -5,6 +6,52 @@ import pytest
 from subllm.code_context import CodeContext, encode, extract_context, pages, safe_path, select_code_context
 from subllm.dsl_edit import apply_edits, editing_records
 from subllm.errors import CompletionError
+
+
+def test_compressed_extraction_preserves_all_canonical_evidence(tmp_path, monkeypatch):
+    from subllm import code_context as module
+
+    record = context_record()
+    record['metadata']['generation'] = {'evidence': 'repeated evidence ' * 1000}
+    envelope = {'records': [record, record], 'warnings': ['canonical warning']}
+    payload = encode(envelope).encode()
+    output = tmp_path / 'records.json.gz'
+    output.write_bytes(gzip.compress(payload))
+    monkeypatch.setattr(module, 'MAX_DSL_BYTES', output.stat().st_size)
+    monkeypatch.setattr(module, 'MAX_EXPANDED_DSL_BYTES', len(payload))
+    assert len(payload) > module.MAX_DSL_BYTES
+    assert module.read_extraction(output) == envelope
+
+
+def test_compressed_transport_budget_is_checked_before_decompression(tmp_path, monkeypatch):
+    from subllm import code_context as module
+
+    output = tmp_path / 'records.json.gz'
+    output.write_bytes(b'not gzip')
+    monkeypatch.setattr(module, 'MAX_DSL_BYTES', 7)
+    with pytest.raises(CompletionError, match='output exceeds extraction budget'):
+        module.read_extraction(output)
+
+
+@pytest.mark.parametrize('members', [1, 2])
+def test_expansion_budget_rejects_compressed_bombs_and_concatenated_members(tmp_path, monkeypatch, members):
+    from subllm import code_context as module
+
+    output = tmp_path / 'records.json.gz'
+    output.write_bytes(gzip.compress(b'x' * 1024) * members)
+    monkeypatch.setattr(module, 'MAX_EXPANDED_DSL_BYTES', 1024 * members - 1)
+    with pytest.raises(CompletionError, match='expanded output exceeds extraction budget'):
+        module.read_extraction(output)
+
+
+@pytest.mark.parametrize('payload', [b'not gzip', gzip.compress(b'{}')[:-1], gzip.compress(b'{}') + b'invalid'])
+def test_invalid_or_truncated_extraction_fails_closed(tmp_path, payload):
+    from subllm.code_context import read_extraction
+
+    output = tmp_path / 'records.json.gz'
+    output.write_bytes(payload)
+    with pytest.raises(CompletionError, match='compressed extraction is invalid'):
+        read_extraction(output)
 
 
 def context_record(name='src/auth.py', identity='auth', body='def allow(user):\n    return True\n'):
