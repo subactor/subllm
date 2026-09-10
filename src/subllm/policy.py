@@ -529,6 +529,14 @@ _CODING = (
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
+# Semantic evidence selection is a bounded ID query, separate from code editing.
+# Keep the same provider membership; the OpenRouter selection role uses Flash.
+_CODE_CONTEXT = tuple(
+    replace(candidate, model="glm-5.3-flash", model_parameters=MappingProxyType({"reasoning_effort": "low"}))
+    if candidate.provider == "openrouter" else candidate
+    for candidate in _CODING
+)
+
 # Vision routes stay on OpenAI-compatible transports. Cursor SDK is text-only
 # and is never a vision candidate. Z.AI coding GLM 5.3 is not marked vision.
 _VISION = (
@@ -559,7 +567,7 @@ _ROUTE_VALUES = (
     RoutePolicy("skills-agent", "validator", _DEFAULT),
     # Host coding-agent invokes this canonical route through subllm-code-edit.
     RoutePolicy("onedev-agent", "code-edit", _CODING),
-    RoutePolicy("onedev-agent", "code-context", _CODING),
+    RoutePolicy("onedev-agent", "code-context", _CODE_CONTEXT),
     RoutePolicy("todo2code", "semantic", _DEFAULT),
     RoutePolicy("szeptnik-one", "program-generation", _SZEPTNIK),
     RoutePolicy("szeptnik-one", "voice-programming", _SZEPTNIK),

@@ -219,18 +219,22 @@ def unique_records(records: list[dict]) -> list[dict]:
     return list(unique.values())
 
 
+def file_kinds(context: CodeContext) -> list[str]:
+    return sorted({r['statement']['kind'] for r in context.records})
+
+
 def file_inventory(context: CodeContext) -> list[dict]:
-    """Structural projection of every canonical file, without source or task matching."""
+    """Compact rows: path, record count, kind-catalog indexes and all symbols."""
+    kind_indexes = {kind: index for index, kind in enumerate(file_kinds(context))}
     grouped: dict[str, list[dict]] = {}
     for record in context.records:
         grouped.setdefault(record['source']['path'], []).append(record)
     return [{
-        'id': records[0]['id'],
-        'source': {'path': path},
-        'record_count': len(records),
-        'kinds': sorted({r['statement']['kind'] for r in records}),
-        'symbols': sorted({r['source']['symbol'] for r in records if r['source'].get('symbol')}),
-    } for path, records in grouped.items()]
+        # These local selection references never replace canonical edit IDs.
+        'id': f'file:{index}',
+        'file': [path, len(records), sorted({kind_indexes[r['statement']['kind']] for r in records}),
+                 sorted({r['source']['symbol'] for r in records if r['source'].get('symbol')})],
+    } for index, (path, records) in enumerate(sorted(grouped.items()))]
 
 
 def pages(records: list[dict[str, Any]], budget: int = PAGE_BYTES) -> list[list[dict[str, Any]]]:
@@ -263,12 +267,15 @@ def select_code_context(context: CodeContext, prompt: str, query: Callable[..., 
         f'Return JSON {{"ids":[...]}} with at most {MAX_SELECTED} IDs, or an empty list if unrelated. '
         'Do not select everything merely because a directory name occurs in the task.'
     )
-    def choose(page: list[dict], maximum: int, message: str) -> list[str]:
+    def choose(page: list[dict], maximum: int, message: str, kind_names=None) -> list[str]:
         available = {r['id'] for r in page}
         for attempt in range(2):
             correction = (' The previous selection violated the schema or referenced unknown IDs. '
                           'Copy only exact unique IDs from this page, or return an empty list.' if attempt else '')
-            answer = query('code-context', message + correction, {'task': prompt, 'records': page})
+            payload = {'task': prompt, 'records': page}
+            if kind_names is not None:
+                payload['file_kinds'] = kind_names
+            answer = query('code-context', message + correction, payload)
             ids = answer.get('ids')
             if (set(answer) == {'ids'} and isinstance(ids, list) and len(ids) <= maximum
                     and all(isinstance(i, str) and i in available for i in ids)
@@ -280,12 +287,16 @@ def select_code_context(context: CodeContext, prompt: str, query: Callable[..., 
     # Budget-driven hierarchy: the LLM chooses files, never lexical prompt matching.
     if len(encode(projected).encode()) > 4 * PAGE_BYTES:
         inventory = file_inventory(context)
-        paths_by_id = {r['id']: r['source']['path'] for r in inventory}
+        paths_by_id = {r['id']: r['file'][0] for r in inventory}
         paths = set()
         for page in pages(inventory):
             ids = choose(page, MAX_SELECTED, instruction +
-                         ' This is the file inventory stage. Each ID identifies the canonical facts of one file. '
-                         'Select only files needed for the task; their detailed DSL records will follow.')
+                         ' This is the file inventory stage. Each ID is a local reference for '
+                         'one file, not an edit ID. '
+                         'The file row columns are [path, canonical record count, kind indexes, symbols]. '
+                         'Kind indexes reference the shared file_kinds array. '
+                         'Select only files needed for the task; their detailed DSL records will follow.',
+                         file_kinds(context))
             paths.update(paths_by_id[i] for i in ids)
         projected = [r for r in projected if r['source']['path'] in paths]
     for page in pages(projected):

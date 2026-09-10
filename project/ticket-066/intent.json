@@ -1,0 +1,30 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-066",
+  "summary": "Separate bounded context selection from code editing routing",
+  "workstream": "runtime",
+  "classification": {
+    "kind": "FIX",
+    "priority": "P1",
+    "origin": "founder"
+  },
+  "allowedPaths": [
+    "src/subllm/policy.py",
+    "tests/test_policy.py",
+    "docs/information/code2dsl-context.md",
+    "project/ticket-066/**",
+    "src/subllm/code_context.py",
+    "tests/test_code_context.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python",
+    "node",
+    "code2dsl"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 8,
+  "version": 9,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "13c16ce1e42c586fc6ab53fb2e1742bafda9eeea",
+  "source_revision": "5b8c29f97a2bf64f0c52618302261f2108c99660",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -28,6 +28,51 @@
 ---
 
 # LLM-selected code2dsl editing context
+
+### Bounded context-selection profile
+
+PLF-13887 passed extraction with PR65 but its third worker attempt ended on
+2026-09-10 at 14:00:12 UTC with an OpenRouter GLM 5.3 `code-context` timeout.
+No material patch was produced. The first read-only Flash qualification also
+hit its 300-second total test budget after nine completed calls; this is kept
+as a failed qualification, not a successful worker attempt.
+
+Ticket-066 separates the `onedev-agent/code-context` OpenRouter role onto the
+already registered `glm-5.3-flash` with `reasoning_effort=low`; `code-edit` retains
+`glm-5.3` and its existing parameters. Other providers
+and their ordering remain governed by the same central policy. It also encodes
+the complete file inventory as compact rows `[path, record_count, kind_indexes,
+symbols]` with a shared `file_kinds` list. Local file selection references are
+mapped back to paths before the detailed stage. Only canonical record IDs and
+source hashes authorize edits; local file references never authorize edits.
+OpenRouter's live model metadata on 2026-09-10 declares mandatory reasoning,
+`default_effort=max`, and supported efforts `max`, `high`, `low` for this model.
+The installed LiteLLM OpenRouter adapter supports `reasoning_effort`; the provider's
+[reasoning contract](https://openrouter.ai/docs/guides/best-practices/reasoning-tokens)
+explains effort selection. The compact inventory at default max still exhausted
+the 300-second qualification budget; one response spent 110.859 seconds. The
+selection role therefore explicitly requests low effort instead of extending
+the timeout or disabling mandatory reasoning.
+
+All files, kinds, counts and symbols remain represented. Selection remains
+model-driven, without lexical task/path filtering or directory expansion.
+
+The current Core base `579a0d12ef990a41a29bdd212d683cb789d0ac8a` contains 67,320
+records across 1,463 source files. Its compact inventory is 201,183 bytes in
+five pages, compared with seven pages in the earlier qualification. The existing
+48,000-byte page, 128-page, 32-selection, 64 MiB extraction and worker attempt
+bounds are unchanged. The read-only live qualification is capped at 300 seconds
+and 16 calls; it does not authorize a fourth PLF attempt.
+
+The final low-effort qualification passed in 111.358 seconds, including
+extraction, with 14 calls and reported cost 0.02697545 USD (14/14 usage records
+reported cost). It selected exactly `services/control/src/founder-doql-compiler.mjs`
+and `services/control/tests/founder-doql-compiler.test.mjs`, with canonical detailed
+record IDs. Receipt: `receipt:sha256:cc2bbc8685a1553c6702b240739a6761eec026050558b4edd669327b9ff2a7ba`.
+The qualification explicitly selected OpenRouter; it proves this role on the
+available provider, not cross-provider failover or a completed production task.
+Full `./scripts/verify` passed 287 tests, lint and build. A new PLF attempt still
+requires authorization for its exhausted attempt budget.
 
 ### Validated projection restores the 64 MiB bound
 
