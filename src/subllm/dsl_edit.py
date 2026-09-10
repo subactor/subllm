@@ -32,7 +32,7 @@ def editing_records(context: CodeContext, selected: list[dict]) -> list[dict]:
         actual = '\n'.join(lines[span['start'] - 1:span['end']])
         excerpt = source.get('rawExcerpt')
         editable = (isinstance(excerpt, str) and bool(excerpt.strip()) and len(excerpt) <= 2000
-                    and excerpt.strip() == actual.strip()
+                    and '\n'.join(excerpt.splitlines()).strip() == actual.strip()
                     and original['statement']['kind'] != 'module_fact')
         result.append({**projection, 'source': {**projection['source'],
                        'rawExcerpt': excerpt if editable else None}, 'editable': editable})
