@@ -24,7 +24,7 @@ def test_compressed_extraction_preserves_all_canonical_evidence(tmp_path, monkey
 
 
 
-def test_core_sized_extraction_fits_production_expansion_budget(tmp_path):
+def test_unprojected_core_extraction_still_exceeds_expansion_budget(tmp_path):
     from subllm import code_context as module
 
     # Match the measured Core envelope size without storing repository source.
@@ -40,9 +40,8 @@ def test_core_sized_extraction_fits_production_expansion_budget(tmp_path):
             stream.write(chunk[:count])
             remaining -= count
         stream.write(suffix)
-    envelope = module.read_extraction(output)
-    assert envelope['records'] == []
-    assert len(envelope['warnings'][0]) == payload_bytes - len(prefix) - len(suffix)
+    with pytest.raises(CompletionError, match='expanded output exceeds extraction budget'):
+        module.read_extraction(output)
 
 def test_compressed_transport_budget_is_checked_before_decompression(tmp_path, monkeypatch):
     from subllm import code_context as module

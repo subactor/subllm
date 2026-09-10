@@ -15,7 +15,9 @@
     "src/subllm/code_context.py",
     "tests/test_code2dsl_projection.py",
     "tests/integration_code2dsl.py",
-    "project/ticket-063/**"
+    "project/ticket-063/**",
+    "tests/test_code_context.py",
+    "docs/information/code2dsl-context.md"
   ],
   "forbiddenPaths": [
     "project/ticket-*/user-*.md"
