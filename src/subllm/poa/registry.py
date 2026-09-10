@@ -22,6 +22,7 @@ PROCESS_OWNER_HOME = "subactor"
 PROCESS_SHAPE = "runtime_service"
 
 INSPECT_URI = "subllm://local/policy/query/inspect"
+EXPORT_CONTRACT_URI = "subllm://local/policy/query/export-routing-contract"
 LIST_ROUTES_URI = "subllm://local/policy/query/list-routes"
 LIST_PROVIDERS_URI = "subllm://local/policy/query/list-providers"
 LIST_APPLICATIONS_URI = "subllm://local/policy/query/list-applications"
@@ -36,6 +37,7 @@ IMPORT_CREDENTIALS_URI = "subllm://local/policy/command/import-credentials"
 EDIT_PROCESS_URI = "subllm://local/policy/command/edit-process"
 
 INSPECT_REF = "poa://subactor.subllm/process/inspect-policy/v1"
+EXPORT_CONTRACT_REF = "poa://subactor.subllm/process/export-routing-contract/v1"
 LIST_ROUTES_REF = "poa://subactor.subllm/process/list-routes/v1"
 LIST_PROVIDERS_REF = "poa://subactor.subllm/process/list-providers/v1"
 LIST_APPLICATIONS_REF = "poa://subactor.subllm/process/list-applications/v1"
@@ -105,6 +107,10 @@ PROCESSES: dict[str, dict[str, Any]] = {
         INSPECT_REF,
         "Inspect a declared SubLLM process",
         [_step("inspect", CAP_INSPECT, "query", ["read_data"])],
+    ),
+    EXPORT_CONTRACT_REF: _process(
+        EXPORT_CONTRACT_REF, "Export an exact routing contract",
+        [_step("export-contract", CAP_LIST, "query", ["read_data"])],
     ),
     LIST_ROUTES_REF: _process(
         LIST_ROUTES_REF,
@@ -278,6 +284,7 @@ BINDINGS: dict[str, dict[str, Any]] = {
 
 PROCESS_URIS: dict[str, str] = {
     INSPECT_REF: INSPECT_URI,
+    EXPORT_CONTRACT_REF: EXPORT_CONTRACT_URI,
     LIST_ROUTES_REF: LIST_ROUTES_URI,
     LIST_PROVIDERS_REF: LIST_PROVIDERS_URI,
     LIST_APPLICATIONS_REF: LIST_APPLICATIONS_URI,
@@ -294,6 +301,7 @@ PROCESS_URIS: dict[str, str] = {
 
 URI_KIND = {
     INSPECT_URI: "query",
+    EXPORT_CONTRACT_URI: "query",
     LIST_ROUTES_URI: "query",
     LIST_PROVIDERS_URI: "query",
     LIST_APPLICATIONS_URI: "query",

@@ -14,6 +14,7 @@ from .poa.refs import ROUTE_INPUT
 from .poa.registry import (
     CONFIGURED_ROUTE_URI,
     CREATE_PLAN_URI,
+    EXPORT_CONTRACT_URI,
     IMPORT_CREDENTIALS_URI,
     LIST_APPLICATIONS_URI,
     LIST_PROVIDERS_URI,
@@ -30,6 +31,9 @@ def _parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
     subparsers.add_parser("check", help="validate the effective policy")
     subparsers.add_parser("list", help="list application/function routes")
+    contract = subparsers.add_parser("contract", help="export a versioned exact routing profile")
+    contract.add_argument("application")
+    contract.add_argument("function")
     subparsers.add_parser("providers", help="show enabled state, priority and default model")
     subparsers.add_parser("applications", help="show application IDs, names and attribution URLs")
     env_parser = subparsers.add_parser("env", help="inspect or initialize the shared local credential file")
@@ -117,6 +121,9 @@ def main(argv: Sequence[str] | None = None) -> int:
         if args.command == "check":
             _query(bus, VALIDATE_URI)
             print("SubLLM policy: OK")
+            return 0
+        if args.command == "contract":
+            _print_json(_query(bus, EXPORT_CONTRACT_URI, application=args.application, function=args.function))
             return 0
         if args.command == "list":
             _print_json(_query(bus, LIST_ROUTES_URI)["routes"])
