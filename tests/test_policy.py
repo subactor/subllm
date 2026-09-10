@@ -174,14 +174,14 @@ def test_prellm_routes_prefer_direct_zai_glm53(function: str) -> None:
     assert configured[0].api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
-def test_role_specific_openrouter_fallbacks_match_benchmark_recommendations() -> None:
+def test_role_specific_openrouter_fallbacks_are_explicit() -> None:
     expected = {
         ("repair-agent", "repair-plan"): "glm-5.3",
         ("validator-agent", "patch-review"): "glm-5.3-flash",
         ("validator-agent", "direct-pr-review"): "glm-5.3-flash",
         # Host coding-agent invokes this canonical route through subllm-code-edit.
         ("onedev-agent", "code-edit"): "glm-5.3",
-        ("onedev-agent", "code-context"): "glm-5.3",
+        ("onedev-agent", "code-context"): "glm-5.3-flash",
     }
     for (application, function), model in expected.items():
         route = next(item for item in configured_routes(application, function) if item.provider == "openrouter")
@@ -268,3 +268,16 @@ def test_supervisor_assessment_bounds_only_direct_zai_reasoning() -> None:
         "reasoning_effort" not in r.model_parameters
         for r in configured_routes("repair-agent", "repair-plan")
     )
+
+
+def test_context_selection_has_its_own_role_without_changing_edit_routes() -> None:
+    env = {"SUBLLM_PROVIDER_ORDER": "openrouter,cursor,zai"}
+    context = configured_routes("onedev-agent", "code-context", environ=env)
+    editing = configured_routes("onedev-agent", "code-edit", environ=env)
+    assert context[0].wire_model == "z-ai/glm-5.3-flash"
+    assert dict(context[0].model_parameters) == {"reasoning_effort": "low"}
+    assert dict(editing[0].model_parameters) == {}
+    assert editing[0].wire_model == "z-ai/glm-5.3"
+    assert [(r.provider, r.wire_model) for r in context[1:]] == [
+        (r.provider, r.wire_model) for r in editing[1:]
+    ]

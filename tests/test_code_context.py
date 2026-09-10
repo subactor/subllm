@@ -250,10 +250,32 @@ def test_large_inventory_uses_llm_file_selection_before_details():
         if inventory:
             assert len(payload['records']) == 100
             assert 'unrelated internal fact' not in encode(payload)
-            return {'ids': ['node-73']}
+            assert payload['file_kinds'] == ['python_symbol_fact']
+            chosen = next(r['id'] for r in payload['records'] if r['file'][0] == 'docs/file-73.py')
+            return {'ids': [chosen]}
         assert [r['id'] for r in payload['records']] == ['node-73']
         return {'ids': ['node-73']}
 
     selected = select_code_context(context, 'Fix tests and docs without expanding directories', query)
     assert [r['id'] for r in selected] == ['node-73']
     assert stages == [True, False]
+
+
+def test_compact_file_rows_preserve_all_summary_information_and_stable_local_ids():
+    from subllm.code_context import file_inventory
+
+    definition = context_record(identity='canonical-definition')
+    call = context_record(identity='canonical-call')
+    call['statement']['kind'] = 'call_fact'
+    call['source']['symbol'] = 'call_site'
+    startup = context_record(name='src/startup.py', identity='canonical-startup')
+    records = [definition, call, startup]
+    from subllm.code_context import file_kinds
+    assert file_kinds(CodeContext(records, {}, {})) == ['call_fact', 'python_symbol_fact']
+    inventory = file_inventory(CodeContext(records, {}, {}))
+    assert inventory == file_inventory(CodeContext(list(reversed(records)), {}, {}))
+    assert inventory == [
+        {'id': 'file:0', 'file': ['src/auth.py', 2, [0, 1], ['allow', 'call_site']]},
+        {'id': 'file:1', 'file': ['src/startup.py', 1, [1], ['allow']]},
+    ]
+    assert {r['id'] for r in records} == {'canonical-definition', 'canonical-call', 'canonical-startup'}
