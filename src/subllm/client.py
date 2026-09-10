@@ -19,6 +19,7 @@ from .errors import (
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
     CompletionError,
+    CursorRunError,
 )
 from .health import order_by_health, record_failure, record_success
 from .policy_config import load_policy_config
@@ -175,6 +176,13 @@ def _run_cursor_worker(
             diagnostic_code=CURSOR_WORKER_TIMEOUT_CODE,
         ) from exc
     if process.returncode != 0:
+        if len(output) <= MAX_CURSOR_WORKER_RESULT_BYTES:
+            try:
+                failure = json.loads(output.decode('utf-8'))
+            except (ValueError, UnicodeError):
+                failure = None
+            if failure == {'schema': 'subllm.cursor-worker-error/v1', 'error': 'model_run_failed'}:
+                raise CursorRunError('Cursor SDK model run failed')
         raise CompletionError("Cursor SDK worker failed")
     if len(output) > MAX_CURSOR_WORKER_RESULT_BYTES:
         raise CompletionError("Cursor SDK worker result exceeds 1000000 bytes")
@@ -388,7 +396,8 @@ def _complete_route(
         except CompletionError as exc:
             raise _RetryableAttemptError(
                 str(exc),
-                outcome="provider_unavailable",
+                outcome="model_unavailable" if isinstance(exc, CursorRunError) else "provider_unavailable",
+                provider_level=not isinstance(exc, CursorRunError),
                 diagnostic_code=exc.diagnostic_code,
             ) from exc
     if route.transport == "openai-compatible":
@@ -477,13 +486,13 @@ def complete(
                 round(duration * 1000),
                 diagnostic_code,
             ))
-            record_failure(
-                route.provider,
-                reason=exc.outcome,
-                latency_seconds=duration,
-                policy=execution,
-            )
             if exc.provider_level:
+                record_failure(
+                    route.provider,
+                    reason=exc.outcome,
+                    latency_seconds=duration,
+                    policy=execution,
+                )
                 failed_providers.add(route.provider)
             last_error = exc
             if not execution.failover_enabled:

@@ -88,7 +88,7 @@ def extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
 
 
 def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
-    """Run the pinned public code2dsl API against an isolated tracked snapshot."""
+    """Run the pinned public code2dsl API against an isolated nonignored source snapshot."""
     location = environ.get('SUBLLM_CODE2DSL_RUNTIME', '')
     revision = environ.get('SUBLLM_CODE2DSL_SHA', '')
     build = environ.get('SUBLLM_CODE2DSL_BUILD_SHA256', '')
@@ -101,7 +101,7 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
                               capture_output=True, check=True, timeout=10).stdout.decode().strip()
     if observed != revision or runtime_digest(runtime) != build:
         raise CompletionError('code2dsl runtime pin mismatch')
-    names = subprocess.run(['git', 'ls-files', '--cached', '-z'], cwd=root,
+    names = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=root,
                            capture_output=True, check=True, timeout=10).stdout.decode().split('\0')
     sources: dict[str, bytes] = {}
     total = 0
@@ -150,8 +150,12 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
             file.write_bytes(data)
         child_env = {k: v for k, v in os.environ.items() if k in {'PATH', 'SYSTEMROOT', 'LANG'}}
         output = Path(temporary) / 'records.json'
+        configuration_paths = Path(temporary) / 'configuration-paths.json'
+        configuration_paths.write_text(encode([name for name in sources
+                                               if Path(name).suffix in {'.json', '.toml', '.yaml', '.yml'}]))
         completed = subprocess.run(
-            ['node', str(Path(__file__).with_name('code2dsl_bridge.mjs')), str(runtime), str(snapshot), str(output)],
+            ['node', str(Path(__file__).with_name('code2dsl_bridge.mjs')), str(runtime), str(snapshot),
+             str(output), str(configuration_paths)],
             cwd=temporary, env=child_env, capture_output=True, timeout=180, check=False,
         )
         if completed.returncode or not output.is_file():

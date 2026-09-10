@@ -81,6 +81,11 @@ def enrich_records(context: CodeContext, records: list[dict]) -> list[dict]:
                     "value": field if len(encode(field).encode()) <= 2000 else None,
                     "value_omitted": len(encode(field).encode()) > 2000,
                 }
+        if (source['path'].endswith('.json')
+                and original['statement']['kind'] == 'configuration_file_fact'
+                and original.get('metadata', {}).get('format') == 'json'
+                and isinstance(json.loads(context.sources[source['path']]), dict)):
+            extra['json_additions'] = True
         result.append({**record, **extra})
     return result
 
@@ -191,7 +196,7 @@ def apply_plan(
         replacements.setdefault(name, []).append((start, start + len(before), after))
     for operation in answer["json_updates"]:
         record, name, body = bound(operation, {"id", "file_sha256", "pointer", "value"})
-        if "json_field" not in record:
+        if "json_field" not in record and not record.get("json_additions"):
             raise CompletionError("JSON update requires canonical configuration evidence")
         pointer = operation["pointer"]
         if not isinstance(pointer, list) or not all(isinstance(k, str) for k in pointer):
@@ -201,7 +206,13 @@ def apply_plan(
             raise CompletionError("JSON updates overlap")
         previous.append(pointer)
         document = json_documents.setdefault(name, json.loads(body))
-        _json_update(document, pointer, operation["value"], record["json_field"]["key"])
+        if record.get('json_additions'):
+            if len(pointer) != 1 or not isinstance(document, dict) or pointer[0] in document:
+                raise CompletionError('JSON aggregate permits only absent top-level fields')
+            field = pointer[0]
+        else:
+            field = record['json_field']['key']
+        _json_update(document, pointer, operation['value'], field)
     for operation in answer["creates"]:
         if (
             not isinstance(operation, dict)

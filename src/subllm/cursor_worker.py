@@ -12,7 +12,7 @@ from dataclasses import asdict
 from pathlib import Path
 from typing import Any
 
-from .errors import CompletionError
+from .errors import CompletionError, CursorRunError
 
 MAX_CURSOR_WORKER_REQUEST_BYTES = 4_000_000
 _PR_SET_CHILD_SUBREAPER = 36
@@ -131,6 +131,8 @@ def _execute(request: Mapping[str, Any]) -> Mapping[str, Any]:
         raise CompletionError("Cursor SDK request failed") from exc
     status = str(getattr(getattr(result, "status", ""), "value", getattr(result, "status", ""))).lower()
     content = str(getattr(result, "result", "") or "")
+    if status == "error":
+        raise CursorRunError("Cursor SDK model run failed")
     if status != "finished" or not content:
         raise CompletionError(f"Cursor SDK ended with status {status or 'unknown'}")
     return {
@@ -154,6 +156,8 @@ def main() -> int:
         request = _request(json.loads(encoded.decode("utf-8")))
         result = _execute(request)
     except (UnicodeError, json.JSONDecodeError, CompletionError) as exc:
+        if isinstance(exc, CursorRunError):
+            print(json.dumps({"schema": "subllm.cursor-worker-error/v1", "error": "model_run_failed"}))
         print(f"subllm-cursor-worker: {exc}", file=sys.stderr)
         return 2
     print(json.dumps(result, ensure_ascii=False, sort_keys=True))

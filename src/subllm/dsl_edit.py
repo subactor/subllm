@@ -190,6 +190,8 @@ def execute_dsl_edit(
         'For JSON configuration records with json_field, json_updates contain '
         '{"id":"record ID","file_sha256":"hash","pointer":["json_field.key","optional nested property"],"value":null}. '
         'Use the desired JSON value; the pointer must stay under that selected top-level field. '
+        'For configuration aggregates with json_additions=true, json_updates may add an absent top-level property '
+        'using a one-element pointer and its desired JSON value; they cannot replace existing properties. '
         'For required new files, creates contain {"path":"relative path","content":"new content"}. '
         'New paths must not already exist or be hidden, ignored, vendor or dependencies. Supported extensions: '
         '.py .js .mjs .cjs .ts .tsx .jsx .md .json .toml .yaml .yml. '

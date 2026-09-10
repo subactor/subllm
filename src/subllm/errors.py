@@ -32,3 +32,7 @@ class CompletionError(SubLLMError):
     def __init__(self, message: str, *, diagnostic_code: str | None = None) -> None:
         super().__init__(message)
         self.diagnostic_code = diagnostic_code
+
+
+class CursorRunError(CompletionError):
+    """The SDK started a model run which failed; another model may remain usable."""

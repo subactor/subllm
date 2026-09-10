@@ -708,3 +708,42 @@ def test_completion_cli_rejects_unbounded_or_unknown_input(
     captured = capsys.readouterr()
     assert captured.out == ""
     assert error in captured.err
+
+
+def test_cursor_model_run_failure_tries_next_registered_cursor_model(monkeypatch):
+    from subllm.errors import CursorRunError
+    calls = []
+
+    def provider_failure(*args, **kwargs):
+        pytest.fail("a model run failure must not cool down the whole provider")
+
+    monkeypatch.setattr(client, "record_failure", provider_failure)
+
+    def run_worker(request, **kwargs):
+        calls.append(request["model"])
+        if request["model"] == "gpt-5.6-sol":
+            raise CursorRunError("Cursor SDK model run failed")
+        return {"schema": "subllm.cursor-worker-result/v1", "status": "SUCCESS",
+                "content": "ready", "usage": {}, "finish_reason": "", "run_id": "run-2"}
+
+    monkeypatch.setattr(client, "_run_cursor_worker", run_worker)
+    result = complete("onedev-agent", "code-context", [{"role": "user", "content": "Select evidence"}],
+                      environ={"CURSOR_API_KEY": "key_test-value-for-unit-tests", "SUBLLM_PROVIDER_ORDER": "cursor"})
+    assert calls == ["gpt-5.6-sol", "grok-4.6"]
+    assert result.provider == "cursor" and result.model == "grok-4.6"
+    assert [a.outcome for a in result.attempts] == ["model_unavailable", "success"]
+
+
+def test_cursor_worker_error_keeps_model_scope_only_for_exact_error_envelope(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from subllm.errors import CursorRunError
+
+    valid = {"schema": "subllm.cursor-worker-error/v1", "error": "model_run_failed"}
+    for payload, error_type in [(valid, CursorRunError), (valid | {"extra": "untrusted"}, CompletionError)]:
+        process = SimpleNamespace(returncode=2,
+                                  communicate=lambda payload=payload, **kwargs: (json.dumps(payload).encode(), None))
+        monkeypatch.setattr(client.subprocess, "Popen", lambda *args, process=process, **kwargs: process)
+        with pytest.raises(error_type) as caught:
+            client._run_cursor_worker({}, timeout_seconds=1, cwd=tmp_path)
+        assert type(caught.value) is error_type

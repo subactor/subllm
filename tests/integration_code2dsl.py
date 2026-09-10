@@ -86,10 +86,55 @@ def test_real_docs_configuration_and_large_node_edits(tmp_path):
 
 def test_repeated_calls_on_one_line_preserve_canonical_identity(tmp_path):
     subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
-    (tmp_path / "repeat.mjs").write_text('export const value = () => Math.abs(-1) + Math.abs(-1);\n')
+    (tmp_path / "repeat.mjs").write_text("export const value = () => Math.abs(-1) + Math.abs(-1);\n")
     subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
     context = extract_context(tmp_path, os.environ)
     assert context.records
-    assert len({r['id'] for r in context.records}) == len(context.records)
-    calls = [r for r in context.records if r['source'].get('rawExcerpt') == 'Math.abs(-1)']
+    assert len({r["id"] for r in context.records}) == len(context.records)
+    calls = [r for r in context.records if r["source"].get("rawExcerpt") == "Math.abs(-1)"]
     assert len(calls) == 1
+
+
+def test_preallocated_untracked_intent_is_canonical_and_can_gain_delivery(tmp_path):
+    import json
+
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / ".gitignore").write_text("private/**\n")
+    draft = tmp_path / "project/ticket-001/intent.json"
+    draft.parent.mkdir(parents=True)
+    draft.write_text('{"allowedPaths": ["src/auth.py"], "workstream": "runtime"}\n')
+    private = tmp_path / "private/intent.json"
+    private.parent.mkdir()
+    private.write_text('{"secret":"do not select"}\n')
+    context = extract_context(tmp_path, os.environ)
+    assert {r["source"]["path"] for r in context.records} == {"project/ticket-001/intent.json"}
+    selected = enrich_records(context, editing_records(context, [context.projection(r) for r in context.records]))
+    aggregate = next(r for r in selected if r.get("json_additions"))
+    field = next(r for r in selected if r.get("json_field", {}).get("key") == "allowedPaths")
+    answer = dict(
+        schema=SCHEMA,
+        summary="bind preallocated draft",
+        edits=[],
+        patches=[],
+        creates=[],
+        json_updates=[
+            dict(
+                id=aggregate["id"],
+                file_sha256=aggregate["file_sha256"],
+                pointer=["delivery"],
+                value={"acceptedBaseSha": "a" * 40},
+            ),
+            dict(
+                id=field["id"],
+                file_sha256=field["file_sha256"],
+                pointer=["allowedPaths"],
+                value=["src/auth.py", "tests/test_auth.py"],
+            ),
+        ],
+    )
+    apply_plan(tmp_path, context, selected, answer, dict(os.environ))
+    assert json.loads(draft.read_text()) == {
+        "allowedPaths": ["src/auth.py", "tests/test_auth.py"],
+        "workstream": "runtime",
+        "delivery": {"acceptedBaseSha": "a" * 40},
+    }
