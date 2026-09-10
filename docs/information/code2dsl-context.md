@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 6,
+  "version": 7,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "183838eca7f76066fb19f6c6f9a13a8dc887bf82",
+  "source_revision": "4721f6b974faa99441c1a2665bd1cdf3595b4406",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -28,6 +28,20 @@
 ---
 
 # LLM-selected code2dsl editing context
+
+### PLF-13887 Core expansion repair
+
+On 2026-09-10 the deployed SubLLM 906a7286cfda4a56f0e422ef78993e650a047a2f
+failed before model selection with `code2dsl expanded output exceeds extraction budget`.
+A read-only reproduction on Core produced 91,940,009 bytes of canonical JSON,
+7,774,381 compressed bytes and 66,962 records (66,825 unique). Deduplication
+still leaves 91,778,047 bytes, so duplicate removal does not solve this case.
+Ticket-062 sets the explicit expanded JSON cap to 128 MiB. The 16 MiB transport,
+64 MiB source snapshot, per-file limits and all model query budgets remain unchanged.
+Bounded decompression still rejects oversized and concatenated compressed payloads.
+Measurement receipt: `receipt:sha256:6948e8a73a33724b5ebcfb8d3e9fbbb6b11f0d2941c0066f4de2f13c09bfae41`.
+This is an extraction repair; it does not establish successful editing, publication
+of the target task, deployment or global autonomous readiness.
 
 ### PLF-13849 extraction transport repair
 
