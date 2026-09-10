@@ -23,6 +23,27 @@ def test_compressed_extraction_preserves_all_canonical_evidence(tmp_path, monkey
     assert module.read_extraction(output) == envelope
 
 
+
+def test_core_sized_extraction_fits_production_expansion_budget(tmp_path):
+    from subllm import code_context as module
+
+    # Match the measured Core envelope size without storing repository source.
+    payload_bytes = 91_940_009
+    prefix, suffix = b'{"records":[],"warnings":["', b'"]}'
+    output = tmp_path / 'records.json.gz'
+    with gzip.open(output, 'wb') as stream:
+        stream.write(prefix)
+        remaining = payload_bytes - len(prefix) - len(suffix)
+        chunk = b'x' * (1024 * 1024)
+        while remaining:
+            count = min(remaining, len(chunk))
+            stream.write(chunk[:count])
+            remaining -= count
+        stream.write(suffix)
+    envelope = module.read_extraction(output)
+    assert envelope['records'] == []
+    assert len(envelope['warnings'][0]) == payload_bytes - len(prefix) - len(suffix)
+
 def test_compressed_transport_budget_is_checked_before_decompression(tmp_path, monkeypatch):
     from subllm import code_context as module
 

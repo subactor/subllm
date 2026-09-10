@@ -1,0 +1,13 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-062",
+  "workstream": "expanded-extraction-budget",
+  "goal": "Accept measured 91,940,009-byte Core canonical extraction within an explicit 128 MiB expansion bound; preserve all transport, source, query and authority limits.",
+  "authorization": "SESSION_EXECUTION_AUTHORIZATION: kontynuuj, zbadaj co jest problemem i napraw, zmerguj i zbadaj autonomie",
+  "allowedPaths": [
+    "src/subllm/code_context.py",
+    "tests/test_code_context.py",
+    "docs/information/code2dsl-context.md",
+    "project/ticket-062/**"
+  ]
+}
