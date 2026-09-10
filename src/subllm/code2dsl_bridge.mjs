@@ -2,6 +2,7 @@
 import { readFile, writeFile } from 'node:fs/promises';
 import { pathToFileURL } from 'node:url';
 import path from 'node:path';
+import { gzipSync } from 'node:zlib';
 
 const [runtime, root, output, configurationPathsFile] = process.argv.slice(2);
 try {
@@ -18,7 +19,7 @@ try {
   const results = await Promise.all([code2dsl({ root }, config), docs2dsl({ root }, config), config2dsl({ root, paths: JSON.parse(await readFile(configurationPathsFile, 'utf8')) }, config)]);
   const result = { records: results.flatMap(r => r.records), warnings: results.flatMap(r => r.warnings) };
   assertIntentRecords(result.records);
-  await writeFile(output, JSON.stringify({ records: result.records, warnings: result.warnings }), { mode: 0o600 });
+  await writeFile(output, gzipSync(JSON.stringify({ records: result.records, warnings: result.warnings })), { mode: 0o600 });
 } catch {
   // Extractor exceptions may contain source excerpts.
   process.stderr.write('code2dsl extraction failed\n');

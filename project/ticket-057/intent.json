@@ -1,0 +1,15 @@
+{
+  "schema": "wellmanifest.bounded-intent/v1",
+  "ticket": "ticket-057",
+  "workstream": "compact-extraction",
+  "goal": "Repair PLF-13849 extraction failure with lossless bounded compressed transport; retain canonical evidence and existing model query budgets.",
+  "authorization": "SESSION_EXECUTION_AUTHORIZATION: PLF-13849 — naprawa kodu; monitoruj, wypchnij zmiany i przetestuj",
+  "allowedPaths": [
+    "src/subllm/code_context.py",
+    "src/subllm/code2dsl_bridge.mjs",
+    "tests/test_code_context.py",
+    "tests/integration_code2dsl.py",
+    "docs/information/code2dsl-context.md",
+    "project/ticket-057/**"
+  ]
+}
