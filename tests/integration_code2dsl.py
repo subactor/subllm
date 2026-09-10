@@ -82,3 +82,14 @@ def test_real_docs_configuration_and_large_node_edits(tmp_path):
     assert json.loads((tmp_path / "config/service.json").read_text()) == {"enabled": True, "untouched": 42}
     assert "unauthenticated" in (tmp_path / "docs/guide.md").read_text()
     assert (tmp_path / "docs/new.md").is_file()
+
+
+def test_repeated_calls_on_one_line_preserve_canonical_identity(tmp_path):
+    subprocess.run(["git", "init", "-q", str(tmp_path)], check=True)
+    (tmp_path / "repeat.mjs").write_text('export const value = () => Math.abs(-1) + Math.abs(-1);\n')
+    subprocess.run(["git", "add", "."], cwd=tmp_path, check=True)
+    context = extract_context(tmp_path, os.environ)
+    assert context.records
+    assert len({r['id'] for r in context.records}) == len(context.records)
+    calls = [r for r in context.records if r['source'].get('rawExcerpt') == 'Math.abs(-1)']
+    assert len(calls) == 1

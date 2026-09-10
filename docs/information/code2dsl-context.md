@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 3,
+  "version": 4,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "2037e7b56e0c90d5b684611501e0afba71d7a36d",
+  "source_revision": "7ac58f2c95d7749cb3e2557312e9c3c0842d0985",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -50,7 +50,7 @@ The private canary receipt is bound by its SHA-256 in metadata. It contains mode
 
 1. Inventory tracked eligible source files and copy them into a private temporary snapshot. Exclude hidden paths, dependency caches, symlinks and binary data. Preserve `.gitignore`, `.dockerignore`, `.intentignore` and the operator's Aider ignore policy. Neither source import nor extraction executes repository code.
 2. Verify the explicitly configured todo2code source SHA and independent runtime build digest. The build digest covers executable JavaScript, Python helpers, TypeScript parser files and the runtime package metadata. Call `code2dsl` through the packaged Node bridge without credentials, `.env` loading, caches or an LLM in extraction.
-3. Send paged DSL projections to the registered selection LLM. These contain source IDs/ranges, symbols, semantic statements and metadata; selection does not receive `rawExcerpt` or source file buffers. Validate every returned ID against its exact page. If necessary, ask the LLM to reduce the candidates in bounded additional passes. There is no regex/path fallback.
+3. Send paged DSL projections to the registered selection LLM. When detailed inventory exceeds four page budgets, first ask the same LLM to select files from structural projections of their canonical records (paths, kinds, symbols and record counts); only then query detail pages for the chosen files. Every inventory file is represented; task prose never drives path matching. These contain source IDs/ranges, symbols, semantic statements and metadata; selection does not receive `rawExcerpt` or source file buffers. Identical repeated canonical facts are coalesced; conflicting records with the same ID remain an extraction error. Validate every returned ID against its exact page. If necessary, ask the LLM to reduce the candidates in bounded additional passes. There is no regex/path fallback.
 4. For selected records, use the canonical DSL's bounded node excerpts for editing. A record is editable only when its excerpt covers the complete source range, is at most 2,000 characters, and is not a module summary. Incomplete records can provide context but cannot replace unseen code. This is intentionally different from attaching every selected source file. Small nodes may naturally contain all code in a very small file.
 5. The editing LLM returns record IDs, original file hashes and replacements for those exact line ranges. Validate every edit, reject unknown IDs and overlapping ranges, check Python syntax, and reobserve source bytes before writing. Preserve all bytes outside selected ranges and preserve file modes. Replace individual files atomically; the outer worktree/lease remains responsible for excluding concurrent writers and for recovery after interruption.
 6. Return a secret-free `subllm.dsl-edit-receipt/v1` inside the existing result's `response`: extractor pins, query provider/model and byte counts, request digests, selected record IDs and edit digests. A receipt is evidence of local edits, not merge or deployment authority.
@@ -64,6 +64,10 @@ SUBLLM_CODE2DSL_BUILD_SHA256=<independently approved build digest>
 ```
 
 The observed canary runtime source was `89e72ce991e3f2518b323d2d5e45ff7368b46acf`, with build digest `0dbae665d10b325fc78d7a9133d8e2efb7f818b68b9c3b9f802a0e2ed1937842`. The digest algorithm is `subllm.code_context.runtime_digest`. Computing a digest is an observation; operators must bind it to independently reviewed build provenance rather than trusting a candidate runtime to approve itself. No sibling-directory discovery or automatic unpinned runtime fallback exists.
+
+### Production inventory follow-up
+
+PR #55 was independently merged at `7ac58f2c95d7749cb3e2557312e9c3c0842d0985` and activated on 2026-09-10 with central provider routing. The systemd fixture passed, including one corrective edit request after an empty plan. Real production task PLF-13811 then exposed 43 identical repeated canonical facts in observability and a 120-page detailed inventory. Ticket-055 adds exact record coalescing and budget-triggered semantic file selection. These observations do not establish completion of PLF-13811.
 
 ### Edit plan v2
 

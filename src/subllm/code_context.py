@@ -159,20 +159,42 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
         if output.stat().st_size > MAX_DSL_BYTES:
             raise CompletionError('code2dsl output exceeds extraction budget')
         envelope = json.loads(output.read_text('utf-8'))
-    records = envelope['records']
-    identities: set[str] = set()
+    records = unique_records(envelope['records'])
     for record in records:
         source = record['source']
-        if (record['schemaVersion'] != 't2c.intent/v1' or record['id'] in identities
-                or source['path'] not in sources):
+        if record['schemaVersion'] != 't2c.intent/v1' or source['path'] not in sources:
             raise CompletionError('code2dsl returned invalid source identity')
-        identities.add(record['id'])
         lines = source['lines']
         if (not isinstance(lines, dict) or type(lines.get('start')) is not int
                 or type(lines.get('end')) is not int
                 or not 1 <= lines['start'] <= lines['end'] <= len(sources[source['path']].decode().split('\n'))):
             raise CompletionError('code2dsl returned invalid source range')
     return CodeContext(records, sources, {'source_sha': revision, 'build_sha256': build}, envelope['warnings'])
+
+
+def unique_records(records: list[dict]) -> list[dict]:
+    """Canonical extractors may repeat the same fact; conflicting IDs remain invalid."""
+    unique = {}
+    for record in records:
+        identity = record['id']
+        if identity in unique and unique[identity] != record:
+            raise CompletionError('code2dsl returned conflicting source identity')
+        unique.setdefault(identity, record)
+    return list(unique.values())
+
+
+def file_inventory(context: CodeContext) -> list[dict]:
+    """Structural projection of every canonical file, without source or task matching."""
+    grouped: dict[str, list[dict]] = {}
+    for record in context.records:
+        grouped.setdefault(record['source']['path'], []).append(record)
+    return [{
+        'id': records[0]['id'],
+        'source': {'path': path},
+        'record_count': len(records),
+        'kinds': sorted({r['statement']['kind'] for r in records}),
+        'symbols': sorted({r['source']['symbol'] for r in records if r['source'].get('symbol')}),
+    } for path, records in grouped.items()]
 
 
 def pages(records: list[dict[str, Any]], budget: int = PAGE_BYTES) -> list[list[dict[str, Any]]]:
@@ -218,7 +240,19 @@ def select_code_context(context: CodeContext, prompt: str, query: Callable[..., 
                 return ids
         raise CompletionError('code2dsl LLM selection contains invalid record IDs after 2 bounded attempts')
 
-    for page in pages([context.projection(r) for r in context.records]):
+    projected = [context.projection(r) for r in context.records]
+    # Budget-driven hierarchy: the LLM chooses files, never lexical prompt matching.
+    if len(encode(projected).encode()) > 4 * PAGE_BYTES:
+        inventory = file_inventory(context)
+        paths_by_id = {r['id']: r['source']['path'] for r in inventory}
+        paths = set()
+        for page in pages(inventory):
+            ids = choose(page, MAX_SELECTED, instruction +
+                         ' This is the file inventory stage. Each ID identifies the canonical facts of one file. '
+                         'Select only files needed for the task; their detailed DSL records will follow.')
+            paths.update(paths_by_id[i] for i in ids)
+        projected = [r for r in projected if r['source']['path'] in paths]
+    for page in pages(projected):
         ids = choose(page, MAX_SELECTED, instruction)
         available = {r['id']: r for r in page}
         selected.update((i, available[i]) for i in ids)
