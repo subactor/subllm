@@ -91,6 +91,7 @@ def test_repeated_calls_on_one_line_preserve_canonical_identity(tmp_path):
     context = extract_context(tmp_path, os.environ)
     assert context.records
     assert len({r["id"] for r in context.records}) == len(context.records)
+    assert all(r["record_digest"].startswith("sha256-") for r in context.records)
     calls = [r for r in context.records if r["source"].get("rawExcerpt") == "Math.abs(-1)"]
     assert len(calls) == 1
 

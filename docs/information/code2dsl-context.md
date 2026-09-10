@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 7,
+  "version": 8,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
   "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "4721f6b974faa99441c1a2665bd1cdf3595b4406",
+  "source_revision": "13c16ce1e42c586fc6ab53fb2e1742bafda9eeea",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -29,6 +29,32 @@
 
 # LLM-selected code2dsl editing context
 
+### Validated projection restores the 64 MiB bound
+
+Ticket-063 validates complete canonical records before transporting the existing
+semantic selection fields. Full-record SHA-256 digests retain conflict detection
+even for omitted metadata. Bounded canonical editing excerpts remain available:
+exact local line excerpts travel as SHA-256 references and are restored only after
+range, length and digest checks; partial excerpts retain their exact text. Module
+summaries and excerpts already excluded by the editor are not transported.
+
+The expanded transport limit returns to 64 MiB, with 16 MiB compressed transport
+and all source, query and attempt budgets unchanged. The frozen Core base
+`e0dbd0829f6e021d97385af1fdb7ec9f6914b546` preserves 67,271 unique records from
+1,461 source files in 7,279,456 compressed / 66,484,514 expanded bytes. The frozen
+PLF-13849 replay preserves 32,271 records from 785 source files in 3,613,232 /
+30,253,356 bytes. These replays use extractor
+`cdf29f2c19a0edbab65f76269240502de04c568d`, build
+`6df0792e32e57ae58ab87ba81fe381576fc534e3d953daf6773377eb1f68d5ae`.
+Receipt: `receipt:sha256:3c279fea325a93a03119e0d6e8b11fd1a19e8233f62f20075f0636490bea09e6`.
+
+Core has only about 0.6 MiB of remaining expanded transport capacity. This is a
+measured bounded repair, not support for arbitrarily large repositories. The
+unprojected 91,940,009-byte fixture is again rejected. Five real-runtime tests
+exercise code, documentation and JSON edits, duplicate evidence and draft intents;
+unit regressions reject altered/oversized excerpt references and conflicting IDs.
+Cross-repository delivery evidence belongs in the [canonical autonomy receipt](https://github.com/subactor/docs/blob/main/architecture/analysis/autonomy-execution-receipt.md).
+
 ### PLF-13887 Core expansion repair
 
 On 2026-09-10 the deployed SubLLM 906a7286cfda4a56f0e422ef78993e650a047a2f
@@ -36,7 +62,7 @@ failed before model selection with `code2dsl expanded output exceeds extraction 
 A read-only reproduction on Core produced 91,940,009 bytes of canonical JSON,
 7,774,381 compressed bytes and 66,962 records (66,825 unique). Deduplication
 still leaves 91,778,047 bytes, so duplicate removal does not solve this case.
-Ticket-062 sets the explicit expanded JSON cap to 128 MiB. The 16 MiB transport,
+Historical ticket-062 raised the explicit expanded JSON cap to 128 MiB; ticket-063 below supersedes that increase. The 16 MiB transport,
 64 MiB source snapshot, per-file limits and all model query budgets remain unchanged.
 Bounded decompression still rejects oversized and concatenated compressed payloads.
 Measurement receipt: `receipt:sha256:6948e8a73a33724b5ebcfb8d3e9fbbb6b11f0d2941c0066f4de2f13c09bfae41`.
