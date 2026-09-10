@@ -3,20 +3,21 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "code2dsl-context",
   "kind": "information",
-  "version": 2,
+  "version": 3,
   "title": "LLM-selected code2dsl editing context",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-09",
-  "updated": "2026-09-09",
+  "updated": "2026-09-10",
   "review_after": "2026-10-09",
-  "source_revision": "5d72899f1c5e9f6cd867c840da524de955192496",
+  "source_revision": "2037e7b56e0c90d5b684611501e0afba71d7a36d",
   "affected_repositories": [
     "subactor/subllm"
   ],
   "evidence": [
     "repo://subactor/subllm/tests/test_code_context.py",
     "repo://subactor/subllm/tests/test_client.py",
+    "repo://subactor/subllm/tests/test_edit_contract.py",
     "repo://autogrammar/todo2code/89e72ce991e3f2518b323d2d5e45ff7368b46acf/src/extractors/ast.ts",
     "receipt:sha256:3c5f255bff00e070d9c3f54d88323abd8cde28747c15206af0a026f25e08e8de"
   ]
@@ -28,14 +29,14 @@
 <!-- docs:section purpose -->
 ## Purpose
 
-Replace lexical prompt-to-path matching and whole-file Aider attachments with a semantic query over canonical `code2dsl` evidence. Ordinary words such as `tests`, `docs` and Polish `testów` no longer expand directories. This implementation is based on the source revision in metadata; the changes and validation belong to ticket-053.
+Replace lexical prompt-to-path matching and whole-file Aider attachments with a semantic query over canonical `code2dsl` evidence. Ordinary words such as `tests`, `docs` and Polish `testów` no longer expand directories. This implementation is based on the source revision in metadata; the initial changes belong to ticket-053; the v2 edit contract and response repair belong to ticket-054.
 
 <!-- docs:section scope -->
 ## Scope
 
 SubLLM owns the `onedev-agent/code-context` selection route and the `onedev-agent/code-edit` editing route. Both use the central coding model candidates and the existing completion/failover policy. An explicitly selected provider remains an allowlist. The canonical extractor remains `autogrammar/todo2code`'s public `code2dsl` API, emitting validated `t2c.intent/v1` records; this adapter does not copy its parsers or introduce a replacement code DSL.
 
-This delivery supports Python and JavaScript/TypeScript (including JSX/TSX). It changes the existing `subllm-code-edit` implementation and keeps its result envelope and `--aider-bin` compatibility argument. Aider is no longer launched. The outer coding worker continues to own ticket scope validation, repository checks, commits and protected publication.
+This delivery supports Python and JavaScript/TypeScript (including JSX/TSX), canonical documentation records from `docs2dsl`, and configuration records from `config2dsl`. It changes the existing `subllm-code-edit` implementation and keeps its result envelope and `--aider-bin` compatibility argument. Aider is no longer launched. The outer coding worker continues to own ticket scope validation, repository checks, commits and protected publication.
 
 <!-- docs:section evidence -->
 ## Evidence
@@ -64,14 +65,26 @@ SUBLLM_CODE2DSL_BUILD_SHA256=<independently approved build digest>
 
 The observed canary runtime source was `89e72ce991e3f2518b323d2d5e45ff7368b46acf`, with build digest `0dbae665d10b325fc78d7a9133d8e2efb7f818b68b9c3b9f802a0e2ed1937842`. The digest algorithm is `subllm.code_context.runtime_digest`. Computing a digest is an observation; operators must bind it to independently reviewed build provenance rather than trusting a candidate runtime to approve itself. No sibling-directory discovery or automatic unpinned runtime fallback exists.
 
+### Edit plan v2
+
+The v2 synthetic canary on 2026-09-10 passed through the central route using OpenRouter `z-ai/glm-5.3`: it patched a large Python function without changing padding, updated a documentation statement and a JSON field while preserving an unrelated field, and created a passing unittest file. Selection and editing payloads were 5,654 and 6,871 bytes respectively. Receipt: `receipt:sha256:a42fe653ef432a24b31266c84f80ee0876259ae6da21da5bb0ea8dc86e0f79a4`. This is live model integration evidence, not a production queue task or protected merge receipt. The v2 hermetic suite contains 261 tests; real-runtime integration contains three tests.
+
+Both selection and editing requests carry a closed JSON response schema. Invalid JSON or an invalid edit plan receives one corrective request within the original deadline. Whole-plan dry-run validation happens before any source mutation; the error code, without the rejected model response, accompanies the correction. Invalid selection IDs receive one bounded selection correction. Transport failover retains the central circuit breaker.
+
+The model returns `subllm.edit-plan/v2` with `summary` and four operation lists: `edits` (complete node ranges), `patches` (an exact unique `before` substring of the canonical excerpt and its `after` text), `creates` (absent relative path plus new content), and `json_updates` (selected configuration ID, file hash, property-name pointer and typed value). There are at most 32 operations. Every existing-file operation names a selected record and its original file SHA-256. JSON updates cannot escape the selected top-level field or overlap one another; text and JSON operations cannot mix on one file.
+
+The local interpreter validates the whole plan before writing, rechecks original bytes and path boundaries, and validates Python, JSON and TOML syntax. New paths honor Git and operator ignore rules, reject hidden/dependency/symlink paths, and use exclusive no-clobber creation. JSON is serialized locally: original file buffers are never sent as attachments. Multi-file application remains non-transactional across a crash; the governed worktree and outer tests own recovery. YAML and JavaScript syntax/semantics still require repository validation.
+
+The actual code2dsl/docs2dsl/config2dsl integration test covers large-node patching, a documentation statement, a JSON field and a new Markdown file in one plan. Regression tests also cover ambiguous/unseen patches, wrong configuration fields, ignored/existing creation paths, whole-plan syntax rejection, duplicate JSON keys, non-finite numbers and the two-attempt response limit.
+
 <!-- docs:section limitations -->
 ## Limitations
 
-The current code2dsl facade provides structural facts and bounded excerpts, not a lossless representation of arbitrary source. Large indivisible nodes, unsupported languages, documentation/configuration edits and creation of new files require further canonical extractor/edit-contract coverage; they are not silently handled by sending whole files or guessing original content. Source extraction is bounded separately (20,000 source files, 8 MiB per file, 64 MiB total). Query pages are bounded to 48,000 bytes, with at most 128 pages and 32 final selected records. These are operational bounds, not claims about any model's context window.
+The canonical facades provide structural facts and bounded excerpts, not a lossless representation of arbitrary source. A large node can now receive an exact substring patch backed by its canonical excerpt; unseen text cannot be patched. Documentation edits cover statements emitted by `docs2dsl` (headings and qualifying references); prose omitted by that extractor remains unavailable. JSON configuration updates stay under a selected top-level field. TOML/YAML text edits require a canonical declaration. Unsupported languages remain unavailable. Creating new files is independent of existing records, but only within the declared extension/path/ignore boundary and the outer worker ticket scope. Source extraction is bounded separately (20,000 source files, 8 MiB per file, 64 MiB total). Query pages are bounded to 48,000 bytes, with at most 128 pages and 32 final selected records. These are operational bounds, not claims about any model's context window.
 
-LLM selection is advisory and can omit a relevant dependency. If it produces no supported edit, execution fails explicitly. Hash/range checks prevent stale or out-of-range application; they do not prove semantic correctness. Full repository tests and independent publication checks remain necessary. Python syntax is checked locally; other supported languages still rely on the outer repository's tests. Multi-file application is not crash-atomic. Production activation and retrying the four PLF tickets have not been performed by this change.
+LLM selection is advisory and can omit a relevant dependency. If it produces no supported edit, execution fails explicitly. Hash/range checks prevent stale or out-of-range application; they do not prove semantic correctness. Full repository tests and independent publication checks remain necessary. Python, JSON and TOML syntax is checked locally; other supported languages still rely on the outer repository's tests. Multi-file application is not crash-atomic. The initial adapter at `2037e7b` was activated on 2026-09-09 with the pinned todo2code runtime; a systemd canary verified a 300,033-byte source file using a 1,730-byte editing payload. All four obsolete PLF attempts were subsequently canceled against observed source publication. That is a deployment observation for v1, not evidence of v2 activation or a new production ticket execution.
 
 <!-- docs:section next_actions -->
 ## Next actions
 
-Publish through the independent local Validator under publication authorization, bind the reviewed SubLLM package and the three code2dsl runtime values in the coding worker deployment, then observe a controlled production ticket execution before broader queue retries. Do not activate this change by editing an unreviewed protected runtime directory. Extend language/document/new-file coverage through the respective canonical extractors and a versioned edit contract.
+For each release, publish through the independent local Validator, bind its exact source and the three canonical runtime pins in the coding worker, and verify a controlled production ticket through tests and protected merge. Update the existing startup source/digest check together with PYTHONPATH; preserve unrelated startup guards. Configure `CODING_AGENT_SUBLLM_PROVIDER` as empty for the central multi-provider policy; an explicit nonempty value intentionally restricts the provider. Coding requests use the supported `SUBLLM_ATTEMPT_TIMEOUT_SECONDS=120` and `SUBLLM_SLOW_RESPONSE_SECONDS=120` settings to avoid a successful selection response immediately cooling down the editing provider. Transport failures retain the central circuit breaker and bounded failover; malformed JSON gets one corrective request within the original deadline, without replaying the malformed response.
