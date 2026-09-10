@@ -192,3 +192,42 @@ def test_json_aggregate_can_add_only_absent_root_fields(tmp_path):
             apply_plan(tmp_path, context, selected, plan(json_updates=[op | {"pointer": pointer}]), {})
     apply_plan(tmp_path, context, selected, plan(json_updates=[op]), {})
     assert json.loads(file.read_text()) == {"allowedPaths": ["src/auth.py"], "delivery": {"acceptedBaseSha": "a" * 40}}
+
+
+@pytest.mark.parametrize("canonical_newline", ["\r\n", "\n"])
+def test_complete_crlf_excerpt_can_replace_exact_node_and_reject_stale_source(tmp_path, canonical_newline):
+    prefix = "export const untouched = 0;\r\n"
+    node = "export function choice() {\r\n  return 1;\r\n}\r\n"
+    suffix = "export const trailing = 3;\r\n"
+    body = prefix + node + suffix
+    record = context_record(name="src/choice.ts", body=node)
+    record["statement"]["kind"] = "symbol_fact"
+    record["source"].update(
+        lines={"start": 2, "end": 4},
+        rawExcerpt=node.rstrip("\r\n").replace("\r\n", canonical_newline),
+    )
+    context, selected, file = fixture(tmp_path, body, name="src/choice.ts", record=record)
+    file.write_bytes(body.encode())
+    assert selected[0]["editable"], "complete canonical CRLF evidence must authorize its exact node"
+    replacement = node.replace("return 1", "return 2")
+    answer = plan(edits=[dict(id="auth", file_sha256=digest(body.encode()), replacement=replacement)])
+    apply_plan(tmp_path, context, selected, answer, {})
+    expected = (prefix + replacement + suffix).encode()
+    assert file.read_bytes() == expected
+    with pytest.raises(CompletionError, match="source changed"):
+        apply_plan(tmp_path, context, selected, answer, {})
+    assert file.read_bytes() == expected
+
+
+@pytest.mark.parametrize(
+    "excerpt",
+    ["export function choice() {\r\n  return 1;", "export function choice() {\r\n  return 9;\r\n}"],
+)
+def test_crlf_normalization_cannot_authorize_partial_or_different_content(tmp_path, excerpt):
+    body = "export function choice() {\r\n  return 1;\r\n}\r\n"
+    record = context_record(name="src/choice.ts", body=body)
+    record["source"]["rawExcerpt"] = excerpt
+    _, selected, file = fixture(tmp_path, body, name="src/choice.ts", record=record)
+    file.write_bytes(body.encode())
+    assert not selected[0]["editable"]
+    assert file.read_bytes() == body.encode()
