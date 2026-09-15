@@ -26,6 +26,7 @@ cursor = [
 ]
 test = [
   "build>=1.2,<2",
+  "jsonschema==4.26.0",
   "pytest>=8,<10",
   "ruff>=0.12,<1",
 ]

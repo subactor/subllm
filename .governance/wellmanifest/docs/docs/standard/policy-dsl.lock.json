@@ -1,0 +1,11 @@
+{
+  "schema": "wellmanifest.docs/policy-dsl-lock/v1",
+  "repository": "wellmanifest/policy-dsl",
+  "source_revision": "7109aee92c2bb7ac2db8e3b0b4ddd7ded4750257",
+  "parser": "tests/policy_dsl_check.py",
+  "files": {
+    "tests/policy_dsl_check.py": "9688481337292397f4453c4f22954832cb4fff4ed6976e5c0f51924a6bd20d70",
+    "spec/policy-dsl.ebnf": "78423cac9bd9172006fd292feeb68bacd4586ae5ebf89299e2c05a58643bc982",
+    "schemas/policy-ir.schema.json": "5aa8d5432833c5a027d23948a4fe6217b7e99350503d73dc3ba428c4390750ed"
+  }
+}

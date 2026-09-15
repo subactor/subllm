@@ -28,7 +28,7 @@
 <!-- wellmanifest:docs-placement:start -->
 ## Documentation placement
 
-Before research or writing, identify the owning repository, document kind and canonical path using [wellmanifest/docs 0.1.0](https://github.com/wellmanifest/docs/blob/fdb0fcaa7c606dc2503cabb71eff64d5f86ee659/docs/standard/POLICY.md). Resolve existing documents through the artifact registry when available; update the canonical document instead of creating duplicates.
+Before research or writing, identify the owning repository, document kind and canonical path using [wellmanifest/docs 0.5.0](https://github.com/wellmanifest/docs/blob/6f475fb223e7a259d514b5483fb0d62f0e80a46e/docs/standard/POLICY.md). Resolve existing documents through the artifact registry when available; update the canonical document instead of creating duplicates.
 
 - Durable information: `docs/information/<id>.md`.
 - Analysis and final reports: `docs/analysis/<id>.md`.
@@ -43,7 +43,7 @@ A final report or plan must not exist only in `$HOME/.local/state`, `/tmp`, agen
 
 Before completion, verify placement, metadata, index links and Git tracking. The final response links to the repository document and states whether it is local, committed, in a PR or merged. Documentation status and session prose never grant execution or merge approval.
 
-The adoption pin is `.governance/docs.json`. Run the checker from the immutable standard revision to validate changed documents. The existing protected delivery checks do not yet invoke this documentation checker; this pin and these instructions do not claim CI enforcement. Report actual validation and publication results.
+The adoption pin is `.governance/docs.json`. Run the checker from the immutable standard revision to validate changed documents. The existing `scripts/verify` now invokes `scripts/check-docs-report.py`. Prepare documents with the pinned Docs `--prepare` and save JSON in `.subactor/receipts/`; complete them through the adapter with `--complete --base <full-sha> --deliverable <path> --prepared-plan <receipt>`. Changed analyses require a tracked Report sidecar. Report uses the local Docs v1 profile; compact v2 compatibility is not claimed. Configured verification is distinct from an observed protected CI run. Report actual validation and publication results.
 <!-- wellmanifest:docs-placement:end -->
 
 <!-- wellmanifest:local-ci-publication:start -->

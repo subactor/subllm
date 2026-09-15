@@ -1,0 +1,63 @@
+{
+  "schema": "subllm.documentation-pins/v1",
+  "standards": [
+    {
+      "id": "wellmanifest/docs",
+      "version": "0.5.0",
+      "status": "published",
+      "sourceRepository": "https://github.com/wellmanifest/docs",
+      "sourceRevision": "6f475fb223e7a259d514b5483fb0d62f0e80a46e",
+      "artifacts": [
+        {
+          "sourcePath": "docs/standard/check.py",
+          "targetPath": ".governance/wellmanifest/docs/docs/standard/check.py",
+          "sha256": "69217f1fa83bff0d2796ec22d662986dc178e2c8a6fa72fa169669f827a4a4f5"
+        },
+        {
+          "sourcePath": "docs/standard/policy.json",
+          "targetPath": ".governance/wellmanifest/docs/docs/standard/policy.json",
+          "sha256": "af5fde2d52e1c292e569cd47a4068f0e42181a8f8fb9fc21737a569bee9a206f"
+        },
+        {
+          "sourcePath": "docs/standard/POLICY.md",
+          "targetPath": ".governance/wellmanifest/docs/docs/standard/POLICY.md",
+          "sha256": "ec4342948049b69c18d6d92398ccd9a44bc783a2b81749b53f273d8b0b31d9ba"
+        },
+        {
+          "sourcePath": "docs/standard/change_contract.py",
+          "targetPath": ".governance/wellmanifest/docs/docs/standard/change_contract.py",
+          "sha256": "3269780542a03063fae860624e18c5f15d2d679ffbe56299acf333eabc30505e"
+        },
+        {
+          "sourcePath": "docs/standard/policy-dsl.lock.json",
+          "targetPath": ".governance/wellmanifest/docs/docs/standard/policy-dsl.lock.json",
+          "sha256": "bbb10db0732294fb77bcf6667727071e6ebaf0dd31c4651c2ea0c1936175d209"
+        }
+      ]
+    },
+    {
+      "id": "wellmanifest/report",
+      "version": "0.1.0",
+      "status": "published",
+      "sourceRepository": "https://github.com/wellmanifest/report",
+      "sourceRevision": "3eafc9c212bbfd4060fe15b63eb97e4614725234",
+      "artifacts": [
+        {
+          "sourcePath": "operations/conformance.py",
+          "targetPath": "standards/report/operations/conformance.py",
+          "sha256": "9614c79e43aa78c4f01bce5796a20139fe0101db05527b4ab73c70e32dff1e93"
+        },
+        {
+          "sourcePath": "models/report-manifest.schema.json",
+          "targetPath": "standards/report/models/report-manifest.schema.json",
+          "sha256": "fc9d225b5e8641f2428cc2d6d2b9c9be755323b65babb1fa34f043d33982bf34"
+        },
+        {
+          "sourcePath": "models/acceptance.schema.json",
+          "targetPath": "standards/report/models/acceptance.schema.json",
+          "sha256": "26fd284ee461896380df4e60ca1c20a5ebd584ab1120f79d91e92341bf0eb8c4"
+        }
+      ]
+    }
+  ]
+}

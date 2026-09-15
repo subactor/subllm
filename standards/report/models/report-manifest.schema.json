@@ -1,0 +1,579 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://wellmanifest.com/schemas/report-manifest/v1",
+  "title": "Wellmanifest report manifest v1",
+  "description": "A report declaration with evidence bindings; neither declarations nor conformance grant authority.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schema",
+    "id",
+    "version",
+    "title",
+    "owner",
+    "kind",
+    "created",
+    "updated",
+    "review_after",
+    "status",
+    "authority",
+    "document",
+    "scope",
+    "coverage",
+    "assessment",
+    "findings",
+    "evidence",
+    "checks",
+    "limitations",
+    "next_actions",
+    "redaction",
+    "publication"
+  ],
+  "properties": {
+    "schema": {
+      "const": "wellmanifest.report/manifest/v1"
+    },
+    "id": {
+      "$ref": "#/$defs/id"
+    },
+    "version": {
+      "type": "integer",
+      "minimum": 1
+    },
+    "title": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 240
+    },
+    "owner": {
+      "$ref": "#/$defs/repository"
+    },
+    "kind": {
+      "const": "analysis"
+    },
+    "created": {
+      "type": "string",
+      "format": "date"
+    },
+    "updated": {
+      "type": "string",
+      "format": "date"
+    },
+    "review_after": {
+      "type": "string",
+      "format": "date"
+    },
+    "status": {
+      "enum": [
+        "draft",
+        "final",
+        "superseded"
+      ]
+    },
+    "authority": {
+      "const": "none"
+    },
+    "document": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "index_path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 320
+        },
+        "index_path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 320
+        },
+        "sha256": {
+          "$ref": "#/$defs/digest"
+        }
+      }
+    },
+    "scope": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "repositories",
+        "subjects",
+        "exclusions"
+      ],
+      "properties": {
+        "repositories": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/repository"
+          },
+          "minItems": 1,
+          "maxItems": 64,
+          "uniqueItems": true
+        },
+        "subjects": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "additionalProperties": false,
+            "required": [
+              "id",
+              "repository",
+              "revision"
+            ],
+            "properties": {
+              "id": {
+                "$ref": "#/$defs/id"
+              },
+              "repository": {
+                "$ref": "#/$defs/repository"
+              },
+              "revision": {
+                "$ref": "#/$defs/revision"
+              }
+            }
+          },
+          "minItems": 1,
+          "maxItems": 128
+        },
+        "exclusions": {
+          "type": "array",
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "minItems": 0,
+          "maxItems": 128
+        }
+      }
+    },
+    "coverage": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "unit",
+        "expected",
+        "observed"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "complete",
+            "partial",
+            "unknown"
+          ]
+        },
+        "unit": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 80
+        },
+        "expected": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 0
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "observed": {
+          "type": "integer",
+          "minimum": 0
+        }
+      }
+    },
+    "assessment": {
+      "enum": [
+        "passed",
+        "failed",
+        "incomplete",
+        "not_assessed"
+      ]
+    },
+    "findings": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "text",
+          "evidence_ids"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "fact",
+              "hypothesis",
+              "recommendation"
+            ]
+          },
+          "text": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 0,
+            "maxItems": 1000,
+            "uniqueItems": true
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 1000
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "id",
+          "kind",
+          "subject_id",
+          "reference",
+          "sha256"
+        ],
+        "properties": {
+          "id": {
+            "$ref": "#/$defs/id"
+          },
+          "kind": {
+            "enum": [
+              "source",
+              "test",
+              "observation",
+              "publication",
+              "redaction"
+            ]
+          },
+          "subject_id": {
+            "$ref": "#/$defs/id"
+          },
+          "reference": {
+            "type": "string",
+            "maxLength": 512,
+            "pattern": "^(?:repo://[A-Za-z0-9_.-]+/[A-Za-z0-9_.-]+@[0-9a-f]{40}/[^\\s?#]+|(?:receipt|artifact):sha256:[0-9a-f]{64})$"
+          },
+          "sha256": {
+            "$ref": "#/$defs/digest"
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 1000
+    },
+    "checks": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "name",
+          "subject_id",
+          "result",
+          "reason",
+          "evidence_ids"
+        ],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          },
+          "subject_id": {
+            "$ref": "#/$defs/id"
+          },
+          "result": {
+            "enum": [
+              "PASS",
+              "FAIL",
+              "SKIP",
+              "NOT_RUN"
+            ]
+          },
+          "reason": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "evidence_ids": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/id"
+            },
+            "minItems": 0,
+            "maxItems": 1000,
+            "uniqueItems": true
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 1000
+    },
+    "limitations": {
+      "type": "array",
+      "items": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 4096
+      },
+      "minItems": 0,
+      "maxItems": 128
+    },
+    "next_actions": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": [
+          "description",
+          "owner",
+          "resume_when"
+        ],
+        "properties": {
+          "description": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          },
+          "owner": {
+            "$ref": "#/$defs/repository"
+          },
+          "resume_when": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 4096
+          }
+        }
+      },
+      "minItems": 0,
+      "maxItems": 128
+    },
+    "redaction": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "evidence_ids"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "checked",
+            "not_checked"
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        }
+      }
+    },
+    "publication": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "state",
+        "revision",
+        "pull_request",
+        "evidence_ids"
+      ],
+      "properties": {
+        "state": {
+          "enum": [
+            "local",
+            "committed",
+            "in-pr",
+            "merged"
+          ]
+        },
+        "revision": {
+          "oneOf": [
+            {
+              "$ref": "#/$defs/revision"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "pull_request": {
+          "oneOf": [
+            {
+              "type": "integer",
+              "minimum": 1
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "evidence_ids": {
+          "type": "array",
+          "items": {
+            "$ref": "#/$defs/id"
+          },
+          "minItems": 0,
+          "maxItems": 1000,
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "id": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9-]{0,79}$"
+    },
+    "repository": {
+      "type": "string",
+      "maxLength": 160,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9_.-]*/(?!\\.{1,2}$)[A-Za-z0-9_.-]+$"
+    },
+    "revision": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{40}$"
+    },
+    "digest": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    }
+  },
+  "x-report-policy": {
+    "schema": "wellmanifest.report/policy/v1",
+    "id": "wellmanifest/report",
+    "version": "0.1.0",
+    "status": "proposed",
+    "manifest_schema": "wellmanifest.report/manifest/v1",
+    "schema_path": "models/report-manifest.schema.json",
+    "reference_checker": "operations/conformance.py",
+    "authority": "none",
+    "dependencies": {
+      "docs": {
+        "repository": "wellmanifest/docs",
+        "version": "0.1.1",
+        "source_revision": "ebe7501063ef4f3e63ded610c2d3183010ca636e",
+        "source_path": "docs/standard/policy.json",
+        "policy_sha256": "f6ba9c011ea1d9260e7fac3a1638a767d5ebc9f7d9b32ed51cc3aea22fe95d8c",
+        "responsibility": "Document placement, metadata and indexing remain owned by Docs.",
+        "policy_json": "{\n  \"schema\": \"wellmanifest.docs/policy/v1\",\n  \"id\": \"wellmanifest/docs\",\n  \"version\": \"0.1.1\",\n  \"document_schema\": \"wellmanifest.docs/document/v1\",\n  \"adoption_schema\": \"wellmanifest.docs/adoption/v1\",\n  \"profile\": {\n    \"required_namespace\": \"subactor/\",\n    \"docs_root\": \"docs\",\n    \"index\": \"docs/README.md\",\n    \"cross_repository_home\": \"subactor/docs\",\n    \"repository_overrides\": {\n      \"subactor/docs\": {\n        \"docs_root\": \".\",\n        \"index\": \"README.md\",\n        \"prefix\": \"architecture\"\n      }\n    }\n  },\n  \"kinds\": {\n    \"information\": {\n      \"directory\": \"information\",\n      \"sections\": [\n        \"purpose\",\n        \"scope\",\n        \"evidence\",\n        \"content\",\n        \"limitations\",\n        \"next_actions\"\n      ]\n    },\n    \"analysis\": {\n      \"directory\": \"analysis\",\n      \"sections\": [\n        \"question\",\n        \"scope\",\n        \"method\",\n        \"evidence\",\n        \"facts\",\n        \"hypotheses\",\n        \"limitations\",\n        \"recommendations\"\n      ]\n    },\n    \"refactoring-plan\": {\n      \"directory\": \"refactoring\",\n      \"sections\": [\n        \"goal\",\n        \"current_state\",\n        \"scope\",\n        \"non_goals\",\n        \"evidence\",\n        \"target_design\",\n        \"migration\",\n        \"acceptance\",\n        \"validation\",\n        \"rollback\",\n        \"risks\",\n        \"ownership\"\n      ]\n    },\n    \"decision\": {\n      \"directory\": \"decisions\",\n      \"sections\": [\n        \"context\",\n        \"evidence\",\n        \"alternatives\",\n        \"decision\",\n        \"consequences\",\n        \"validation\",\n        \"supersedes\"\n      ]\n    }\n  },\n  \"metadata\": {\n    \"schema\": \"string\",\n    \"id\": \"slug\",\n    \"kind\": \"kind\",\n    \"version\": \"positive_integer\",\n    \"title\": \"string\",\n    \"status\": \"status\",\n    \"owner\": \"string\",\n    \"created\": \"date\",\n    \"updated\": \"date\",\n    \"review_after\": \"date\",\n    \"source_revision\": \"sha40\",\n    \"affected_repositories\": \"repositories\",\n    \"evidence\": \"references\"\n  },\n  \"statuses\": [\n    \"draft\",\n    \"proposed\",\n    \"accepted\",\n    \"implemented\",\n    \"superseded\"\n  ],\n  \"forbidden_delivery_roots\": [\n    \"project/\",\n    \".subactor/\",\n    \".git/\",\n    \".local/\",\n    \"/tmp/\"\n  ],\n  \"adoption_scope\": \"managed-declared-and-base-changed-documents\",\n  \"authority\": \"Documentation never grants execution, secret access, deployment or merge authority.\",\n  \"discovery\": {\n    \"organizational_names\": [\n      \"README.md\",\n      \"AGENTS.md\",\n      \"GEMINI.md\",\n      \"CLAUDE.md\",\n      \"CHANGELOG.md\",\n      \"TODO.md\",\n      \"CONTRIBUTING.md\",\n      \"SECURITY.md\",\n      \"CODE_OF_CONDUCT.md\",\n      \"LICENSE.md\"\n    ],\n    \"organizational_paths\": [\n      \"project/TICKETS.md\"\n    ],\n    \"organizational_prefixes\": [\n      \".governance/\",\n      \".github/\",\n      \".cursor/\"\n    ],\n    \"ticket_pattern\": \"^project/ticket-[0-9]{3}/[^/]+\\\\.md$\"\n  }\n}\n"
+      }
+    },
+    "rules": {
+      "placement": "Resolve the owner, canonical path and index through the pinned Docs policy before writing.",
+      "evidence": "Facts and executed checks cite exact-subject evidence; raw logs remain private.",
+      "coverage": "Unknown and partial coverage cannot become a passing overall assessment.",
+      "publication": "Publication bindings are untrusted claims until independently verified.",
+      "authority": "Neither a report nor a conformance PASS grants execution, merge or deployment authority."
+    },
+    "input_limit_bytes": 2097152,
+    "adoption": "Pin a published Report revision and its complete package digest in the consumer. No consumer adoption is performed by this candidate.",
+    "runtime_dependencies": {
+      "jsonschema": "4.26.0"
+    }
+  },
+  "examples": [
+    {
+      "schema": "wellmanifest.report/manifest/v1",
+      "id": "example-report",
+      "version": 1,
+      "title": "Synthetic report manifest example",
+      "owner": "wellmanifest/report",
+      "kind": "analysis",
+      "created": "2026-09-14",
+      "updated": "2026-09-14",
+      "review_after": "2026-09-21",
+      "status": "draft",
+      "authority": "none",
+      "document": {
+        "path": "docs/analysis/example-report.md",
+        "index_path": "docs/README.md",
+        "sha256": "0000000000000000000000000000000000000000000000000000000000000000"
+      },
+      "scope": {
+        "repositories": [
+          "wellmanifest/report"
+        ],
+        "subjects": [
+          {
+            "id": "seed",
+            "repository": "wellmanifest/report",
+            "revision": "3c24d19bff3707887eb6878652ef0fa03b4b929b"
+          }
+        ],
+        "exclusions": [
+          "Runtime, deployment and external publication are not evaluated."
+        ]
+      },
+      "coverage": {
+        "state": "partial",
+        "unit": "declared-check",
+        "expected": 1,
+        "observed": 0
+      },
+      "assessment": "incomplete",
+      "findings": [
+        {
+          "id": "run-checks",
+          "kind": "recommendation",
+          "text": "Run the declared check before asserting a successful assessment.",
+          "evidence_ids": []
+        }
+      ],
+      "evidence": [],
+      "checks": [
+        {
+          "name": "example-subject-check",
+          "subject_id": "seed",
+          "result": "NOT_RUN",
+          "reason": "Synthetic illustration, not a real runtime evaluation.",
+          "evidence_ids": []
+        }
+      ],
+      "limitations": [
+        "No runtime check or external publication was observed."
+      ],
+      "next_actions": [
+        {
+          "description": "Obtain independently verifiable check evidence.",
+          "owner": "wellmanifest/report",
+          "resume_when": "The owner authorizes validation of the exact subject."
+        }
+      ],
+      "redaction": {
+        "state": "not_checked",
+        "evidence_ids": []
+      },
+      "publication": {
+        "state": "local",
+        "revision": null,
+        "pull_request": null,
+        "evidence_ids": []
+      }
+    }
+  ]
+}
