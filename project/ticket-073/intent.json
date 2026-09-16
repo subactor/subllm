@@ -1,0 +1,30 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-073",
+  "summary": "Give a reasoning-model attempt a budget it can meet, so agent routes stop failing as provider timeouts",
+  "workstream": "runtime",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "subllm.toml",
+    "tests/test_policy_config.py",
+    "project/ticket-073/**"
+  ],
+  "forbiddenPaths": [
+    "VERSION",
+    "pyproject.toml",
+    "src/**",
+    "policy/adopted/**",
+    ".env",
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
