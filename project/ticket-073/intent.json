@@ -11,6 +11,7 @@
   "allowedPaths": [
     "subllm.toml",
     "tests/test_policy_config.py",
+    "tests/test_client.py",
     "project/ticket-073/**"
   ],
   "forbiddenPaths": [
