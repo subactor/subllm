@@ -208,7 +208,10 @@ def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, t
 
     assert result.content == "cursor answer"
     assert observed["cwd"] == tmp_path
-    assert observed["timeout_seconds"] == 12
+    # An attempt gets the remaining caller budget, bounded by the policy cap.
+    # The default caller budget is 30 s and the cap is 90 s, so the clamp is the
+    # caller budget less the time already spent resolving the route.
+    assert 29.0 < float(observed["timeout_seconds"]) <= 30.0
     request = observed["request"]
     assert request["cwd"] == str(tmp_path)
     assert request["model"] == "gpt-5.6-sol"
