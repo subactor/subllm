@@ -80,6 +80,33 @@ def test_direct_zai_glm53_precedes_cursor_and_openrouter_for_default_routes() ->
     assert configured[0].api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
+def test_koru_routes_fall_back_to_openrouter_deepseek_last() -> None:
+    for function in (
+        "planning-assistant",
+        "queue-executor",
+        "reflection",
+        "nl-to-koru-dsl",
+        "nl-to-coru-dsl",
+        "strategy-review",
+    ):
+        configured = configured_routes("koru-agent", function)
+        assert configured[0].provider == "zai"
+        assert configured[0].model == "glm-5.3"
+        assert configured[-1].provider == "openrouter"
+        assert configured[-1].model == "deepseek-v4-pro"
+        assert configured[-1].litellm_model == "openrouter/deepseek/deepseek-v4-pro"
+
+
+def test_deepseek_stays_off_non_koru_routes() -> None:
+    for application, function in (
+        ("platform", "interactive"),
+        ("validator-agent", "direct-pr-review"),
+        ("supervisor", "delegation"),
+    ):
+        configured = configured_routes(application, function)
+        assert all(route.model != "deepseek-v4-pro" for route in configured)
+
+
 def test_repository_defaults_bind_strategies_to_keys() -> None:
     path = find_policy_file(cwd=Path(__file__).resolve().parents[1])
     assert path is not None
