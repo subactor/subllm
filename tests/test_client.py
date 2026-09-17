@@ -19,6 +19,10 @@ from subllm import (
     PROVIDER_UNAVAILABLE_CODE,
     CompletionError,
     client,
+    client_cli,
+    client_code_edit,
+    client_routes,
+    client_workers,
     complete,
     execute_code_edit,
     provider_health,
@@ -58,7 +62,7 @@ def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
         observed.update(request=request, **kwargs)
         return _worker_success('{"ok":true}', usage={"total_tokens": 9})
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     result = complete(
         "todo2code",
         "semantic",
@@ -92,7 +96,7 @@ def test_complete_sends_vision_image_parts_on_nexu_route(monkeypatch) -> None:
         observed.update(request=request, **kwargs)
         return _worker_success("a button")
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     result = complete(
         "autogrammar-nexu",
         "vision",
@@ -166,7 +170,7 @@ def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path) -> None:
             model=route.wire_model,
         )
 
-    monkeypatch.setattr(client, "_complete_cursor", complete_cursor)
+    monkeypatch.setattr(client_routes, "_complete_cursor", complete_cursor)
     result = complete(
         "koru-agent",
         "planning-assistant",
@@ -196,7 +200,7 @@ def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, t
             "run_id": "run-1",
         }
 
-    monkeypatch.setattr(client, "_run_cursor_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_cursor_worker", run_worker)
 
     result = complete(
         "koru-agent",
@@ -234,11 +238,11 @@ def test_cursor_worker_timeout_terminates_the_process_group(monkeypatch, tmp_pat
             return self.returncode
 
     process = Process()
-    monkeypatch.setattr(client.subprocess, "Popen", lambda *_args, **_kwargs: process)
-    monkeypatch.setattr(client.os, "killpg", lambda pid, sig: observed.append((pid, sig)))
+    monkeypatch.setattr(client_workers.subprocess, "Popen", lambda *_args, **_kwargs: process)
+    monkeypatch.setattr(client_workers.os, "killpg", lambda pid, sig: observed.append((pid, sig)))
 
     with pytest.raises(CompletionError, match="worker timed out") as raised:
-        client._run_cursor_worker(
+        client_workers._run_cursor_worker(
             {"schema": "subllm.cursor-worker-request/v1"},
             timeout_seconds=0.1,
             cwd=tmp_path,
@@ -257,7 +261,7 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
     monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
 
     with pytest.raises(CompletionError, match="worker timed out") as raised:
-        client._run_cursor_worker(
+        client_workers._run_cursor_worker(
             {
                 "schema": "subllm.cursor-worker-request/v1",
                 "model": "gpt-5.6-sol",
@@ -287,7 +291,7 @@ def test_openai_worker_deadline_reaps_real_descendant(monkeypatch, tmp_path) -> 
     monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
 
     with pytest.raises(CompletionError, match="worker timed out"):
-        client._run_openai_worker(
+        client_workers._run_openai_worker(
             {"schema": "subllm.openai-worker-request/v1"},
             timeout_seconds=1.0,
         )
@@ -307,7 +311,7 @@ def test_complete_executes_nfo_analysis_through_direct_zai(monkeypatch) -> None:
         observed.update(request=request, **kwargs)
         return _worker_success("root cause", usage={"total_tokens": 5})
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     result = complete(
         "semcod-nfo",
         "analyze",
@@ -338,7 +342,7 @@ def test_complete_forwards_structured_response_format(monkeypatch) -> None:
         observed.update(request=request, **kwargs)
         return _worker_success("{}")
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     complete(
         "autogrammar-hillm",
         "invoke",
@@ -365,7 +369,7 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
             }
         return _worker_success("fallback")
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     result = complete(
         "repair-agent",
         "repair-plan",
@@ -408,7 +412,7 @@ def test_complete_codes_rate_limit_before_successful_failover(monkeypatch) -> No
             }
         return _worker_success("fallback")
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     result = complete(
         "todo2code",
         "semantic",
@@ -442,7 +446,7 @@ def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
             "retryable": True,
         }
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     with pytest.raises(CompletionError, match="all bounded candidates failed") as raised:
         complete(
             "todo2code",
@@ -492,7 +496,7 @@ def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
             }
         return _worker_success("ok")
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     credentials = {
         "ZAI_API_KEY": "id.secret",
         "OPENROUTER_API_KEY": "sk-or-v1-testkey",
@@ -532,7 +536,7 @@ def test_complete_does_not_replay_non_retryable_bad_request(monkeypatch) -> None
             "retryable": False,
         }
 
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     with pytest.raises(CompletionError, match="HTTP 400"):
         complete(
             "todo2code",
@@ -577,7 +581,7 @@ def test_code_edit_uses_llm_selection_and_dsl_edit_routes(monkeypatch, tmp_path)
                        "summary": "Fixed authentication"}
         return CompletionResponse(json.dumps(content), "zai", "glm-5.3")
 
-    monkeypatch.setattr(client, "complete", completion)
+    monkeypatch.setattr(client_code_edit, "complete", completion)
     result = execute_code_edit("onedev-agent", "code-edit", "Fix authentication; run tests and docs",
                                worktree=tmp_path, provider="zai", environ={"ZAI_API_KEY": "id.secret"})
     assert [call[1] for call in calls] == ["code-context", "code-edit"]
@@ -606,7 +610,7 @@ def test_code_edit_cli_emits_secret_free_machine_result(tmp_path, monkeypatch, c
     prompt = tmp_path / "prompt.txt"
     prompt.write_text("Fix it", encoding="utf-8")
     monkeypatch.setattr(
-        client,
+        client_code_edit,
         "execute_code_edit",
         lambda *_args, **_kwargs: CodeEditResponse("zai", "glm-5.3", "done"),
     )
@@ -635,7 +639,7 @@ def test_completion_cli_executes_policy_transport_and_emits_attempt_receipt(
         "request_id": "supervisor-test-1",
     }
     monkeypatch.setattr(
-        client.sys,
+        client_cli.sys,
         "stdin",
         SimpleNamespace(buffer=io.BytesIO(json.dumps(request).encode())),
     )
@@ -658,7 +662,7 @@ def test_completion_cli_executes_policy_transport_and_emits_attempt_receipt(
             ),),
         )
 
-    monkeypatch.setattr(client, "complete", run_complete)
+    monkeypatch.setattr(client_cli, "complete", run_complete)
     assert completion_main(["supervisor", "assessment", "--timeout", "120"]) == 0
     payload = json.loads(capsys.readouterr().out)
     assert payload == {
@@ -700,7 +704,7 @@ def test_completion_cli_rejects_unbounded_or_unknown_input(
     monkeypatch, capsys, payload_input, error,
 ) -> None:
     monkeypatch.setattr(
-        client.sys,
+        client_cli.sys,
         "stdin",
         SimpleNamespace(buffer=io.BytesIO(json.dumps(payload_input).encode())),
     )
@@ -717,7 +721,7 @@ def test_cursor_model_run_failure_tries_next_registered_cursor_model(monkeypatch
     def provider_failure(*args, **kwargs):
         pytest.fail("a model run failure must not cool down the whole provider")
 
-    monkeypatch.setattr(client, "record_failure", provider_failure)
+    monkeypatch.setattr(client_routes, "record_failure", provider_failure)
 
     def run_worker(request, **kwargs):
         calls.append(request["model"])
@@ -726,7 +730,7 @@ def test_cursor_model_run_failure_tries_next_registered_cursor_model(monkeypatch
         return {"schema": "subllm.cursor-worker-result/v1", "status": "SUCCESS",
                 "content": "ready", "usage": {}, "finish_reason": "", "run_id": "run-2"}
 
-    monkeypatch.setattr(client, "_run_cursor_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_cursor_worker", run_worker)
     result = complete("onedev-agent", "code-context", [{"role": "user", "content": "Select evidence"}],
                       environ={"CURSOR_API_KEY": "key_test-value-for-unit-tests", "SUBLLM_PROVIDER_ORDER": "cursor"})
     assert calls == ["gpt-5.6-sol", "grok-4.6"]
@@ -743,9 +747,9 @@ def test_cursor_worker_error_keeps_model_scope_only_for_exact_error_envelope(mon
     for payload, error_type in [(valid, CursorRunError), (valid | {"extra": "untrusted"}, CompletionError)]:
         process = SimpleNamespace(returncode=2,
                                   communicate=lambda payload=payload, **kwargs: (json.dumps(payload).encode(), None))
-        monkeypatch.setattr(client.subprocess, "Popen", lambda *args, process=process, **kwargs: process)
+        monkeypatch.setattr(client_workers.subprocess, "Popen", lambda *args, process=process, **kwargs: process)
         with pytest.raises(error_type) as caught:
-            client._run_cursor_worker({}, timeout_seconds=1, cwd=tmp_path)
+            client_workers._run_cursor_worker({}, timeout_seconds=1, cwd=tmp_path)
         assert type(caught.value) is error_type
 
 
@@ -766,7 +770,7 @@ def test_payment_required_uses_worker_classification_and_next_allowed_provider(m
         return _worker_success("fallback")
 
     monkeypatch.setattr(openai_worker, "urlopen", reject_payment)
-    monkeypatch.setattr(client, "_run_openai_worker", run_worker)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     result = complete(
         "onedev-agent", "code-edit", [{"role": "user", "content": "repair"}],
         timeout_seconds=20,

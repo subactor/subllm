@@ -26,7 +26,7 @@ def invoke(
     timeout_seconds: float,
     response_format: Mapping[str, Any] | None,
 ) -> tuple[str, dict[str, Any]]:
-    from .client import _terminate_worker_process_group
+    from .client_workers import _terminate_worker_process_group
 
     executable = shutil.which("codex")
     if executable is None:
