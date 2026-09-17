@@ -522,6 +522,15 @@ _VALIDATOR = (
     RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
 )
 
+# Koru autonomous work lost runs when the three shared lanes all failed in the
+# same window (zai rate-limit, cursor unavailable, OpenRouter GLM timeout).
+# deepseek-v4-pro is catalogued on the OpenRouter lane already; appending it as
+# a strictly-later candidate keeps the shared order intact and gives koru-agent
+# routes one more declared model before the executor gives up.
+_KORU = _DEFAULT + (
+    RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=30),
+)
+
 _CODING = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
@@ -574,21 +583,21 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "koru-agent",
         "planning-assistant",
-        _DEFAULT,
+        _KORU,
     ),
     RoutePolicy(
         "koru-agent",
         "queue-executor",
-        _DEFAULT,
+        _KORU,
     ),
     RoutePolicy(
         "koru-agent",
         "reflection",
-        _DEFAULT,
+        _KORU,
     ),
-    RoutePolicy("koru-agent", "nl-to-koru-dsl", _DEFAULT),
-    RoutePolicy("koru-agent", "nl-to-coru-dsl", _DEFAULT),
-    RoutePolicy("koru-agent", "strategy-review", _DEFAULT),
+    RoutePolicy("koru-agent", "nl-to-koru-dsl", _KORU),
+    RoutePolicy("koru-agent", "nl-to-coru-dsl", _KORU),
+    RoutePolicy("koru-agent", "strategy-review", _KORU),
     RoutePolicy("c2004-system", "oql-generation", _DEFAULT),
     RoutePolicy("c2004-system", "doctor-recommendation", _DEFAULT),
     RoutePolicy("prellm", "preprocess", _DEFAULT),
