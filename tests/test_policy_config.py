@@ -245,8 +245,8 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["openrouter"].priority == 30
     assert policy.providers["openrouter"].default_model == "glm-5.3-flash"
     assert policy.execution.failover_enabled is True
-    assert policy.execution.attempt_timeout_seconds == 12.0
-    assert policy.execution.slow_response_seconds == 10.0
+    assert policy.execution.attempt_timeout_seconds == 90.0
+    assert policy.execution.slow_response_seconds == 45.0
     assert policy.execution.cooldown_seconds == 60.0
     assert policy.execution.failure_threshold == 1
     assert policy.execution.max_attempts == 6

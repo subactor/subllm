@@ -3,10 +3,19 @@ schema_version = 3
 # Runtime failover is sequential: it never starts duplicate speculative calls.
 # timeout_seconds passed to complete() is the total caller budget; each provider
 # attempt receives at most attempt_timeout_seconds from that remaining budget.
+#
+# The budget has to fit a reasoning model on an agent-sized prompt, not an HTTP
+# round trip. Measured 2026-09-16 on the 17 076-character koru queue prompt
+# (4191 input tokens): z.ai glm-5.3 answered in 4.86 s with max_tokens=4096 and
+# 8.92 s without one. A 12 s cap with a 10 s slow threshold therefore called the
+# normal case slow and failed on ordinary variance, and every candidate on
+# koru-agent/queue-executor reported timeout while the providers were healthy.
+# At max_attempts = 6 the worst case stays a fraction of a caller budget that
+# koru sets to 1800 s.
 [execution]
 failover_enabled = true
-attempt_timeout_seconds = 12.0
-slow_response_seconds = 10.0
+attempt_timeout_seconds = 90.0
+slow_response_seconds = 45.0
 cooldown_seconds = 60.0
 failure_threshold = 1
 max_attempts = 6
