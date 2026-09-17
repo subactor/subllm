@@ -9,7 +9,7 @@ from subllm.errors import CompletionError
 
 
 def test_compressed_extraction_preserves_all_canonical_evidence(tmp_path, monkeypatch):
-    from subllm import code_context as module
+    from subllm import code_context_extraction as module
 
     record = context_record()
     record['metadata']['generation'] = {'evidence': 'repeated evidence ' * 1000}
@@ -44,7 +44,7 @@ def test_unprojected_core_extraction_still_exceeds_expansion_budget(tmp_path):
         module.read_extraction(output)
 
 def test_compressed_transport_budget_is_checked_before_decompression(tmp_path, monkeypatch):
-    from subllm import code_context as module
+    from subllm import code_context_extraction as module
 
     output = tmp_path / 'records.json.gz'
     output.write_bytes(b'not gzip')
@@ -55,7 +55,7 @@ def test_compressed_transport_budget_is_checked_before_decompression(tmp_path, m
 
 @pytest.mark.parametrize('members', [1, 2])
 def test_expansion_budget_rejects_compressed_bombs_and_concatenated_members(tmp_path, monkeypatch, members):
-    from subllm import code_context as module
+    from subllm import code_context_extraction as module
 
     output = tmp_path / 'records.json.gz'
     output.write_bytes(gzip.compress(b'x' * 1024) * members)
@@ -208,9 +208,9 @@ def test_missing_runtime_does_not_fall_back_to_source(tmp_path):
 
 
 def test_runtime_pin_mismatch_is_rejected_before_extraction(tmp_path, monkeypatch):
-    from subllm import code_context
+    from subllm import code_context_extraction
 
-    monkeypatch.setattr(code_context.subprocess, 'run',
+    monkeypatch.setattr(code_context_extraction.subprocess, 'run',
                         lambda *args, **kwargs: subprocess.CompletedProcess([], 0, b'b' * 40))
     with pytest.raises(CompletionError, match='pin mismatch'):
         extract_context(tmp_path, {'SUBLLM_CODE2DSL_RUNTIME': str(tmp_path),
@@ -279,3 +279,20 @@ def test_compact_file_rows_preserve_all_summary_information_and_stable_local_ids
         {'id': 'file:1', 'file': ['src/startup.py', 1, [1], ['allow']]},
     ]
     assert {r['id'] for r in records} == {'canonical-definition', 'canonical-call', 'canonical-startup'}
+
+
+def test_facade_exposes_submodule_implementations():
+    from subllm import (
+        code_context,
+        code_context_extraction,
+        code_context_records,
+        code_context_safety,
+        code_context_selection,
+    )
+    assert code_context.read_extraction is code_context_extraction.read_extraction
+    assert code_context.extract_context is code_context_extraction.extract_context
+    assert code_context.runtime_digest is code_context_extraction.runtime_digest
+    assert code_context.unique_records is code_context_records.unique_records
+    assert code_context.restore_excerpt is code_context_records.restore_excerpt
+    assert code_context.select_code_context is code_context_selection.select_code_context
+    assert code_context.safe_path is code_context_safety.safe_path
