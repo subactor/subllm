@@ -159,7 +159,7 @@ def test_complete_rejects_file_image_urls() -> None:
         )
 
 
-def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path) -> None:
+def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path, enabled_cursor_policy) -> None:
     observed: dict[str, object] = {}
 
     def complete_cursor(route, messages, **kwargs):
@@ -186,7 +186,7 @@ def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path) -> None:
     assert observed["messages"] == [{"role": "user", "content": "x"}]
 
 
-def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, tmp_path) -> None:
+def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, tmp_path, enabled_cursor_policy) -> None:
     observed: dict[str, object] = {}
 
     def run_worker(request, **kwargs):
@@ -717,7 +717,7 @@ def test_completion_cli_rejects_unbounded_or_unknown_input(
     assert error in captured.err
 
 
-def test_cursor_model_run_failure_tries_next_registered_cursor_model(monkeypatch):
+def test_cursor_model_run_failure_tries_next_registered_cursor_model(monkeypatch, enabled_cursor_policy):
     from subllm.errors import CursorRunError
     calls = []
 

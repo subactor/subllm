@@ -487,3 +487,24 @@ def test_invalid_application_identity_fails_closed(
 
     with pytest.raises(InvalidPolicyError, match=message):
         load_policy_config()
+
+
+def test_root_subllm_toml_disables_cursor_provider(monkeypatch: pytest.MonkeyPatch) -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy_file = root / "subllm.toml"
+    policy = load_policy_config(cwd=root)
+
+    assert policy.providers["cursor"].enabled is False
+    assert policy.providers["cursor"].priority == 20
+    assert policy.providers["zai"].enabled is True
+    assert policy.providers["zai"].priority == 0
+    assert policy.providers["openrouter"].enabled is True
+    assert policy.providers["openrouter"].priority == 30
+
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy_file))
+    routes = configured_routes("doctor-agent", "repair-proposal")
+    providers = [r.provider for r in routes]
+    assert "cursor" not in providers
+    assert providers[0] == "zai"
+    assert providers[-1] == "openrouter"
+

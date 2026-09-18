@@ -189,7 +189,7 @@ def test_process_editor_has_a_central_llm_route() -> None:
 
     assert routes[0].provider == "zai"
     assert routes[0].model == "glm-5.3"
-    assert {route.provider for route in routes} == {"zai", "cursor", "openrouter"}
+    assert {route.provider for route in routes} == {"zai", "openrouter"}
 
 
 @pytest.mark.parametrize("function", ("preprocess", "execute"))

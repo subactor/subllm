@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import pytest
 
+from pathlib import Path
+
 from subllm import reset_provider_health
 
 
@@ -20,3 +22,18 @@ def _isolate_provider_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> 
     reset_provider_health()
     yield
     reset_provider_health()
+
+
+@pytest.fixture
+def enabled_cursor_policy(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> Path:
+    """Provide an isolated policy configuration with cursor enabled for cursor-specific unit tests."""
+    policy_file = tmp_path / "subllm-cursor-enabled.toml"
+    root_policy = Path(__file__).resolve().parent.parent / "subllm.toml"
+    text = root_policy.read_text(encoding="utf-8").replace(
+        "[providers.cursor]\nenabled = false",
+        "[providers.cursor]\nenabled = true",
+    )
+    policy_file.write_text(text, encoding="utf-8")
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy_file))
+    return policy_file
+
