@@ -231,3 +231,132 @@ def test_crlf_normalization_cannot_authorize_partial_or_different_content(tmp_pa
     file.write_bytes(body.encode())
     assert not selected[0]["editable"]
     assert file.read_bytes() == body.encode()
+
+
+def test_envelope_contract_rejects_malformed_plans(tmp_path):
+    context, selected, _ = fixture(tmp_path, "def allow(user):\n    return True\n")
+    answer = plan()
+    for broken in [
+        {k: v for k, v in answer.items() if k != "summary"},
+        answer | {"extra": True},
+        answer | {"schema": "subllm.edit-plan/v1"},
+        answer | {"summary": None},
+        answer | {"edits": {"id": "auth"}},
+        plan(creates=[dict(path=f"docs/n{i}.md", content="#\n") for i in range(33)]),
+    ]:
+        with pytest.raises(CompletionError, match="envelope|1 to 32"):
+            apply_plan(tmp_path, context, selected, broken, {})
+    assert not (tmp_path / "docs").exists()
+
+
+def test_edits_require_fresh_digest_trailing_newline_and_in_source_range(tmp_path):
+    body = "def allow(user):\n    return True\n"
+    context, selected, file = fixture(tmp_path, body)
+    for answer in [
+        plan(edits=[dict(id="auth", file_sha256="0" * 64, replacement="    return False\n")]),
+        plan(edits=[dict(id="auth", file_sha256=digest(body.encode()), replacement="    return False")]),
+    ]:
+        with pytest.raises(CompletionError, match="digest|newline"):
+            apply_plan(tmp_path, context, selected, answer, {})
+        assert file.read_text() == body
+    stretched = context_record(body=body)
+    stretched["source"]["lines"] = {"start": 1, "end": 50}
+    context = CodeContext([stretched], {"src/auth.py": body.encode()}, {})
+    selected = enrich_records(context, editing_records(context, [context.projection(stretched)]))
+    assert selected[0]["editable"]
+    with pytest.raises(
+        CompletionError,
+        match="exceeds source",
+    ):
+        apply_plan(
+            tmp_path,
+            context,
+            selected,
+            plan(edits=[dict(id="auth", file_sha256=digest(body.encode()), replacement="x\n" * 50)]),
+            {},
+        )
+    assert file.read_text() == body
+
+
+def test_duplicate_edit_spans_are_rejected_as_overlapping_before_any_write(tmp_path):
+    body = "def allow(user):\n    return True\n"
+    context, selected, file = fixture(tmp_path, body)
+    duplicate = plan(
+        edits=[
+            dict(id="auth", file_sha256=digest(body.encode()), replacement="    return 1\n"),
+            dict(id="auth", file_sha256=digest(body.encode()), replacement="    return 2\n"),
+        ]
+    )
+    with pytest.raises(CompletionError, match="ranges overlap"):
+        apply_plan(tmp_path, context, selected, duplicate, {})
+    assert file.read_text() == body
+
+
+def test_json_and_text_operations_cannot_mix_on_one_file(tmp_path):
+    body = '{"service": {"enabled": false}}\n'
+    record = context_record(name="config/service.json", body=body)
+    record["statement"]["kind"] = "configuration_declaration"
+    record["metadata"] = {"format": "json"}
+    record["source"]["symbol"] = "service"
+    record["source"]["rawExcerpt"] = body
+    context, selected, file = fixture(tmp_path, body, "config/service.json", record)
+    sha = digest(body.encode())
+    mixed = plan(
+        edits=[dict(id="auth", file_sha256=sha, replacement='{"service": {"enabled": true}}\n')],
+        json_updates=[dict(id="auth", file_sha256=sha, pointer=["service"], value=True)],
+    )
+    with pytest.raises(CompletionError, match="mix"):
+        apply_plan(tmp_path, context, selected, mixed, {})
+    assert json.loads(file.read_text()) == {"service": {"enabled": False}}
+
+
+def test_json_pointer_updates_cannot_overlap(tmp_path):
+    body = '{"service": {"enabled": false}}\n'
+    record = context_record(name="config/service.json", body=body)
+    record["statement"]["kind"] = "configuration_declaration"
+    record["metadata"] = {"format": "json"}
+    record["source"]["symbol"] = "service"
+    context, selected, file = fixture(tmp_path, body, "config/service.json", record)
+    sha = digest(body.encode())
+    overlap = plan(
+        json_updates=[
+            dict(id="auth", file_sha256=sha, pointer=["service"], value=True),
+            dict(id="auth", file_sha256=sha, pointer=["service", "enabled"], value=False),
+        ]
+    )
+    with pytest.raises(CompletionError, match="JSON updates overlap"):
+        apply_plan(tmp_path, context, selected, overlap, {})
+    assert json.loads(file.read_text()) == {"service": {"enabled": False}}
+
+
+def test_no_material_change_and_creation_budget_are_rejected_before_install(tmp_path):
+    body = "def allow(user):\n    return True\n"
+    context, selected, file = fixture(tmp_path, body)
+    unchanged = plan(edits=[dict(id="auth", file_sha256=digest(body.encode()), replacement=body)])
+    with pytest.raises(CompletionError, match="no material change"):
+        apply_plan(tmp_path, context, selected, unchanged, {})
+    assert file.read_text() == body
+    oversized = plan(creates=[dict(path=f"docs/big{i}.md", content=f"# {i}\n" + "x" * 260_000) for i in range(5)])
+    with pytest.raises(CompletionError, match="exceeds budget"):
+        apply_plan(tmp_path, context, selected, oversized, {})
+    assert not (tmp_path / "docs").exists()
+
+
+def test_edit_contract_facade_exposes_split_implementations():
+    from subllm import edit_contract, edit_plan, edit_schema, edit_staging
+
+    plan_functions = [
+        "_validate_envelope",
+        "_process_edits",
+        "_process_patches",
+        "_process_json_updates",
+        "_process_creates",
+    ]
+    for name in plan_functions:
+        assert getattr(edit_contract, name) is getattr(edit_plan, name)
+    for name in ["_stage_replacements", "_verify_staged_content", "_reobserve"]:
+        assert getattr(edit_contract, name) is getattr(edit_staging, name)
+    assert edit_contract.SCHEMA == edit_schema.SCHEMA
+    assert edit_contract.MAX_CHANGE_BYTES == edit_schema.MAX_CHANGE_BYTES
+    assert edit_contract.enrich_records is edit_schema.enrich_records
+    assert edit_contract.response_format is edit_schema.response_format
