@@ -196,7 +196,31 @@ subllm resolve doctor-agent repair-proposal --configured
 subllm resolve onedev-agent code-edit --provider openrouter --field litellm-model
 subllm poa inspect poa://subactor.subllm/process/list-routes/v1
 subllm serve --host 127.0.0.1 --port 8788
+subllm proxy --host 127.0.0.1 --port 11435
 ```
+
+## SubLLM Local Proxy (`subllm proxy` / `subllm-proxy`)
+
+`subllm proxy` runs an OpenAI- and Ollama-compatible HTTP proxy server on `http://127.0.0.1:11435`.
+It allows local agents (`koru`, `tillm`, `gillm`, `taskand`, `premesh`), IDEs (Cursor, VSCode Continue, Aider),
+and CLI tools to execute paid cloud models (`glm-5.3`, `gpt-5.6-sol`, `deepseek-v4-pro`, `grok-4.6`, `composer-2.5`)
+transparently **without client-side credentials or passwords**.
+
+- **Ollama consumers (`tillm`, `gillm`, `ollama` CLI, `aider`):**
+  ```bash
+  export OLLAMA_HOST=http://127.0.0.1:11435
+  ollama run glm-5.3 "Napisz podsumowanie"
+  ```
+- **OpenAI-compatible consumers (`koru`, `cursor`, `continue.dev`):**
+  ```bash
+  export OPENAI_API_BASE=http://127.0.0.1:11435/v1
+  export OPENAI_API_KEY=subllm-local
+  ```
+- **Ticket attribution and receipts:**
+  Pass `X-Ticket: ticket-NNN` or request model `glm-5.3@ticket-NNN`.
+  Execution receipts are automatically written to `~/.subactor/receipts/ticket-NNN--<timestamp>--<provider>.json`.
+- **Local Ollama forwarding:**
+  Requests for unknown or local GGUF models are transparently forwarded to the local Ollama daemon on `http://127.0.0.1:11434`.
 
 CLI, shell and HTTP share one POA CQRS/ES bus. See [`docs/poa-api.md`](docs/poa-api.md).
 The registered `edit-process` command validates LLM-authored process DSL edits

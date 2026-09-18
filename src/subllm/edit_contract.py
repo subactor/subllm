@@ -180,7 +180,13 @@ def _verify_staged_content(staged: dict[str, bytes], creates: dict[str, bytes], 
             raise CompletionError("edit plan made no material change")
 
 
-def _reobserve(root: Path, staged: dict[str, bytes], creates: dict[str, bytes], context: CodeContext, environ: dict) -> None:
+def _reobserve(
+    root: Path,
+    staged: dict[str, bytes],
+    creates: dict[str, bytes],
+    context: CodeContext,
+    environ: dict,
+) -> None:
     for name in staged:
         if name in creates:
             _creation_path(root, name, environ)
@@ -189,7 +195,13 @@ def _reobserve(root: Path, staged: dict[str, bytes], creates: dict[str, bytes], 
 
 
 def apply_plan(
-    root: Path, context: CodeContext, selected: list[dict], answer: dict, environ: dict, *, dry_run: bool = False
+    root: Path,
+    context: CodeContext,
+    selected: list[dict],
+    answer: dict,
+    environ: dict,
+    *,
+    dry_run: bool = False,
 ) -> list[dict]:
     _validate_envelope(answer)
     records = {r["id"]: r for r in selected}
