@@ -23,3 +23,4 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | ticket-012 | Release SubLLM 1.4.1 with PreLLM routes | IN_PROGRESS | release |
 
 | ticket-045 | Bound periodic supervisor assessment reasoning | IN_PROGRESS | routing |
+| ticket-081 | Ollama and OpenAI-compatible proxy server with ticket attribution and daemon forwarding | DONE | runtime |

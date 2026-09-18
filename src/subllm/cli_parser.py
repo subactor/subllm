@@ -75,4 +75,8 @@ def _parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="serve the local POA CQRS HTTP API")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8788)
+    proxy_parser = subparsers.add_parser("proxy", help="serve the Ollama and OpenAI-compatible proxy server")
+    proxy_parser.add_argument("--host", default="127.0.0.1")
+    proxy_parser.add_argument("--port", type=int, default=11435)
+    proxy_parser.add_argument("--ollama-upstream", default="http://127.0.0.1:11434")
     return parser

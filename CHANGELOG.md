@@ -1,5 +1,17 @@
 # Changelog
 
+## [1.11.0] - 2026-09-18
+
+### Added
+
+- Zero-credential Ollama- and OpenAI-compatible proxy server (`subllm proxy` and `subllm-proxy` CLI entrypoints).
+- OpenAI endpoints: `GET /v1/models`, `POST /v1/chat/completions` supporting non-streaming JSON and Server-Sent Events (SSE) streaming.
+- Ollama endpoints: `GET /api/tags`, `GET /api/version`, `POST /api/chat`, `POST /api/generate`, `POST /api/show` supporting NDJSON streaming.
+- Dynamic model resolution for SubLLM catalog models, route aliases (e.g. `koru-agent/queue-executor`), and transparent fallback forwarding to local Ollama daemon on `127.0.0.1:11434`.
+- Ticket attribution extraction from HTTP headers (`X-Ticket`, `X-Subactor-Ticket`) and model suffix (`model@ticket-NNN`), persisting execution receipts in `~/.subactor/receipts`.
+- Full CORS support allowing browser UI applications (such as Premesh) to query models and completions directly.
+- Registered applications `subactor-proxy`, `premesh`, and `autogrammar-gillm` with default routes.
+
 ## Unreleased
 
 ### Added

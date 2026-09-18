@@ -50,6 +50,7 @@ from .provider_order import (
     parse_provider_order,
     provider_order,
 )
+from .proxy import list_proxy_models, make_proxy_server, serve_proxy
 from .resolver import (
     available_routes,
     configured_route,
@@ -71,6 +72,9 @@ from .types import (
 
 __all__ = [
     "APPLICATIONS",
+    "list_proxy_models",
+    "make_proxy_server",
+    "serve_proxy",
     "CURSOR_API_KEY_ENV",
     "CURSOR_WORKER_TIMEOUT_CODE",
     "EXTRA_CREDENTIAL_ENV",

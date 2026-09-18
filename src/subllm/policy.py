@@ -484,6 +484,21 @@ APPLICATIONS = MappingProxyType(
             title="Subactor Supervisor",
             url="https://github.com/subactor/supervisor",
         ),
+        "subactor-proxy": ApplicationSpec(
+            id="subactor-proxy",
+            title="Subactor Proxy",
+            url="https://github.com/subactor/subllm",
+        ),
+        "premesh": ApplicationSpec(
+            id="premesh",
+            title="Premesh",
+            url="https://github.com/subactor/premesh",
+        ),
+        "autogrammar-gillm": ApplicationSpec(
+            id="autogrammar-gillm",
+            title="gillm",
+            url="https://github.com/autogrammar/gillm",
+        ),
     }
 )
 
@@ -659,6 +674,10 @@ _ROUTE_VALUES = (
     RoutePolicy("supervisor", "assessment", _SUPERVISOR_ASSESSMENT),
     RoutePolicy("supervisor", "delegation", _DEFAULT),
     RoutePolicy("supervisor", "review", _DEFAULT),
+    RoutePolicy("subactor-proxy", "chat", _DEFAULT),
+    RoutePolicy("subactor-proxy", "completion", _DEFAULT),
+    RoutePolicy("premesh", "chat", _DEFAULT),
+    RoutePolicy("autogrammar-gillm", "invoke", _DEFAULT),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})

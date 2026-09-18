@@ -17,3 +17,6 @@ dist/
 /.subactor/receipts/
 /.subactor/cache/
 /.subactor/snapshots/
+.agent-state/
+.nlp2dsl/
+uv.lock

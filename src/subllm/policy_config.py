@@ -313,8 +313,10 @@ def load_policy_config(
         for name in PROVIDERS
     }
     application_rows = raw.get("applications")
-    if isinstance(application_rows, dict) and "organism-guard" not in application_rows:
-        application_rows = {**application_rows, "organism-guard": asdict(_APPLICATION_DEFAULTS["organism-guard"])}
+    if isinstance(application_rows, dict):
+        for app_name in ("organism-guard", "subactor-proxy", "premesh", "autogrammar-gillm"):
+            if app_name not in application_rows and app_name in _APPLICATION_DEFAULTS:
+                application_rows = {**application_rows, app_name: asdict(_APPLICATION_DEFAULTS[app_name])}
     if not isinstance(application_rows, dict) or set(application_rows) != set(APPLICATIONS):
         raise InvalidPolicyError(f"SubLLM policy must configure exactly these applications: {', '.join(APPLICATIONS)}")
     applications = {

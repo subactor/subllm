@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subactor-subllm"
-version = "1.10.3"
+version = "1.11.0"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -35,6 +35,7 @@ test = [
 subllm = "subllm.cli:main"
 subllm-code-edit = "subllm.client:code_edit_main"
 subllm-complete = "subllm.client:completion_main"
+subllm-proxy = "subllm.proxy:serve_proxy"
 
 [tool.setuptools.packages.find]
 where = ["src"]

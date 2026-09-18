@@ -221,3 +221,15 @@ url = "https://github.com/subactor/supervisor"
 [applications.organism-guard]
 name = "Organism Guard"
 url = "https://github.com/subactor/organism-guard"
+
+[applications.subactor-proxy]
+name = "Subactor Proxy"
+url = "https://github.com/subactor/subllm"
+
+[applications.premesh]
+name = "Premesh"
+url = "https://github.com/subactor/premesh"
+
+[applications.autogrammar-gillm]
+name = "gillm"
+url = "https://github.com/autogrammar/gillm"

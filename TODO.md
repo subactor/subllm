@@ -1,5 +1,9 @@
 # TODO
 
+- [x] [`ticket-081`](project/ticket-081/README.md) — Ollama and OpenAI-compatible
+  proxy server (`subllm proxy`) with ticket attribution and local Ollama daemon
+  forwarding. Status: `DONE`; workstream: `runtime`. Delivered in `1.11.0`.
+
 - [ ] [`ticket-026`](project/ticket-026/README.md) — align the SubLLM catalog
   and operator defaults with the declared three-tier provider strategy, and
   register TwinStudio's typed EDA routes. Status: `IN_PROGRESS`; workstream:

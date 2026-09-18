@@ -20,6 +20,10 @@ def dispatch(bus: PolicyBus, args: argparse.Namespace) -> int:
         return _run_poa(bus, args)
     if args.command == "serve":
         return _run_serve(bus, args)
+    if args.command == "proxy":
+        from .proxy import serve_proxy
+        serve_proxy(host=args.host, port=args.port, ollama_upstream=args.ollama_upstream)
+        return 0
     return _run_resolve(bus, args)
 
 
