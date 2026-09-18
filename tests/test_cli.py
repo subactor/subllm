@@ -103,7 +103,7 @@ def test_providers_reports_effective_public_settings(capsys) -> None:
     payload = json.loads(capsys.readouterr().out)
     assert payload["providers"]["cursor"] == {
         "default_model": "gpt-5.6-sol",
-        "enabled": True,
+        "enabled": False,
         "priority": 20,
     }
     assert payload["providers"]["zai"] == {

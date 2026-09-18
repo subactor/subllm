@@ -235,14 +235,12 @@ def test_available_routes_prefers_direct_zai_when_all_keys_are_present() -> None
     )
     assert [(route.provider, route.model) for route in routes] == [
         ("zai", "glm-5.3"),
-        ("cursor", "gpt-5.6-sol"),
-        ("cursor", "grok-4.6"),
         ("openrouter", "glm-5.3-flash"),
         ("openrouter", "qwen3.7-plus"),
     ]
 
 
-def test_credential_source_matrix_selects_expected_provider_model() -> None:
+def test_credential_source_matrix_selects_expected_provider_model(enabled_cursor_policy) -> None:
     """Z.AI / OpenRouter / Cursor key isolation → optimal model per source."""
     cases = (
         ({"ZAI_API_KEY": "key-id.signature"}, "zai", "glm-5.3"),
@@ -270,7 +268,7 @@ def test_credential_source_matrix_selects_expected_provider_model() -> None:
             assert route.wire_model == "gpt-5.6-sol"
 
 
-def test_cursor_grok_is_second_candidate_not_openrouter() -> None:
+def test_cursor_grok_is_second_candidate_not_openrouter(enabled_cursor_policy) -> None:
     routes = available_routes(
         "doctor-agent",
         "repair-proposal",
@@ -299,7 +297,7 @@ def test_missing_credentials_report_names_not_values() -> None:
     message = str(caught.value)
     assert "OPENROUTER_API_KEY" in message
     assert "ZAI_API_KEY" in message
-    assert "CURSOR_API_KEY" in message
+    assert "CURSOR_API_KEY" not in message
 
 
 def test_credentials_are_redacted_from_repr_and_public_dict() -> None:
