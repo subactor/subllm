@@ -15,6 +15,38 @@
       "policy_refs": [
         "policy://subactor.subllm/llm-route/v1"
       ],
+      "process_ref": "poa://subactor.subllm/process/record-usage/v1",
+      "schema": "poa.process/v1",
+      "steps": [
+        {
+          "capability_ref": "capability://subactor.subllm/policy/journal/v1",
+          "depends_on": [],
+          "effects": [
+            "write_data"
+          ],
+          "id": "record-usage",
+          "idempotency": "required",
+          "kind": "command",
+          "max_attempts": 1,
+          "requires_approval": false,
+          "timeout_seconds": 15,
+          "verification": [
+            {
+              "capability_ref": "capability://subactor.subllm/policy/read-back/v1",
+              "expectation_schema_ref": "schema://subactor.subllm/public-view/v1"
+            }
+          ]
+        }
+      ],
+      "title": "Record a declared application API attempt"
+    },
+    {
+      "input_schema_ref": "schema://subactor.subllm/closed-request/v1",
+      "output_schema_ref": "schema://subactor.subllm/public-view/v1",
+      "owner": "service:subllm",
+      "policy_refs": [
+        "policy://subactor.subllm/llm-route/v1"
+      ],
       "process_ref": "poa://subactor.subllm/process/usage/v1",
       "schema": "poa.process/v1",
       "steps": [
@@ -506,6 +538,7 @@
     "poa://subactor.subllm/process/list-providers/v1": "subllm://local/policy/query/list-providers",
     "poa://subactor.subllm/process/list-routes/v1": "subllm://local/policy/query/list-routes",
     "poa://subactor.subllm/process/observe-credentials/v1": "subllm://local/policy/query/observe-credentials",
+    "poa://subactor.subllm/process/record-usage/v1": "subllm://local/policy/command/record-usage",
     "poa://subactor.subllm/process/resolve-route/v1": "subllm://local/policy/query/resolve-route",
     "poa://subactor.subllm/process/usage/v1": "subllm://local/policy/query/usage",
     "poa://subactor.subllm/process/validate-policy/v1": "subllm://local/policy/query/validate"

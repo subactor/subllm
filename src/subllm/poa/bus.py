@@ -47,6 +47,8 @@ from .registry import (
     LIST_ROUTES_URI,
     OBSERVE_CREDENTIALS_URI,
     RECEIPT_URI,
+    RECORD_USAGE_REF,
+    RECORD_USAGE_URI,
     RESOLVE_ROUTE_URI,
     URI_TO_PROCESS,
     USAGE_URI,
@@ -105,6 +107,7 @@ class PolicyBus:
             RECEIPT_URI: self._query_receipt,
         }
         self._commands: dict[str, CommandHandler] = {
+            RECORD_USAGE_URI: self._command_record_usage,
             CREATE_PLAN_URI: self._command_create_plan,
             EDIT_PROCESS_URI: self._command_edit_process,
             IMPORT_CREDENTIALS_URI: self._command_import_credentials,
@@ -145,6 +148,45 @@ class PolicyBus:
 
     def inspect(self, process_ref: str) -> dict[str, Any]:
         return self.query({"schema": "subllm.query/v1", "process_uri": INSPECT_URI, "process_ref": process_ref})
+
+    def _command_record_usage(self, document: dict[str, Any]) -> dict[str, Any]:
+        from subllm.usage import identifier, record_attempt
+
+        payload = exact(document, {"schema", "process_uri", "subject", "idempotency_key", "attempt"})
+        event = exact(
+            payload["attempt"],
+            {"request_id", "application", "function", "provider", "model", "status", "duration_ms", "usage"},
+            optional={"diagnostic_code"},
+        )
+        for key in ("request_id", "application", "function", "provider", "model"):
+            if not isinstance(event[key], str) or identifier(event[key]) != event[key]:
+                raise PoaContractError("USAGE-EVENT-001", "Invalid attempt identifier")
+        if event["status"] not in ("success", "error"):
+            raise PoaContractError("USAGE-EVENT-001", "Invalid attempt status")
+        duration = event["duration_ms"]
+        if type(duration) is not int or not 0 <= duration <= 86_400_000:
+            raise PoaContractError("USAGE-EVENT-001", "Invalid duration")
+        usage = exact(event["usage"], set(), optional={"input_tokens", "output_tokens"})
+        if any(type(n) is not int or not 0 <= n <= 10**12 for n in usage.values()):
+            raise PoaContractError("USAGE-EVENT-001", "Invalid token count")
+        code = event.get("diagnostic_code")
+        if code is not None and (not isinstance(code, str) or identifier(code) != code):
+            raise PoaContractError("USAGE-EVENT-001", "Invalid diagnostic code")
+        plan = self._build_plan(
+            {
+                "process_ref": RECORD_USAGE_REF,
+                "input_ref": ROUTE_INPUT,
+                "input_sha256": digest_document(event),
+                "subject": payload["subject"],
+                "idempotency_key": payload["idempotency_key"],
+            }
+        )
+        event["diagnostic_code"] = code
+        inserted = record_attempt(**event, event_key=payload["idempotency_key"], strict=True)
+        run_id = f"run.{uuid4().hex[:12]}"
+        if inserted:
+            self._emit(run_id, plan, "completed")
+        return {"schema": "subllm.usage-ingest/v1", "accepted": True, "duplicate": not inserted}
 
     def _query_usage(self, document: dict[str, Any]) -> dict[str, Any]:
         from subllm.usage import FILTERS, query_usage
@@ -219,9 +261,7 @@ class PolicyBus:
         configured = load_env_file(path) if path is not None else {}
         return {
             "path": str(path) if path is not None else None,
-            "credentials": {
-                name: "configured" if configured.get(name) else "missing" for name in credential_names()
-            },
+            "credentials": {name: "configured" if configured.get(name) else "missing" for name in credential_names()},
         }
 
     def _query_validate(self, document: dict[str, Any]) -> dict[str, Any]:
@@ -300,9 +340,7 @@ class PolicyBus:
                 "idempotency_key",
             },
         )
-        proposal = propose_process_edit(
-            payload["source_process"], payload["base_sha256"], payload["edits"]
-        )
+        proposal = propose_process_edit(payload["source_process"], payload["base_sha256"], payload["edits"])
         plan = self._build_plan(
             {
                 "process_ref": EDIT_PROCESS_REF,

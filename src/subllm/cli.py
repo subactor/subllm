@@ -20,6 +20,15 @@ def dispatch(bus: PolicyBus, args: argparse.Namespace) -> int:
         return _run_poa(bus, args)
     if args.command == "serve":
         return _run_serve(bus, args)
+    if args.command == "mcp":
+        from .mcp import serve_stdio
+        serve_stdio(bus)
+        return 0
+    if args.command in {"ask", "dsl"}:
+        from .cli_policy import _print_json
+        from .usage_dsl import ask, execute
+        _print_json((ask if args.command == "ask" else execute)(args.text, bus))
+        return 0
     if args.command == "proxy":
         from .proxy import serve_proxy
         serve_proxy(host=args.host, port=args.port, ollama_upstream=args.ollama_upstream)

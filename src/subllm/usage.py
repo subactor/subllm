@@ -1,4 +1,5 @@
 """Private, cross-process attempt history. Payloads and credentials never enter the journal."""
+
 from __future__ import annotations
 
 import hashlib
@@ -6,6 +7,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 from collections.abc import Mapping
 from contextlib import closing
 from datetime import UTC, datetime
@@ -15,6 +17,7 @@ from typing import Any
 from .poa.errors import PoaContractError
 
 LOG = logging.getLogger(__name__)
+_WRITE_LOCK = threading.Lock()
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 FILTERS = {"application", "provider", "status", "since", "until", "before", "limit"}
 _SCHEMA = """
@@ -51,9 +54,20 @@ def _count(usage: Mapping[str, Any], *names: str) -> int | None:
     return None
 
 
-def record_attempt(*, request_id: str, application: str, function: str, provider: str,
-                   model: str, status: str, diagnostic_code: str | None,
-                   duration_ms: int, usage: Mapping[str, Any]) -> None:
+def record_attempt(
+    *,
+    request_id: str,
+    application: str,
+    function: str,
+    provider: str,
+    model: str,
+    status: str,
+    diagnostic_code: str | None,
+    duration_ms: int,
+    usage: Mapping[str, Any],
+    event_key: str | None = None,
+    strict: bool = False,
+) -> bool:
     """Logging failure must never retry a paid request or replace its result."""
     try:
         path = journal_path()
@@ -67,22 +81,40 @@ def record_attempt(*, request_id: str, application: str, function: str, provider
             pass
         else:
             os.close(fd)
-        with closing(sqlite3.connect(path, timeout=0.5)) as db, db:
-            db.executescript(_SCHEMA)
-            db.execute(
-                "INSERT INTO attempts(timestamp,request_id,application,function,provider,model,status,"
-                "diagnostic_code,duration_ms,input_tokens,output_tokens) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
-                (datetime.now(UTC).isoformat(timespec="milliseconds"),
-                 hashlib.sha256(request_id.encode()).hexdigest()[:24],
-                 identifier(application), identifier(function), identifier(provider), identifier(model),
-                 "success" if status == "success" else "error",
-                 identifier(diagnostic_code) if diagnostic_code else None,
-                 max(0, int(duration_ms)), _count(usage, "input_tokens", "prompt_tokens"),
-                 _count(usage, "output_tokens", "completion_tokens")),
+        with _WRITE_LOCK, closing(sqlite3.connect(path, timeout=0.5)) as db, db:
+            db.execute("BEGIN IMMEDIATE")
+            for statement in _SCHEMA.split(";"):
+                if statement.strip():
+                    db.execute(statement)
+            columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
+            if "event_key" not in columns:
+                db.execute("ALTER TABLE attempts ADD COLUMN event_key TEXT")
+            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS attempts_event ON attempts(event_key)")
+            cursor = db.execute(
+                "INSERT OR IGNORE INTO attempts(timestamp,request_id,application,function,provider,model,status,"
+                "diagnostic_code,duration_ms,input_tokens,output_tokens,event_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                (
+                    datetime.now(UTC).isoformat(timespec="milliseconds"),
+                    hashlib.sha256(request_id.encode()).hexdigest()[:24],
+                    identifier(application),
+                    identifier(function),
+                    identifier(provider),
+                    identifier(model),
+                    "success" if status == "success" else "error",
+                    identifier(diagnostic_code) if diagnostic_code else None,
+                    max(0, int(duration_ms)),
+                    _count(usage, "input_tokens", "prompt_tokens"),
+                    _count(usage, "output_tokens", "completion_tokens"),
+                    hashlib.sha256(event_key.encode()).hexdigest() if event_key else None,
+                ),
             )
-    except (OSError, sqlite3.Error, ValueError, TypeError):
+        return cursor.rowcount == 1
+    except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+        if strict:
+            raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
         # Fixed message only: database errors can contain sensitive paths or SQL values.
         LOG.warning("SubLLM usage journal unavailable; completion result preserved")
+        return False
 
 
 def _invalid() -> PoaContractError:
@@ -126,13 +158,24 @@ def query_usage(filters: Mapping[str, Any]) -> dict[str, Any]:
     except (ValueError, TypeError, OverflowError) as exc:
         raise _invalid() from exc
     result: dict[str, Any] = {
-        "schema": "subllm.usage/v1", "storage": "empty", "attempts": [], "next_before": None,
-        "summary": {"attempts": 0, "requests": 0, "errors": 0, "input_tokens": None, "output_tokens": None,
-                    "usage_known": 0, "average_ms": None},
-        "applications": [], "providers": [],
-        "coverage": "Updated SubLLM completion clients and catalog/route proxy requests only. "
-                    "Direct external API calls, local Ollama forwarding and code-edit transports are not included. "
-                    "Application identity is declared by the caller; missing identity appears as subactor-proxy.",
+        "schema": "subllm.usage/v1",
+        "storage": "empty",
+        "attempts": [],
+        "next_before": None,
+        "summary": {
+            "attempts": 0,
+            "requests": 0,
+            "errors": 0,
+            "input_tokens": None,
+            "output_tokens": None,
+            "usage_known": 0,
+            "average_ms": None,
+        },
+        "applications": [],
+        "providers": [],
+        "coverage": "Instrumented SubLLM clients and transports reporting through the local usage ingest. "
+        "Direct external API calls, local Ollama forwarding and code-edit transports are not included. "
+        "Application identity is declared by the caller; missing identity appears as subactor-proxy.",
     }
     path = journal_path()
     if not path.exists():
@@ -147,7 +190,8 @@ def query_usage(filters: Mapping[str, Any]) -> dict[str, Any]:
                 "COALESCE(SUM(status='error'),0) errors, SUM(input_tokens) input_tokens, "
                 "SUM(output_tokens) output_tokens, "
                 "COALESCE(SUM(input_tokens IS NOT NULL AND output_tokens IS NOT NULL),0) usage_known, "
-                "ROUND(AVG(duration_ms)) average_ms FROM attempts" + clause, values,
+                "ROUND(AVG(duration_ms)) average_ms FROM attempts" + clause,
+                values,
             ).fetchone()
             result["summary"] = dict(summary)
             page_clause = clause
@@ -155,13 +199,19 @@ def query_usage(filters: Mapping[str, Any]) -> dict[str, Any]:
             if before is not None:
                 page_clause += (" AND " if clause else " WHERE ") + "id < ?"
                 page_values.append(before)
-            rows = db.execute("SELECT * FROM attempts" + page_clause + " ORDER BY id DESC LIMIT ?",
-                              [*page_values, limit + 1]).fetchall()
+            rows = db.execute(
+                "SELECT id,timestamp,request_id,application,function,provider,model,status,"
+                "diagnostic_code,duration_ms,input_tokens,output_tokens FROM attempts"
+                + page_clause
+                + " ORDER BY id DESC LIMIT ?",
+                [*page_values, limit + 1],
+            ).fetchall()
             result["attempts"] = [dict(row) for row in rows[:limit]]
             result["next_before"] = rows[limit - 1]["id"] if len(rows) > limit else None
             for column, key in (("application", "applications"), ("provider", "providers")):
-                result[key] = [row[0] for row in db.execute(
-                    f"SELECT DISTINCT {column} FROM attempts ORDER BY {column} LIMIT 500")]
+                result[key] = [
+                    row[0] for row in db.execute(f"SELECT DISTINCT {column} FROM attempts ORDER BY {column} LIMIT 500")
+                ]
             result["storage"] = "ready"
         return result
     except sqlite3.Error as exc:
