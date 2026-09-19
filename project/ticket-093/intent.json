@@ -1,0 +1,26 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-093",
+  "summary": "Repair dependency ownership and verified managed Docs integration after adoption",
+  "workstream": "governance",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-093/**",
+    ".governance/manifest.json",
+    "scripts/check-docs-report.py",
+    "scripts/tests/test_docs_adoption.py",
+    "scripts/verify",
+    ".gitignore"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

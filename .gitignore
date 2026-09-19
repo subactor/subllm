@@ -40,3 +40,7 @@ uv.lock
 !project/**
 !.subactor/
 !.subactor/**
+
+# Generated Python caches remain private under script publication allowlists.
+scripts/**/__pycache__/
+scripts/**/*.py[cod]
