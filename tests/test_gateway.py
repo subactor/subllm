@@ -308,3 +308,43 @@ def test_stream_output_and_unsupported_parameters(setup, monkeypatch):
         assert "data: [DONE]" in r.text and '"content": "done"' in r.text
         assert client.post("/v1/chat/completions", headers=auth(), json={**payload, "tools": []}).status_code == 400
         assert client.post("/v1/chat/completions", headers=auth(OTHER), json=payload).status_code == 403
+
+
+def test_mcp_refused_connection_preserves_safe_cause_and_request(setup):
+    import socket
+
+    import anyio
+    from mcp.shared.message import SessionMessage
+    from mcp.types import JSONRPCMessage
+
+    from subllm.gateway_bus import GatewayPolicyBus
+    from subllm.gateway_mcp import MCPBridge
+
+    _, store = setup
+    # A bound, non-listening socket reserves a port that rejects connections.
+    with socket.socket() as endpoint:
+        endpoint.bind(("127.0.0.1", 0))
+        bridge = MCPBridge("refused", {"url": f"http://127.0.0.1:{endpoint.getsockname()[1]}/mcp"},
+                           store, "first", GatewayPolicyBus(store))
+
+        async def exchange():
+            incoming, read = anyio.create_memory_object_stream(1)
+            write, outgoing = anyio.create_memory_object_stream(1)
+            async with incoming, read, write, outgoing:
+                await incoming.send(SessionMessage(JSONRPCMessage.model_validate({
+                    "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                        "protocolVersion": "2025-06-18", "capabilities": {},
+                        "clientInfo": {"name": "test", "version": "1"}}})))
+                with anyio.fail_after(5):
+                    await bridge.run(read, write, None)
+                    response = await outgoing.receive()
+                assert response.message.model_dump()["error"]["message"] == "SUBLLM-UPSTREAM-TRANSPORT"
+
+        anyio.run(exchange)
+        rows = store.query(utc_now()[:10])
+        assert len(rows) == 1  # No automatic retry of an MCP request.
+        row = store.query(rows[0]["day"], rows[0]["id"])
+        assert row["status"] == "error"
+        assert row["request"]["method"] == "initialize"
+        assert row["diagnostic"]["transportCode"] == "ECONNREFUSED"
+        assert row["diagnostic"]["durationMs"] == row["duration_ms"]

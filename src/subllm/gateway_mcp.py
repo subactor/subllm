@@ -13,7 +13,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage
 
-from .gateway_diagnostics import diagnostic, rpc_diagnostic
+from .gateway_diagnostics import diagnostic, rpc_diagnostic, transport_diagnostic
 
 LOG = logging.getLogger(__name__)
 
@@ -94,24 +94,24 @@ class MCPBridge:
         if isinstance(first, Exception):
             return
         await anyio.to_thread.run_sync(observe, first, "client_to_server")
-        failed = False
+        failure = None
         try:
             with anyio.fail_after(self.config.get("session_lifetime_seconds", 3600)):
                 async with self.upstream() as (up_read, up_write), anyio.create_task_group() as group:
                     await up_write.send(first)
                     group.start_soon(pump, downstream_read, up_write, "client_to_server", group)
                     group.start_soon(pump, up_read, downstream_write, "server_to_client", group)
-        except Exception:
-            failed = True
+        except Exception as error:
+            failure = transport_diagnostic(error)
             # Never let the SDK print arbitrary provider exception text or payloads.
-            LOG.error("SUBLLM-UPSTREAM-TRANSPORT: MCP session failed")
+            LOG.error("%s: MCP session failed", failure["code"])
             for record, _ in pending.values():
                 if record["direction"] == "client_to_server":
                     reply = JSONRPCMessage.model_validate(
                         {
                             "jsonrpc": "2.0",
                             "id": record["request"]["id"],
-                            "error": {"code": -32603, "message": "SUBLLM-UPSTREAM-TRANSPORT"},
+                            "error": {"code": -32603, "message": failure["code"]},
                         }
                     )
                     with contextlib.suppress(Exception):
@@ -120,11 +120,14 @@ class MCPBridge:
             # No automatic tool retry: a lost response may follow a completed side effect.
             for record, started in pending.values():
                 try:
+                    elapsed = int((time.monotonic() - started) * 1000)
+                    info = dict(failure) if failure else diagnostic("SUBLLM-MCP-INTERRUPTED")
+                    info["durationMs"] = elapsed
                     self.store.finish(
                         record,
                         None,
-                        duration_ms=int((time.monotonic() - started) * 1000),
-                        diagnostic=diagnostic("SUBLLM-UPSTREAM-TRANSPORT" if failed else "SUBLLM-MCP-INTERRUPTED"),
+                        duration_ms=elapsed,
+                        diagnostic=info,
                     )
                 except Exception:
                     LOG.error("SUBLLM-ARCHIVE-WRITE: unfinished interaction remains pending")
