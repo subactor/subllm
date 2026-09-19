@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib.resources import files
 from typing import Any
 from urllib.parse import parse_qs, urlparse
 
@@ -9,7 +10,7 @@ from subllm.errors import SubLLMError
 
 from .bus import PolicyBus
 from .errors import PoaContractError
-from .registry import catalog_document
+from .registry import USAGE_URI, catalog_document
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 
@@ -26,6 +27,39 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
             self._error(421, "POA-HTTP-001", "host is not a local bind")
             return
         parsed = urlparse(self.path)
+        if parsed.path in {"/", "/assets/usage.css", "/assets/usage.js", "/v1/usage"}:
+            if not self._same_origin():
+                self._error(403, "USAGE-ORIGIN-001", "Cross-origin access is not allowed")
+                return
+            if parsed.path == "/v1/usage":
+                from subllm.usage import FILTERS
+
+                query = parse_qs(parsed.query, keep_blank_values=True)
+                if set(query) - FILTERS:
+                    self._error(400, "USAGE-FILTER-001", "Unknown usage filter")
+                    return
+                if any(len(value) != 1 for value in query.values()):
+                    self._error(400, "USAGE-FILTER-001", "Duplicate usage filter")
+                    return
+                self._dispatch_query({"schema": "subllm.query/v1", "process_uri": USAGE_URI,
+                                      **{key: value[0] for key, value in query.items()}})
+                return
+            name, content_type = {
+                "/": ("usage.html", "text/html; charset=utf-8"),
+                "/assets/usage.css": ("usage.css", "text/css; charset=utf-8"),
+                "/assets/usage.js": ("usage.js", "text/javascript; charset=utf-8"),
+            }[parsed.path]
+            body = files("subllm").joinpath("assets", name).read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", content_type)
+            self.send_header("Content-Length", str(len(body)))
+            self.send_header("Cache-Control", "no-store")
+            self.send_header("X-Content-Type-Options", "nosniff")
+            self.send_header("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'; "
+                             "base-uri 'none'; form-action 'self'")
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if parsed.path == "/health":
             self._json(200, {"status": "ok", "schema": "subllm.poa.health/v1"})
             return
@@ -45,6 +79,9 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if not self._local_host():
             self._error(421, "POA-HTTP-001", "host is not a local bind")
+            return
+        if not self._same_origin():
+            self._error(403, "USAGE-ORIGIN-001", "Cross-origin access is not allowed")
             return
         payload = self._read_json()
         if payload is None:
@@ -89,13 +126,21 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
         try:
             self._json(200, self.bus.query(payload))
         except PoaContractError as exc:
-            self._error(400, exc.code, str(exc))
+            self._error(503 if exc.code == "USAGE-STORAGE-001" else 400, exc.code, str(exc))
         except SubLLMError:
             self._error(422, "SUBLLM-POLICY-001", "policy request was rejected")
 
+    def _same_origin(self) -> bool:
+        origin = self.headers.get("Origin")
+        return (self.headers.get("Sec-Fetch-Site") != "cross-site"
+                and (origin is None or origin == "http://" + (self.headers.get("Host") or "")))
+
     def _local_host(self) -> bool:
-        host = (self.headers.get("Host") or "").split(":", 1)[0].strip().lower()
-        return host in ALLOWED_HOSTS
+        try:
+            host = urlparse("http://" + (self.headers.get("Host") or "")).hostname
+            return host in ALLOWED_HOSTS
+        except ValueError:
+            return False
 
     def _read_json(self) -> Any | None:
         length = self.headers.get("Content-Length")

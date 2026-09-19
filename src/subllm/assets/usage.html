@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pl"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>SubLLM · Użycie API</title><link rel="stylesheet" href="/assets/usage.css"><script src="/assets/usage.js" defer></script></head>
+<body><main>
+<header><div><span class="eyebrow">SUBLLM / OBSERWACJA</span><h1>Kto korzysta z API?</h1><p>Historia wywołań modeli, błędów i kolejnych prób.</p></div><div class="live"><span id="dot"></span><span id="connection" role="status">Łączenie…</span></div></header>
+<section class="metrics" aria-label="Podsumowanie wyników">
+<article><span>Żądania</span><strong id="requests">—</strong><small>Unikalne identyfikatory w wynikach</small></article>
+<article><span>Próby API</span><strong id="attempts">—</strong><small>W tym ponowienia i inni dostawcy</small></article>
+<article><span>Nieudane próby</span><strong id="errors">—</strong><small>Nie oznaczają zawsze błędu całego żądania</small></article>
+<article><span>Tokeny wejście / wyjście</span><strong id="tokens">—</strong><small id="coverage">Tylko dane zwrócone przez dostawcę</small></article>
+</section>
+<form id="filters" class="filters">
+<label>Aplikacja<select name="application" id="application"><option value="">Wszystkie aplikacje</option></select></label>
+<label>Dostawca<select name="provider" id="provider"><option value="">Wszyscy dostawcy</option></select></label>
+<label>Wynik<select name="status"><option value="">Wszystkie wyniki</option><option value="success">Sukces</option><option value="error">Błąd</option></select></label>
+<label>Od (czas lokalny)<input type="datetime-local" name="since"></label>
+<label>Do (czas lokalny)<input type="datetime-local" name="until"></label>
+<button type="submit">Zastosuj</button><button type="button" id="clear-filters" class="secondary">Wyczyść</button>
+</form>
+<div class="table-heading"><h2>Historia prób</h2><label class="toggle"><input id="auto" type="checkbox" checked> Odświeżaj co 5 s</label></div>
+<p id="notice" role="alert" hidden></p>
+<div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
+<p id="empty" hidden>Brak zarejestrowanych prób. Dane pojawią się po wywołaniu modelu przez zaktualizowany SubLLM. Przy aktywnych filtrach spróbuj je wyczyścić.</p>
+<div class="paging"><button id="latest" class="secondary" type="button">Najnowsze</button><span id="page-info"></span><button id="older" class="secondary" type="button" disabled>Starsze próby →</button></div>
+<aside><h2>Co obejmuje ten widok?</h2><p>Wywołania przez zaktualizowanego klienta SubLLM i trasy lub modele katalogowe jego proxy. Ruch wysyłany bezpośrednio do innych API, przekazywany do lokalnego Ollama oraz operacje edycji kodu nie są tutaj rejestrowane. Procesy korzystające ze starszej wersji wymagają aktualizacji i restartu.</p><p>Aplikacja jest deklarowana przez klienta. <code>subactor-proxy</code> oznacza brak osobnej identyfikacji aplikacji w proxy. Ten sam identyfikator żądania łączy próby u kolejnych dostawców. „—” oznacza brak danych o tokenach, nie zerowe zużycie. Koszt nie jest szacowany bez wiarygodnego cennika. Dla nieudanych prób zużycie może być nieznane.</p><p>Historia zaczyna się od włączenia rejestracji. Nie zapisujemy treści promptów, odpowiedzi ani kluczy API.</p></aside>
+<footer>SubLLM · Lokalny panel użycia API <span id="updated"></span></footer>
+</main></body></html>

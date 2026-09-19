@@ -49,6 +49,7 @@ from .registry import (
     RECEIPT_URI,
     RESOLVE_ROUTE_URI,
     URI_TO_PROCESS,
+    USAGE_URI,
     VALIDATE_URI,
     binding_for_process,
     get_process,
@@ -90,6 +91,7 @@ class PolicyBus:
     def __init__(self, store: EventStore | None = None) -> None:
         self.store = store or EventStore()
         self._queries: dict[str, QueryHandler] = {
+            USAGE_URI: self._query_usage,
             INSPECT_URI: self._query_inspect,
             LIST_ROUTES_URI: self._query_list_routes,
             EXPORT_CONTRACT_URI: self._query_export_contract,
@@ -143,6 +145,12 @@ class PolicyBus:
 
     def inspect(self, process_ref: str) -> dict[str, Any]:
         return self.query({"schema": "subllm.query/v1", "process_uri": INSPECT_URI, "process_ref": process_ref})
+
+    def _query_usage(self, document: dict[str, Any]) -> dict[str, Any]:
+        from subllm.usage import FILTERS, query_usage
+
+        payload = exact(document, {"schema", "process_uri"}, optional=FILTERS)
+        return query_usage({key: value for key, value in payload.items() if key in FILTERS})
 
     def _query_inspect(self, document: dict[str, Any]) -> dict[str, Any]:
         payload = exact(document, {"schema", "process_uri", "process_ref"})

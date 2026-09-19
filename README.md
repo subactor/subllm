@@ -243,3 +243,50 @@ Documentation deliverables follow [AGENTS.md](AGENTS.md) and the [documentation 
 
 
 Local Codex: [integration, configuration and verification](docs/analysis/codex-cli-integration.md).
+
+
+## API usage dashboard
+
+Run `subllm serve --host 127.0.0.1 --port 8788` and open
+<http://127.0.0.1:8788/>. The local panel shows which application/function called
+which provider/model, timestamps, success/failure, latency and input/output
+tokens. Filter by application, provider, result and time; browse older attempts
+or refresh the newest page every five seconds. A shared request ID connects
+fallback attempts. Token totals cover only reported usage; missing values are
+shown as unknown, including failed attempts that may still incur provider charges.
+No price or cost is invented.
+
+Updated SubLLM completion clients write a private SQLite journal at
+`~/.local/state/subllm/usage.sqlite3` (or `$XDG_STATE_HOME/subllm/usage.sqlite3`).
+Set `SUBLLM_USAGE_DB` to the same absolute path for clients and server to use a
+custom journal. Separate OS users or containers require an explicitly shared,
+access-controlled location. New database files are mode `0600`. History is
+retained until the operator archives/removes the database; there is no automatic
+expiry in this version. Back up a running database with SQLite's backup API.
+
+Coverage starts when clients are upgraded and restarted. It includes the Python
+`complete()` client and the proxy's catalog-model/registered-route completions.
+It does not include direct SDK/HTTP calls outside SubLLM, local Ollama forwarding,
+code-edit transports, requests rejected before a provider attempt, or older pinned
+runtimes. Proxy clients should supply `X-Subactor-Application` and
+`X-Subactor-Function` or use a registered `application/function` model alias.
+Without application attribution, proxy traffic is shown as `subactor-proxy`;
+caller-declared identity is not authenticated identity.
+
+Only bounded metadata and numeric token counts are stored: no prompts, generated
+content, raw exceptions, headers or credentials. A journal failure logs a fixed
+warning without changing a completion result or triggering a paid retry. The
+panel distinguishes an empty journal from an unavailable/corrupt database.
+
+The same read-only projection is exposed by `GET /v1/usage` and the PolicyBus
+query `subllm://local/policy/query/usage`, including through `subllm poa query`.
+HTTP filters: `application`, `provider`, `status` (`success`/`error`), `since` and
+`until` (timestamps with timezone), `limit` (1–500), and `before` (pagination ID).
+Summary totals apply to the whole filtered result, not just the visible page.
+Queries never create or append to the journal. Keep this server on loopback;
+foreign browser origins are rejected and no permissive CORS is enabled.
+
+Browser acceptance uses synthetic records in an isolated temporary database:
+`PYTHONPATH=src python scripts/verify-usage-browser.py` (requires Playwright and
+its Chromium installation; `--browser` accepts an existing Chromium executable).
+It checks filters, reset, live refresh, desktop/mobile layout and browser errors.

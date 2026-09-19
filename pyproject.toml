@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subactor-subllm"
-version = "1.11.0"
+version = "1.12.0"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -41,7 +41,7 @@ subllm-proxy = "subllm.proxy:serve_proxy"
 where = ["src"]
 
 [tool.setuptools.package-data]
-subllm = ["py.typed", "code2dsl_bridge.mjs", "code2dsl_projection.mjs"]
+subllm = ["py.typed", "code2dsl_bridge.mjs", "code2dsl_projection.mjs", "assets/*.html", "assets/*.css", "assets/*.js"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
