@@ -138,3 +138,39 @@ def test_pinned_logs_adoption_and_runtime_catalog():
     catalog = json.loads((root / ".governance/logs/catalog.json").read_text())
     assert catalog["diagnosticCodes"] == sorted(CATALOG)
     subprocess.run([sys.executable, str(root / "scripts/check-logs.py")], check=True, capture_output=True)
+
+
+def test_failed_upstream_returns_rpc_error_before_http_session_closes(tmp_path, monkeypatch):
+    import httpx
+
+    credential = "refused-test-" + "x" * 32
+    monkeypatch.setenv("REFUSED_GATEWAY_CREDENTIAL", credential)
+    store = InteractionStore(tmp_path / "refused")
+    with socket.socket() as unavailable:
+        unavailable.bind(("127.0.0.1", 0))
+        config = {
+            "clients": {"test": {"token_env": "REFUSED_GATEWAY_CREDENTIAL", "mcp": ["offline"]}},
+            "mcp": {"offline": {"url": f"http://127.0.0.1:{unavailable.getsockname()[1]}/mcp"}},
+        }
+        with running(config, store) as gateway, httpx.Client(timeout=5, trust_env=False) as client:
+            headers = {"Authorization": "Bearer " + credential, "Accept": "application/json, text/event-stream"}
+            response = client.post(gateway + "/mcp/offline", headers=headers, json={
+                "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                    "protocolVersion": "2025-06-18", "capabilities": {},
+                    "clientInfo": {"name": "test", "version": "1"}}})
+            assert response.status_code == 200
+            assert '"message":"SUBLLM-UPSTREAM-TRANSPORT"' in response.text
+            headers["Mcp-Session-Id"] = response.headers["mcp-session-id"]
+            headers["Mcp-Protocol-Version"] = "2025-06-18"
+            response = client.post(gateway + "/mcp/offline", headers=headers,
+                                   json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+            assert '"message":"SUBLLM-UPSTREAM-TRANSPORT"' in response.text
+            assert client.delete(gateway + "/mcp/offline", headers=headers).status_code == 200
+    rows = store.query(utc_now()[:10])
+    assert len(rows) == 2
+    assert all(row["diagnostic"]["transportCode"] == "ECONNREFUSED" for row in rows)
+    for row in rows:
+        detail = store.query(row["day"], row["id"])
+        assert detail["response"]["error"]["message"] == "SUBLLM-UPSTREAM-TRANSPORT"
+        assert detail["metadata"]["response_origin"] == "gateway"
+        assert detail["duration_ms"] == detail["diagnostic"]["durationMs"]
