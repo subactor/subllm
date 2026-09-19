@@ -1,14 +1,11 @@
-"""Optional real PostgreSQL matrix; each run owns a disposable schema."""
+"""Explicit PostgreSQL integration suite; requires a dedicated test DSN."""
 import os
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
-import pytest
-
 from subllm.interaction_store import InteractionStore
 
 
-@pytest.mark.skipif(not os.environ.get("SUBLLM_TEST_POSTGRES_DSN"), reason="dedicated PostgreSQL test DSN not supplied")
 def test_postgres_concurrency_partition_midnight_export(tmp_path, monkeypatch):
     import psycopg
     from psycopg.conninfo import make_conninfo

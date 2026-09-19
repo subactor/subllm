@@ -3,7 +3,7 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "unified-proxy",
   "kind": "information",
-  "version": 1,
+  "version": 2,
   "title": "Unified LLM and MCP proxy",
   "status": "implemented",
   "owner": "subactor/subllm",
@@ -94,4 +94,4 @@ The pilot has no automatic disk retention, crash replay, multi-host deployment f
 <!-- docs:section next_actions -->
 ## Next actions
 
-Run `./scripts/verify`, the PostgreSQL integration pilot and pinned Logs adoption checks. Publish via the protected local executor and independent Validator. Deploy a pinned artifact, migrate clients in bounded batches, verify a real read-only MCP call and LLM call from each consumer, and keep coverage gaps visible until observed traffic confirms adoption.
+Run `./scripts/verify` for the default suite and pinned Logs adoption checks. Run `python -m pytest -q integration/test_gateway_postgres.py` separately with `SUBLLM_TEST_POSTGRES_DSN` pointing to a dedicated test database. This integration suite requires that database and fails when the DSN is missing; it never reports an unexecuted database check as successful. Each run creates and removes its own unique schema, verifying concurrent writes, UTC midnight partitioning and SQLite export. Publish via the protected local executor and independent Validator. Deploy a pinned artifact, migrate clients in bounded batches, verify a real read-only MCP call and LLM call from each consumer, and keep coverage gaps visible until observed traffic confirms adoption.

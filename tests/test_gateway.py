@@ -30,8 +30,8 @@ def setup(tmp_path, monkeypatch):
     return config, InteractionStore(tmp_path / "archive")
 
 
-def auth(token=TOKEN):
-    return {"Authorization": "Bearer " + token}
+def auth(credential=TOKEN):
+    return {"Authorization": "Bearer " + credential}
 
 
 def test_llm_archive_isolation_and_deep_link(setup, monkeypatch):
