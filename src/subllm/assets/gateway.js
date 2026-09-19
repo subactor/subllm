@@ -1,6 +1,7 @@
 "use strict";
 const $ = id => document.getElementById(id);
-let credential = "", loading = false;
+let credential = "", loading = false, detailText = "", detailVersion = 0;
+function clearCopy() { detailText = ""; detailVersion++; $("copy-detail").disabled = true; $("copy-status").textContent = ""; }
 $("day").value = new Date().toISOString().slice(0,10);
 async function api(params) {
   const response = await fetch(`/v1/interactions?${params}`, {headers:{Authorization:`Bearer ${credential}`},cache:"no-store"});
@@ -13,9 +14,14 @@ function cell(row, value, className) {
   if(className) td.className=className; row.append(td); return td;
 }
 async function detail(day,id) {
+  clearCopy();
+  const version = detailVersion;
   try {
     const data=await api(new URLSearchParams({day,id}));
+    if(version !== detailVersion || !credential) return;
     if(!data) throw new Error("Brak wpisu lub brak uprawnień.");
+    detailText=JSON.stringify(data,null,2);
+    $("copy-detail").disabled=false;
     $("detail").hidden=false;
     $("request").textContent=JSON.stringify(data.request,null,2);
     $("response").textContent=JSON.stringify(data.response,null,2);
@@ -54,7 +60,18 @@ async function refresh() {
 }
 function openHash(){const match=location.hash.match(/^#(\d{4}-\d{2}-\d{2})\/([a-f0-9]{32})$/);if(match && credential) detail(match[1],match[2]);}
 $("connect").onclick=()=>{credential=$("credential").value;$("credential").value="";refresh();openHash();};
-$("disconnect").onclick=()=>{credential="";$("rows").replaceChildren();$("detail").hidden=true;for(const id of ["request","response","metadata"])$(id).textContent="";$("connection").textContent="Rozłączony";};
-$("refresh").onclick=refresh;$("close").onclick=()=>{$("detail").hidden=true;history.replaceState(null,"",location.pathname);};
+$("disconnect").onclick=()=>{clearCopy();credential="";$("rows").replaceChildren();$("detail").hidden=true;for(const id of ["request","response","metadata"])$(id).textContent="";$("connection").textContent="Rozłączony";};
+$("refresh").onclick=refresh;$("close").onclick=()=>{clearCopy();$("detail").hidden=true;history.replaceState(null,"",location.pathname);};
 for(const name of ["day","kind","status"])$(name).onchange=refresh;
 window.addEventListener("hashchange",openHash);setInterval(refresh,5000);
+
+$("copy-detail").onclick=async()=>{
+  if(!detailText) return;
+  const version=detailVersion;
+  try {
+    await navigator.clipboard.writeText(detailText);
+    if(version===detailVersion) $("copy-status").textContent="Skopiowano całe wywołanie do schowka.";
+  } catch {
+    if(version===detailVersion) $("copy-status").textContent="Nie udało się skopiować. Zezwól przeglądarce na dostęp do schowka lub zaznacz i skopiuj tekst ręcznie.";
+  }
+};
