@@ -1,7 +1,7 @@
 # Ticket 005: Add zero-dependency OpenAI-compatible SubLLM client
 
-- Status: IN_PROGRESS
-- Workflow state: PUBLICATION
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - Workstream: application
 - Owner: agent:codex under SESSION_EXECUTION_AUTHORIZATION
 

@@ -1,7 +1,6 @@
 # Ticket 061: Doctor profile pilot
-
-Status: IN_PROGRESS
-Workflow state: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 
 SESSION_EXECUTION_AUTHORIZATION: user requested continuation of implementation, tests and protected publication after R2. GitHub issue 61 allocates this legacy ticket; no managed allocator exists in this repository.
 

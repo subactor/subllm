@@ -2,8 +2,8 @@
 
 - **ID**: ticket-076
 - **Owner**: human:founder
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-09-18
 
 SESSION_EXECUTION_AUTHORIZATION: 2026-09-18, owner asked to disable cursor

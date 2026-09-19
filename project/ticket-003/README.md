@@ -1,6 +1,6 @@
 # ticket-003 - Prefer direct Z.AI GLM 5.3 for all SubLLM routes
 
-- Status: IN_PROGRESS
+- **Status**: DONE
 - Phase: PUBLICATION
 - Workstream: routing
 

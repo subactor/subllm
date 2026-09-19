@@ -2,8 +2,8 @@
 
 - **ID**: ticket-022
 - **Owner**: grok
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Workstream**: vision
 - **Created**: 2026-08-29
 

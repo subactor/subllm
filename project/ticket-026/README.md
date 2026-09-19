@@ -1,6 +1,6 @@
 # Ticket 026: Align the three-tier model catalog and TwinStudio routes
 
-- Status: IN_PROGRESS
+- **Status**: DONE
 - Workstream: routing
 
 ## Goal

@@ -1,7 +1,7 @@
 # Ticket 081: Ollama and OpenAI-compatible proxy server with ticket attribution and local daemon forwarding
 
-- Status: DONE
-- Workflow state: DONE
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - Workstream: runtime
 - Owner: agent:antigravity under SESSION_EXECUTION_AUTHORIZATION
 

@@ -1,7 +1,7 @@
 # Ticket 042: Payment-required provider failover
 
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Workstream**: runtime
 
 SESSION_EXECUTION_AUTHORIZATION: User requested autonomy repairs, tests and protected merge. Reuse existing issue #42 provider-capacity/failover scope.

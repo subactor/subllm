@@ -1,6 +1,6 @@
 # ticket-002 - Register Supervisor routes in SubLLM
 
-- Status: IN_PROGRESS
+- **Status**: DONE
 - Phase: PUBLICATION
 - Workstream: application
 

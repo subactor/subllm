@@ -1,6 +1,5 @@
 # Ticket 086: Unified LLM and MCP proxy
-
-Status: IN_PROGRESS
+- **Status**: DONE
 Owner: codex / unified-proxy-20260919
 Workstream: observability
 

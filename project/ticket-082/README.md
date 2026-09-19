@@ -1,7 +1,6 @@
 # Ticket 082: API usage history and panel
-
-Status: IN_PROGRESS
-Workflow state: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 Workstream: observability
 Owner: codex / api-panel-20260919
 

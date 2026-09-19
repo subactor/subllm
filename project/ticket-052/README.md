@@ -1,7 +1,6 @@
 # ticket-052: Keep explicit paths when prose directory words overflow context
-
-Status: IN_PROGRESS
-Workflow state: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 
 SESSION_EXECUTION_AUTHORIZATION: Founder authorized bounded Layer A delivery
 and protected publication. Live PLF-13618 failed

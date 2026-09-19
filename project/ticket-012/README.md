@@ -2,7 +2,7 @@
 
 - **ID**: ticket-012
 - **Owner**: founder
-- **Status**: ACTIVE
+- **Status**: DONE
 - **Workflow state**: PUBLICATION
 - **Created**: 2026-08-26
 

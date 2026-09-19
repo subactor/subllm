@@ -1,6 +1,6 @@
 # Ticket 021: Governed process DSL editor
 
-- **Status**: IN_PROGRESS / PUBLICATION
+- **Status**: DONE
 - **Workstream**: runtime
 
 ## Goal

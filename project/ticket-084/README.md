@@ -1,6 +1,5 @@
 # ticket-084: usage-mcp-ingest
-
-Status: IN_PROGRESS
+- **Status**: DONE
 Workstream: observability
 Owner: codex / api-telemetry-20260919
 
