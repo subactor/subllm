@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 5,
+  "version": 6,
   "status": "current",
-  "updated": "2026-09-10"
+  "updated": "2026-09-19"
 }
 ---
 
@@ -27,3 +27,5 @@ Existing documentation retains its historical format.
 - [LLM selection over code2dsl context](information/code2dsl-context.md)
 
 - [Versioned routing contract](information/routing-contract.md)
+
+- [Unified LLM and MCP proxy](information/unified-proxy.md)

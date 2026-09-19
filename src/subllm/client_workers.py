@@ -17,6 +17,7 @@ from .errors import (
     CompletionError,
     CursorRunError,
 )
+from .interaction_context import ACTIVE_ARCHIVE
 from .types import ResolvedRoute
 
 MAX_CURSOR_WORKER_RESULT_BYTES = 1_000_000
@@ -143,6 +144,7 @@ def _complete_openai_compatible(
     result = _run_openai_worker(
         {
             "schema": "subllm.openai-worker-request/v1",
+            **({"capture_exchange": True} if ACTIVE_ARCHIVE.get() is not None else {}),
             "provider": route.provider,
             "api_base": route.api_base,
             "wire_model": route.wire_model,
@@ -163,19 +165,18 @@ def _complete_openai_compatible(
             if status
             else f"{route.provider}/{route.wire_model} request failed: {outcome}"
         )
-        if not result["retryable"]:
-            raise CompletionError(message)
-        raise _RetryableAttemptError(
-            message,
-            outcome=outcome,
-            provider_level=bool(result["provider_level"]),
-        )
+        error = (_RetryableAttemptError(message, outcome=outcome, provider_level=bool(result["provider_level"]))
+                 if result["retryable"] else CompletionError(message))
+        error.outcome = outcome
+        error.private_exchange = result.get("exchange", {})
+        raise error
     return CompletionResponse(
         content=str(result["content"]),
         provider=route.provider,
         model=route.wire_model,
         usage=dict(result["usage"]),
         finish_reason=str(result["finish_reason"]),
+        raw=result.get("exchange", {}),
     )
 
 
@@ -225,12 +226,14 @@ def _run_openai_worker(
         ) from exc
     success_fields = {"schema", "status", "content", "usage", "finish_reason"}
     error_fields = {"schema", "status", "outcome", "provider_level", "retryable"}
-    if not isinstance(result, Mapping) or set(result) not in (success_fields, error_fields):
+    if not isinstance(result, Mapping) or set(result) - {"exchange"} not in (success_fields, error_fields):
         raise _RetryableAttemptError(
             "OpenAI-compatible worker returned an invalid result",
             outcome="invalid_response",
             provider_level=False,
         )
+    if "exchange" in result and not isinstance(result["exchange"], Mapping):
+        raise _RetryableAttemptError("Invalid private exchange", outcome="invalid_response")
     if result.get("schema") != "subllm.openai-worker-result/v1":
         raise _RetryableAttemptError(
             "OpenAI-compatible worker result schema is not supported",

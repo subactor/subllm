@@ -1,0 +1,803 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "schema": "wellmanifest.logs/contract-bundle/v1",
+  "version": "0.5.0",
+  "canonical": "protobuf",
+  "protobufPath": "proto/v0.5/wellmanifest/logs/v1/logs.proto",
+  "projection": "canonical-jsonl",
+  "hashProfile": "wellmanifest-canonical-json-v1+SHA-256",
+  "processes": {
+    "inspect": "logs://repository/contracts/query/inspect",
+    "validate": "logs://repository/events/query/validate",
+    "planAppend": "logs://stream/events/query/plan-append",
+    "append": "logs://stream/events/command/append",
+    "registerError": "logs://repository/errors/command/register"
+  },
+  "diagnosticCodes": [
+    "LOGS-VALIDATION-001"
+  ],
+  "vocabulary": {
+    "severities": [
+      "DEBUG",
+      "INFO",
+      "WARNING",
+      "ERROR",
+      "CRITICAL"
+    ],
+    "eventTypes": [
+      "contract_registered",
+      "validation_started",
+      "validation_passed",
+      "validation_failed",
+      "error_raised",
+      "remediation_started",
+      "remediation_completed"
+    ],
+    "continuityEventTypes": [
+      "agent.session_started",
+      "agent.intent_compiled",
+      "agent.tool_requested",
+      "agent.tool_completed",
+      "git.slice_checkpointed",
+      "work.split_requested",
+      "work.split_materialized",
+      "git.commit_created",
+      "git.push_started",
+      "git.push_completed",
+      "agent.resume_observed",
+      "agent.resume_decided",
+      "agent.snapshot_recorded"
+    ],
+    "outcomes": [
+      "OBSERVED",
+      "ACCEPTED",
+      "REJECTED",
+      "SUCCEEDED",
+      "FAILED"
+    ],
+    "errorCategories": [
+      "AUTHORITY",
+      "CHAIN",
+      "CONCURRENCY",
+      "CONFIGURATION",
+      "CONTRACT",
+      "DEPENDENCY",
+      "DOCUMENTATION",
+      "PROTOBUF",
+      "RESOURCE",
+      "RUNTIME",
+      "SAFETY",
+      "SECURITY",
+      "STORAGE",
+      "TRANSPORT"
+    ],
+    "reservedErrorNamespaces": [
+      "LOGS"
+    ],
+    "modes": [
+      "PLAN",
+      "APPLY"
+    ]
+  },
+  "requestGbnf": "root ::= inspect | plan_append\ninspect ::= \"{\\\"schema\\\":\\\"wellmanifest.logs/request/v1\\\",\\\"operation\\\":\\\"inspect\\\",\\\"processRef\\\":\\\"logs://repository/contracts/query/inspect\\\"}\"\nplan_append ::= \"{\\\"schema\\\":\\\"wellmanifest.logs/request/v1\\\",\\\"operation\\\":\\\"plan_append\\\",\\\"processRef\\\":\\\"logs://stream/events/query/plan-append\\\",\\\"stream\\\":\" string \",\\\"expectedVersion\\\":\" integer \",\\\"eventRef\\\":\" string \",\\\"eventSha256\\\":\" string \"}\"\ninteger ::= \"0\" | [1-9] [0-9]*\nstring ::= \"\\\"\" chars \"\\\"\"\nchars ::= ([^\"\\\\\\x00-\\x1f] | \"\\\\\" ([\"\\\\/bfnrt] | \"u\" [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F] [0-9a-fA-F]))*\n",
+  "schemas": {
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "path",
+        "sha256"
+      ],
+      "properties": {
+        "path": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 240,
+          "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+        },
+        "sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "event": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://wellmanifest.dev/schemas/logs/event.v1.json",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "eventId",
+        "stream",
+        "sequence",
+        "eventType",
+        "severity",
+        "mode",
+        "occurredAt",
+        "correlationId",
+        "causationId",
+        "producer",
+        "source",
+        "code",
+        "subjectRef",
+        "outcome",
+        "subjectState",
+        "evidence",
+        "inputHash",
+        "receiptRef",
+        "previousHash",
+        "eventHash",
+        "rawOutputIncluded",
+        "secretMaterialIncluded"
+      ],
+      "properties": {
+        "schema": {
+          "const": "wellmanifest.logs/event/v1"
+        },
+        "eventId": {
+          "type": "string",
+          "minLength": 8,
+          "maxLength": 128,
+          "pattern": "^event:[A-Za-z0-9._:-]+$"
+        },
+        "stream": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9._-]*$"
+        },
+        "sequence": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 9007199254740991
+        },
+        "eventType": {
+          "oneOf": [
+            {
+              "enum": [
+                "contract_registered",
+                "validation_started",
+                "validation_passed",
+                "validation_failed",
+                "error_raised",
+                "remediation_started",
+                "remediation_completed"
+              ]
+            },
+            {
+              "type": "string",
+              "minLength": 3,
+              "maxLength": 64,
+              "pattern": "^(?!logs\\.)[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_]*)+$"
+            }
+          ]
+        },
+        "severity": {
+          "enum": [
+            "DEBUG",
+            "INFO",
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "mode": {
+          "enum": [
+            "PLAN",
+            "APPLY"
+          ]
+        },
+        "occurredAt": {
+          "type": "string",
+          "format": "date-time",
+          "maxLength": 40
+        },
+        "correlationId": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9._:-]+$"
+        },
+        "causationId": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 128,
+              "pattern": "^[A-Za-z0-9._:-]+$"
+            }
+          ]
+        },
+        "producer": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 128,
+          "pattern": "^(human|agent|service):[A-Za-z0-9._:-]+$"
+        },
+        "source": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 64,
+          "pattern": "^[a-z][a-z0-9]*(?:\\.[a-z][a-z0-9_]*)*$"
+        },
+        "code": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$"
+            }
+          ]
+        },
+        "subjectRef": {
+          "type": "string",
+          "minLength": 3,
+          "maxLength": 160,
+          "pattern": "^[a-z][a-z0-9+.-]*:[A-Za-z0-9._:/-]+$"
+        },
+        "outcome": {
+          "enum": [
+            "OBSERVED",
+            "ACCEPTED",
+            "REJECTED",
+            "SUCCEEDED",
+            "FAILED"
+          ]
+        },
+        "subjectState": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            }
+          ]
+        },
+        "evidence": {
+          "type": "array",
+          "minItems": 0,
+          "maxItems": 16,
+          "uniqueItems": true,
+          "items": {
+            "$ref": "#/$defs/evidence"
+          }
+        },
+        "inputHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "receiptRef": {
+          "oneOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "string",
+              "minLength": 11,
+              "maxLength": 160,
+              "pattern": "^receipt://[a-z0-9][a-z0-9.-]{0,63}(?:/[A-Za-z0-9][A-Za-z0-9._:-]{0,63}){1,8}$"
+            }
+          ]
+        },
+        "previousHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "eventHash": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "rawOutputIncluded": {
+          "const": false
+        },
+        "secretMaterialIncluded": {
+          "const": false
+        },
+        "diagnostic": {
+          "$ref": "#/$defs/diagnostic"
+        },
+        "continuity": {
+          "oneOf": [
+            {"$ref": "#/$defs/sessionStarted"},
+            {"$ref": "#/$defs/intentCompiled"},
+            {"$ref": "#/$defs/toolRequested"},
+            {"$ref": "#/$defs/toolCompleted"},
+            {"$ref": "#/$defs/sliceCheckpointed"},
+            {"$ref": "#/$defs/splitRequested"},
+            {"$ref": "#/$defs/splitMaterialized"},
+            {"$ref": "#/$defs/commitCreated"},
+            {"$ref": "#/$defs/pushStarted"},
+            {"$ref": "#/$defs/pushCompleted"},
+            {"$ref": "#/$defs/resumeObserved"},
+            {"$ref": "#/$defs/resumeDecided"},
+            {"$ref": "#/$defs/snapshotRecorded"}
+          ]
+        }
+      },
+      "allOf": [
+        {"if": {"properties": {"eventType": {"const": "agent.session_started"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/sessionStarted"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "agent.intent_compiled"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/intentCompiled"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "agent.tool_requested"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/toolRequested"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "agent.tool_completed"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/toolCompleted"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "git.slice_checkpointed"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/sliceCheckpointed"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "work.split_requested"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/splitRequested"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "work.split_materialized"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/splitMaterialized"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "git.commit_created"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/commitCreated"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "git.push_started"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/pushStarted"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "git.push_completed"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/pushCompleted"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "agent.resume_observed"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/resumeObserved"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "agent.resume_decided"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/resumeDecided"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"const": "agent.snapshot_recorded"}}}, "then": {"properties": {"continuity": {"$ref": "#/$defs/snapshotRecorded"}}, "required": ["continuity"]}},
+        {"if": {"properties": {"eventType": {"not": {"enum": ["agent.session_started", "agent.intent_compiled", "agent.tool_requested", "agent.tool_completed", "git.slice_checkpointed", "work.split_requested", "work.split_materialized", "git.commit_created", "git.push_started", "git.push_completed", "agent.resume_observed", "agent.resume_decided", "agent.snapshot_recorded"]}}}}, "then": {"not": {"required": ["continuity"]}}}
+      ],
+      "$defs": {
+        "digest": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        },
+        "receiptRef": {
+          "type": "string",
+          "minLength": 11,
+          "maxLength": 160,
+          "pattern": "^receipt://[a-z0-9][a-z0-9.-]{0,63}(?:/[A-Za-z0-9][A-Za-z0-9._:-]{0,63}){1,8}$"
+        },
+        "sessionStarted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sessionDigest"],
+          "properties": {"sessionDigest": {"$ref": "#/$defs/digest"}}
+        },
+        "intentCompiled": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sourceDigest", "intentDigest", "compilerReceiptRef"],
+          "properties": {
+            "sourceDigest": {"$ref": "#/$defs/digest"},
+            "intentDigest": {"$ref": "#/$defs/digest"},
+            "compilerReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "toolRequested": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["intentDigest", "requestDigest"],
+          "properties": {
+            "intentDigest": {"$ref": "#/$defs/digest"},
+            "requestDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "toolCompleted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["requestDigest", "resultDigest", "executionReceiptRef"],
+          "properties": {
+            "requestDigest": {"$ref": "#/$defs/digest"},
+            "resultDigest": {"$ref": "#/$defs/digest"},
+            "executionReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "sliceCheckpointed": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sliceDigest", "validationDigests", "validationReceiptRefs"],
+          "properties": {
+            "sliceDigest": {"$ref": "#/$defs/digest"},
+            "validationDigests": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
+            "validationReceiptRefs": {"type": "array", "minItems": 1, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/receiptRef"}}
+          }
+        },
+        "splitRequested": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["parentWorkDigest", "splitPlanDigest"],
+          "properties": {
+            "parentWorkDigest": {"$ref": "#/$defs/digest"},
+            "splitPlanDigest": {"$ref": "#/$defs/digest"}
+          }
+        },
+        "splitMaterialized": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["splitPlanDigest", "acceptedWorkDigests", "splitReceiptRef"],
+          "properties": {
+            "splitPlanDigest": {"$ref": "#/$defs/digest"},
+            "acceptedWorkDigests": {"type": "array", "minItems": 2, "maxItems": 16, "uniqueItems": true, "items": {"$ref": "#/$defs/digest"}},
+            "splitReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "commitCreated": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["sliceDigest", "commitDigest", "commitReceiptRef"],
+          "properties": {
+            "sliceDigest": {"$ref": "#/$defs/digest"},
+            "commitDigest": {"$ref": "#/$defs/digest"},
+            "commitReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "pushStarted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commitDigest", "pushPlanDigest", "pushStartReceiptRef"],
+          "properties": {
+            "commitDigest": {"$ref": "#/$defs/digest"},
+            "pushPlanDigest": {"$ref": "#/$defs/digest"},
+            "pushStartReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "pushCompleted": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["commitDigest", "pushPlanDigest", "remoteStateDigest", "pushReceiptRef"],
+          "properties": {
+            "commitDigest": {"$ref": "#/$defs/digest"},
+            "pushPlanDigest": {"$ref": "#/$defs/digest"},
+            "remoteStateDigest": {"$ref": "#/$defs/digest"},
+            "pushReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "resumeObserved": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["snapshotDigest", "expectedStateDigest", "observedStateDigest", "observationDigest", "observationReceiptRef"],
+          "properties": {
+            "snapshotDigest": {"$ref": "#/$defs/digest"},
+            "expectedStateDigest": {"$ref": "#/$defs/digest"},
+            "observedStateDigest": {"$ref": "#/$defs/digest"},
+            "observationDigest": {"$ref": "#/$defs/digest"},
+            "observationReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "resumeDecided": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["observationDigest", "decisionDigest", "decisionReceiptRef"],
+          "properties": {
+            "observationDigest": {"$ref": "#/$defs/digest"},
+            "decisionDigest": {"$ref": "#/$defs/digest"},
+            "decisionReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "snapshotRecorded": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["snapshotDigest", "stateDigest", "snapshotReceiptRef"],
+          "properties": {
+            "snapshotDigest": {"$ref": "#/$defs/digest"},
+            "stateDigest": {"$ref": "#/$defs/digest"},
+            "snapshotReceiptRef": {"$ref": "#/$defs/receiptRef"}
+          }
+        },
+        "diagnostic": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "phase",
+            "status",
+            "retryable",
+            "attempt",
+            "attempts",
+            "durationMs",
+            "endpointRef",
+            "transportCode",
+            "httpStatus",
+            "remediationRefs",
+            "traceId",
+            "spanId"
+          ],
+          "properties": {
+            "phase": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "status": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 32,
+              "pattern": "^[a-z][a-z0-9_]*$"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "attempt": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "attempts": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 1000
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 604800000
+            },
+            "endpointRef": {
+              "oneOf": [
+                {"type": "null"},
+                {
+                  "type": "string",
+                  "minLength": 3,
+                  "maxLength": 255,
+                  "pattern": "^(?:endpoint:[A-Za-z0-9._:/-]+|https?://(?:[A-Za-z0-9](?:[A-Za-z0-9.-]{0,251}[A-Za-z0-9])?|\\[[0-9A-Fa-f:.]+\\])(?::[1-9][0-9]{0,4})?)$"
+                }
+              ]
+            },
+            "transportCode": {
+              "oneOf": [
+                {"type": "null"},
+                {"type": "string", "minLength": 2, "maxLength": 64, "pattern": "^[A-Z][A-Z0-9_]*$"}
+              ]
+            },
+            "httpStatus": {
+              "oneOf": [
+                {"type": "null"},
+                {"type": "integer", "minimum": 100, "maximum": 599}
+              ]
+            },
+            "remediationRefs": {
+              "type": "array",
+              "minItems": 0,
+              "maxItems": 8,
+              "uniqueItems": true,
+              "items": {
+                "type": "string",
+                "minLength": 8,
+                "maxLength": 200,
+                "pattern": "^(?:error|knowledge|runbook)://[A-Za-z0-9._:/-]+$"
+              }
+            },
+            "traceId": {
+              "oneOf": [
+                {"type": "null"},
+                {"type": "string", "pattern": "^[a-f0-9]{32}$"}
+              ]
+            },
+            "spanId": {
+              "oneOf": [
+                {"type": "null"},
+                {"type": "string", "pattern": "^[a-f0-9]{16}$"}
+              ]
+            }
+          }
+        },
+        "evidence": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "path",
+            "sha256"
+          ],
+          "properties": {
+            "path": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 240,
+              "pattern": "^(?!/)(?!.*(?:^|/)\\.\\.(?:/|$))[A-Za-z0-9._/-]+$"
+            },
+            "sha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      }
+    },
+    "error": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://wellmanifest.dev/schemas/logs/error.v1.json",
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "schema",
+        "code",
+        "version",
+        "severity",
+        "category",
+        "title",
+        "meaning",
+        "causes",
+        "remediation",
+        "verification",
+        "doNot",
+        "owner",
+        "relatedEventTypes"
+      ],
+      "properties": {
+        "schema": {
+          "const": "wellmanifest.logs/error/v1"
+        },
+        "code": {
+          "type": "string",
+          "pattern": "^[A-Z][A-Z0-9]*(?:-[A-Z0-9]+)+$"
+        },
+        "version": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 2147483647
+        },
+        "severity": {
+          "enum": [
+            "WARNING",
+            "ERROR",
+            "CRITICAL"
+          ]
+        },
+        "category": {
+          "enum": [
+            "AUTHORITY",
+            "CHAIN",
+            "CONCURRENCY",
+            "CONFIGURATION",
+            "CONTRACT",
+            "DEPENDENCY",
+            "DOCUMENTATION",
+            "PROTOBUF",
+            "RESOURCE",
+            "RUNTIME",
+            "SAFETY",
+            "SECURITY",
+            "STORAGE",
+            "TRANSPORT"
+          ]
+        },
+        "title": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 160
+        },
+        "meaning": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 600
+        },
+        "causes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "uniqueItems": true,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "remediation": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320
+          }
+        },
+        "verification": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 320
+          }
+        },
+        "doNot": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 12,
+          "items": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 240
+          }
+        },
+        "owner": {
+          "type": "string",
+          "pattern": "^(human|agent|service|unresolved):[A-Za-z0-9._:-]+$"
+        },
+        "relatedEventTypes": {
+          "type": "array",
+          "minItems": 1,
+          "maxItems": 7,
+          "uniqueItems": true,
+          "items": {
+            "enum": [
+              "contract_registered",
+              "validation_started",
+              "validation_passed",
+              "validation_failed",
+              "error_raised",
+              "remediation_started",
+              "remediation_completed"
+            ]
+          }
+        }
+      }
+    },
+    "request": {
+      "$schema": "https://json-schema.org/draft/2020-12/schema",
+      "$id": "https://wellmanifest.dev/schemas/logs/request.v1.json",
+      "oneOf": [
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema",
+            "operation",
+            "processRef"
+          ],
+          "properties": {
+            "schema": {
+              "const": "wellmanifest.logs/request/v1"
+            },
+            "operation": {
+              "const": "inspect"
+            },
+            "processRef": {
+              "const": "logs://repository/contracts/query/inspect"
+            }
+          }
+        },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "required": [
+            "schema",
+            "operation",
+            "processRef",
+            "stream",
+            "expectedVersion",
+            "eventRef",
+            "eventSha256"
+          ],
+          "properties": {
+            "schema": {
+              "const": "wellmanifest.logs/request/v1"
+            },
+            "operation": {
+              "const": "plan_append"
+            },
+            "processRef": {
+              "const": "logs://stream/events/query/plan-append"
+            },
+            "stream": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 64,
+              "pattern": "^[a-z][a-z0-9._-]*$"
+            },
+            "expectedVersion": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 9007199254740991
+            },
+            "eventRef": {
+              "type": "string",
+              "maxLength": 320,
+              "pattern": "^artifact://[a-z0-9.-]+/[A-Za-z0-9._:/-]+/r[1-9][0-9]*$"
+            },
+            "eventSha256": {
+              "type": "string",
+              "pattern": "^[a-f0-9]{64}$"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "subactor-subllm"
-version = "1.13.0"
+version = "1.14.0"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -21,10 +21,14 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+gateway = ["mcp==1.26.0", "uvicorn>=0.35,<1", "psycopg[binary]>=3.2,<4"]
 cursor = [
   "cursor-sdk>=1.0.28,<2",
 ]
 test = [
+  "mcp==1.26.0",
+  "uvicorn>=0.35,<1",
+  "psycopg[binary]>=3.2,<4",
   "build>=1.2,<2",
   "jsonschema==4.26.0",
   "pytest>=8,<10",
@@ -35,6 +39,8 @@ test = [
 subllm = "subllm.cli:main"
 subllm-code-edit = "subllm.client:code_edit_main"
 subllm-complete = "subllm.client:completion_main"
+subllm-mcp-proxy = "subllm.gateway_stdio:main"
+subllm-gateway = "subllm.gateway:main"
 subllm-proxy = "subllm.proxy:serve_proxy"
 
 [tool.setuptools.packages.find]

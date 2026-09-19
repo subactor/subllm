@@ -1,0 +1,9 @@
+{
+  "schema": "subllm.logs-adoption/v1",
+  "source_revision": "8374d5364e5c78ae69806fb60a06aa52cd23d1e3",
+  "source_repository": "https://github.com/wellmanifest/logs",
+  "artifacts": {
+    "standard/logs_check.py": "aab380273416b72528079679fb9b5d0659ffe305f4c82bdc95025f41926e162e",
+    "contracts/logs.contract.v0.5.json": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36"
+  }
+}
