@@ -90,7 +90,7 @@ def test_ingest_reports_unavailable_storage(monkeypatch, tmp_path):
 
 
 @pytest.mark.parametrize(
-    "command", ["delete all", "usage.delete", "usage.list limit=1 limit=2", "usage.list token=abc"]
+    "command", ["delete all", "usage.delete", "usage.list limit=1 limit=2", "usage.list unknown_filter=abc"]
 )
 def test_dsl_cannot_mutate_or_expand_scope(command):
     with pytest.raises(PoaContractError):
