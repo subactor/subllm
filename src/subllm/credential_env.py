@@ -98,6 +98,11 @@ def find_env_file(
         for candidate in candidates:
             if candidate.is_file():
                 return candidate
+
+    user_env = Path.home() / ".config" / "subllm" / ".env"
+    if user_env.is_file():
+        return user_env
+
     return None
 
 

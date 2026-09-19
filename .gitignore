@@ -20,3 +20,9 @@ dist/
 .agent-state/
 .nlp2dsl/
 uv.lock
+
+# koru runtime artefacts (generated)
+.planfile/.koru/
+.koru/
+.planfile/sprints/*.bak-*
+.cursor/

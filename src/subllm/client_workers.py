@@ -185,11 +185,18 @@ def _run_openai_worker(
     timeout_seconds: float,
 ) -> Mapping[str, Any]:
     encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
+    env = dict(os.environ)
+    subllm_src = str(Path(__file__).resolve().parents[1])
+    cur_pypath = env.get("PYTHONPATH", "")
+    if subllm_src not in cur_pypath.split(os.pathsep):
+        env["PYTHONPATH"] = f"{cur_pypath}{os.pathsep}{subllm_src}" if cur_pypath else subllm_src
+
     process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
         [sys.executable, "-m", "subllm.openai_worker"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
+        env=env,
         start_new_session=True,
     )
     try:
