@@ -2,6 +2,7 @@
 """Run the pinned documentation validators; local results grant no authority."""
 
 import argparse
+import hashlib
 import importlib.util
 import json
 import os
@@ -12,6 +13,35 @@ ROOT = Path(__file__).resolve().parents[1]
 SPEC = importlib.util.spec_from_file_location("documentation_adapter", ROOT / "standards/docs_report.py")
 adapter = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(adapter)
+
+
+
+# Reviewed adoption 0.20.35 at cfaa0bf0ea6b0e7349fed0bb62b5ce15792d687d.
+# An upgrade must explicitly review this pin; candidate metadata cannot exempt files.
+ADOPTION_LOCK_SHA256 = "763f1dc2f7b31e9001c4c899388e82e9344932fd304463f950302dc0c09acdd5"
+
+
+def managed_document_copies(root):
+    def verified_path(relative):
+        path = Path(relative)
+        if path.is_absolute() or ".." in path.parts:
+            raise RuntimeError("Invalid managed path")
+        current = root
+        for part in path.parts:
+            current /= part
+            if current.is_symlink():
+                raise RuntimeError("Symlinked managed artifact")
+        return current
+
+    lock_bytes = verified_path(".governance/manifest.lock.json").read_bytes()
+    if hashlib.sha256(lock_bytes).hexdigest() != ADOPTION_LOCK_SHA256:
+        raise RuntimeError("Unreviewed new-project adoption lock")
+    managed = json.loads(lock_bytes)["managedFiles"]
+    for relative, expected in managed.items():
+        if hashlib.sha256(verified_path(relative).read_bytes()).hexdigest() != expected:
+            raise RuntimeError("Modified managed artifact: " + relative)
+    return {path: digest for path, digest in managed.items()
+            if path.startswith(".governance/docs/") and path.endswith(".md")}
 
 
 def main():
@@ -42,7 +72,7 @@ def main():
                 ["git", "merge-base", "HEAD", "refs/remotes/origin/main"], cwd=ROOT, text=True
             ).strip()
         )
-        result = adapter.check(ROOT, entries, base, args.deliverable, args.prepared_plan)
+        result = adapter.check(ROOT, entries, base, args.deliverable, args.prepared_plan, managed_document_copies(ROOT))
     except (OSError, ValueError, KeyError, RuntimeError, subprocess.CalledProcessError) as error:
         print(json.dumps({"ok": False, "error": str(error)}))
         return 1

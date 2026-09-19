@@ -5,5 +5,5 @@ python scripts/check-docs-report.py
 python scripts/check-logs.py
 python -m ruff check --no-respect-gitignore src tests integration
 python -m compileall -q src tests integration
-python -m pytest -q
+python -m pytest -q tests scripts/tests
 python -m build

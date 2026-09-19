@@ -109,7 +109,8 @@
           "events/**",
           "error/**",
           "models/**",
-          "proto/**"
+          "proto/**",
+          "requirements-test.txt"
         ]
       },
       "interfaces": {
