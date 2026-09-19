@@ -60,6 +60,13 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if parsed.path == "/mcp":
+            self._error(405, "MCP-HTTP-001", "Use POST; server does not provide an SSE stream")
+            return
+        if parsed.path == "/api/v1/schema":
+            from subllm.usage_dsl import grammar
+            self._json(200, grammar())
+            return
         if parsed.path == "/health":
             self._json(200, {"status": "ok", "schema": "subllm.poa.health/v1"})
             return
@@ -88,6 +95,26 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
             return
         path = urlparse(self.path).path
         try:
+            if path == "/mcp":
+                from subllm.mcp import VERSIONS, dispatch
+                if self.headers.get("MCP-Protocol-Version", "2025-03-26") not in VERSIONS:
+                    self._error(400, "MCP-VERSION-001", "Unsupported MCP version")
+                    return
+                response = dispatch(payload, self.bus)
+                if response is None:
+                    self.send_response(202)
+                    self.send_header("Content-Length", "0")
+                    self.end_headers()
+                else:
+                    self._json(200, response)
+                return
+            if path in {"/api/v1/dsl", "/api/v1/query"}:
+                from subllm.usage_dsl import ask, execute
+                key = "command" if path.endswith("dsl") else "question"
+                if not isinstance(payload, dict) or set(payload) != {key}:
+                    raise PoaContractError("USAGE-DSL-001", "Expected a closed DSL/query request")
+                self._json(200, (execute if key == "command" else ask)(payload[key], self.bus))
+                return
             if path == "/v1/inspect":
                 process_ref = payload.get("process_ref") if isinstance(payload, dict) else None
                 if not isinstance(process_ref, str):

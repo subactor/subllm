@@ -30,6 +30,7 @@ CONFIGURED_ROUTE_URI = "subllm://local/policy/query/configured-route"
 RESOLVE_ROUTE_URI = "subllm://local/policy/query/resolve-route"
 OBSERVE_CREDENTIALS_URI = "subllm://local/policy/query/observe-credentials"
 VALIDATE_URI = "subllm://local/policy/query/validate"
+RECORD_USAGE_URI = "subllm://local/policy/command/record-usage"
 USAGE_URI = "subllm://local/policy/query/usage"
 EVENTS_URI = "subllm://local/policy/query/events"
 RECEIPT_URI = "subllm://local/policy/query/receipt"
@@ -46,6 +47,7 @@ CONFIGURED_ROUTE_REF = "poa://subactor.subllm/process/configured-route/v1"
 RESOLVE_ROUTE_REF = "poa://subactor.subllm/process/resolve-route/v1"
 OBSERVE_CREDENTIALS_REF = "poa://subactor.subllm/process/observe-credentials/v1"
 VALIDATE_REF = "poa://subactor.subllm/process/validate-policy/v1"
+RECORD_USAGE_REF = "poa://subactor.subllm/process/record-usage/v1"
 USAGE_REF = "poa://subactor.subllm/process/usage/v1"
 EVENTS_REF = "poa://subactor.subllm/process/list-events/v1"
 RECEIPT_REF = "poa://subactor.subllm/process/get-receipt/v1"
@@ -105,6 +107,9 @@ def _process(process_ref: str, title: str, steps: list[dict[str, Any]]) -> dict[
 
 
 PROCESSES: dict[str, dict[str, Any]] = {
+    RECORD_USAGE_REF: _process(RECORD_USAGE_REF, "Record a declared application API attempt",
+                               [_step("record-usage", CAP_JOURNAL, "command", ["write_data"],
+                                      idempotency="required")]),
     USAGE_REF: _process(USAGE_REF, "Read API usage history",
                         [_step("usage", CAP_JOURNAL, "query", ["read_data"])]),
     INSPECT_REF: _process(
@@ -287,6 +292,7 @@ BINDINGS: dict[str, dict[str, Any]] = {
 }
 
 PROCESS_URIS: dict[str, str] = {
+    RECORD_USAGE_REF: RECORD_USAGE_URI,
     USAGE_REF: USAGE_URI,
     INSPECT_REF: INSPECT_URI,
     EXPORT_CONTRACT_REF: EXPORT_CONTRACT_URI,
@@ -305,6 +311,7 @@ PROCESS_URIS: dict[str, str] = {
 }
 
 URI_KIND = {
+    RECORD_USAGE_URI: "command",
     USAGE_URI: "query",
     INSPECT_URI: "query",
     EXPORT_CONTRACT_URI: "query",

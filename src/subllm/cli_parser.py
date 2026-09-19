@@ -75,6 +75,10 @@ def _parser() -> argparse.ArgumentParser:
     serve_parser = subparsers.add_parser("serve", help="serve the local POA CQRS HTTP API")
     serve_parser.add_argument("--host", default="127.0.0.1")
     serve_parser.add_argument("--port", type=int, default=8788)
+    subparsers.add_parser("mcp", help="read-only usage MCP over stdio")
+    for name in ("ask", "dsl"):
+        usage_parser = subparsers.add_parser(name, help="query API usage through the shared DSL")
+        usage_parser.add_argument("text")
     proxy_parser = subparsers.add_parser("proxy", help="serve the Ollama and OpenAI-compatible proxy server")
     proxy_parser.add_argument("--host", default="127.0.0.1")
     proxy_parser.add_argument("--port", type=int, default=11435)

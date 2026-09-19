@@ -290,3 +290,41 @@ Browser acceptance uses synthetic records in an isolated temporary database:
 `PYTHONPATH=src python scripts/verify-usage-browser.py` (requires Playwright and
 its Chromium installation; `--browser` accepts an existing Chromium executable).
 It checks filters, reset, live refresh, desktop/mobile layout and browser errors.
+
+
+## MCP, NL/DSL and transport telemetry
+
+Version 1.13 adds read-only MCP on the panel's `/mcp` endpoint (Streamable HTTP,
+JSON responses) and `subllm mcp` (stdio). Tools: `execute_dsl`, `nl_ask`, and
+`describe_grammar`; resource: `schema://current`. Example tool arguments:
+`{"command":"usage.list provider=zai application=validator-agent limit=20"}`.
+CLI equivalents: `subllm dsl 'usage.list provider=zai'` and
+`subllm ask 'pokaż logi z.ai'`. REST equivalents are `POST /api/v1/dsl` with
+`command`, `POST /api/v1/query` with `question`, and `GET /api/v1/schema`.
+All reads use the same PolicyBus projection and never contact a provider.
+
+This is a bounded read-only interface subset inspired by
+[wellmanifest/nl-dsl-llm](https://github.com/wellmanifest/nl-dsl-llm/blob/2040efe37b9eb898350f3fec0285a2d4e69d4e34/spec/NL_DSL_LLM_SPECIFICATION.md),
+not a claim of full draft conformance: there is no paid NL fallback or mutation
+DSL. Unknown questions and commands fail closed. MCP transport follows the
+[2025-06-18 specification](https://modelcontextprotocol.io/specification/2025-06-18/basic/transports).
+Configure MCP clients with `command: subllm`, `args: [mcp]` for stdio, or the
+actual panel URL plus `/mcp` for HTTP (this host uses port 18988). Keep it local.
+
+Applications with their own LiteLLM/HTTP transport must report each actual
+attempt to `POST /v1/commands`, using process URI
+`subllm://local/policy/command/record-usage`, schema `subllm.command/v1`, a
+`service:...` subject, a unique `usage.<uuid>` idempotency key, and an `attempt`:
+`request_id`, `application`, `function`, `provider`, `model`, `status`
+(`success`/`error`), `duration_ms`, and `usage` containing only optional numeric
+`input_tokens`/`output_tokens`. Optional `diagnostic_code` is a bounded code,
+never a provider message. Unknown fields, content and invalid values are rejected.
+Each attempt key is deduplicated persistently. The collector emits a secret-free
+POA event for accepted new attempts; query operations remain read-only.
+
+A routing lookup alone does not record usage. Transport adapters must be deployed
+and enabled, with `SUBLLM_USAGE_URL` set to the collector's loopback base URL.
+Their delivery failures must not alter provider results or trigger paid retries.
+Caller-declared application metadata is not an authenticated billing identity.
+No old receipt files are automatically imported: historical test fixtures must
+never be presented as actual provider traffic.
