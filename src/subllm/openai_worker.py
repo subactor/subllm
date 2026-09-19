@@ -19,8 +19,10 @@ def _request(source: Any) -> Mapping[str, Any]:
         "schema", "provider", "api_base", "wire_model", "api_key", "messages",
         "model_parameters", "request_fields", "extra_headers", "response_format",
     }
-    if not isinstance(source, Mapping) or set(source) != fields:
+    if not isinstance(source, Mapping) or set(source) - {"capture_exchange"} != fields:
         raise CompletionError("OpenAI worker request must be a closed JSON object")
+    if "capture_exchange" in source and type(source["capture_exchange"]) is not bool:
+        raise CompletionError("capture_exchange must be boolean")
     if source.get("schema") != "subllm.openai-worker-request/v1":
         raise CompletionError("OpenAI worker request schema is not supported")
     provider = source.get("provider")
@@ -87,6 +89,21 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
     }
     if source["response_format"] is not None:
         body["response_format"] = dict(source["response_format"])
+    def finish(result, response=None):
+        if not source.get("capture_exchange"):
+            return result
+        # Only API JSON bodies enter this private channel, never request headers or worker credentials.
+        exchange = {"request": body, "response": response}
+        def scrub(value):
+            if isinstance(value, str):
+                return value.replace(str(source["api_key"]), "[credential removed]")
+            if isinstance(value, Mapping):
+                return {scrub(key): scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            return value
+        return {**result, "exchange": scrub(exchange)}
+
     request = Request(
         f"{str(source['api_base']).rstrip('/')}/chat/completions",
         data=json.dumps(body, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),
@@ -102,32 +119,41 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             payload = response.read()
     except HTTPError as exc:
         status = exc.code
+        error_body = None
+        if source.get("capture_exchange"):
+            try:
+                encoded_error = exc.read(1_000_001)
+                error_body = (json.loads(encoded_error) if len(encoded_error) <= 1_000_000
+                              else {"capture_status": "response_exceeds_limit"})
+            except (ValueError, OSError, AttributeError):
+                error_body = {"capture_status": "non_json_or_unreadable_error"}
         if status == 404:
-            return _error("model_unavailable", provider_level=False, retryable=True)
+            return finish(_error("model_unavailable", provider_level=False, retryable=True), error_body)
         retryable = status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
-        return _error(f"http_{status}", provider_level=True, retryable=retryable)
+        return finish(_error(f"http_{status}", provider_level=True, retryable=retryable), error_body)
     except (TimeoutError, URLError, OSError) as exc:
         return _error(
             "timeout" if isinstance(exc, TimeoutError) else "transport_error",
             provider_level=True,
             retryable=True,
         )
+    raw = None
     try:
         raw = json.loads(payload.decode("utf-8"))
         choice = raw["choices"][0]
         content = choice["message"]["content"]
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
-        return _error("invalid_response", provider_level=False, retryable=True)
+        return finish(_error("invalid_response", provider_level=False, retryable=True), raw)
     if not isinstance(content, str) or not content:
-        return _error("invalid_response", provider_level=False, retryable=True)
+        return finish(_error("invalid_response", provider_level=False, retryable=True), raw)
     usage = raw.get("usage")
-    return {
+    return finish({
         "schema": "subllm.openai-worker-result/v1",
         "status": "SUCCESS",
         "content": content,
         "usage": dict(usage) if isinstance(usage, Mapping) else {},
         "finish_reason": str(choice.get("finish_reason") or ""),
-    }
+    }, raw)
 
 
 def main() -> int:

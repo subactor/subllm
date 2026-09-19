@@ -21,6 +21,7 @@ from .errors import (
     CursorRunError,
 )
 from .health import order_by_health, record_failure, record_success
+from .interaction_context import begin_attempt, finish_attempt
 from .policy_config import load_policy_config
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
@@ -75,11 +76,14 @@ def _complete_route(
     started = time.monotonic()
     response = None
     diagnostic = None
+    attempt_error = None
+    archive = begin_attempt(route, messages, response_format)
     try:
         response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
                                  request_id=request_id, response_format=response_format, cwd=cwd)
         return response
     except Exception as exc:
+        attempt_error = exc
         # Never persist exception messages, raw provider errors or headers.
         if isinstance(exc, _RetryableAttemptError):
             diagnostic = _attempt_diagnostic_code(exc.outcome)
@@ -87,6 +91,7 @@ def _complete_route(
             diagnostic = "SUBLLM-ATTEMPT-FAILED"
         raise
     finally:
+        finish_attempt(archive, route, response, attempt_error, round((time.monotonic() - started) * 1000))
         record_attempt(request_id=request_id or uuid4().hex,
                        application=route.application, function=route.function,
                        provider=route.provider, model=route.wire_model,

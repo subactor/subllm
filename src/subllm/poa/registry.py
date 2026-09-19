@@ -30,6 +30,7 @@ CONFIGURED_ROUTE_URI = "subllm://local/policy/query/configured-route"
 RESOLVE_ROUTE_URI = "subllm://local/policy/query/resolve-route"
 OBSERVE_CREDENTIALS_URI = "subllm://local/policy/query/observe-credentials"
 VALIDATE_URI = "subllm://local/policy/query/validate"
+GATEWAY_EXCHANGE_URI = "subllm://local/policy/command/record-gateway-exchange"
 RECORD_USAGE_URI = "subllm://local/policy/command/record-usage"
 USAGE_URI = "subllm://local/policy/query/usage"
 EVENTS_URI = "subllm://local/policy/query/events"
@@ -47,6 +48,7 @@ CONFIGURED_ROUTE_REF = "poa://subactor.subllm/process/configured-route/v1"
 RESOLVE_ROUTE_REF = "poa://subactor.subllm/process/resolve-route/v1"
 OBSERVE_CREDENTIALS_REF = "poa://subactor.subllm/process/observe-credentials/v1"
 VALIDATE_REF = "poa://subactor.subllm/process/validate-policy/v1"
+GATEWAY_EXCHANGE_REF = "poa://subactor.subllm/process/record-gateway-exchange/v1"
 RECORD_USAGE_REF = "poa://subactor.subllm/process/record-usage/v1"
 USAGE_REF = "poa://subactor.subllm/process/usage/v1"
 EVENTS_REF = "poa://subactor.subllm/process/list-events/v1"
@@ -107,6 +109,8 @@ def _process(process_ref: str, title: str, steps: list[dict[str, Any]]) -> dict[
 
 
 PROCESSES: dict[str, dict[str, Any]] = {
+    GATEWAY_EXCHANGE_REF: _process(GATEWAY_EXCHANGE_REF, "Record gateway exchange reference",
+        [_step("record-gateway-exchange", CAP_JOURNAL, "command", ["write_data"], idempotency="required")]),
     RECORD_USAGE_REF: _process(RECORD_USAGE_REF, "Record a declared application API attempt",
                                [_step("record-usage", CAP_JOURNAL, "command", ["write_data"],
                                       idempotency="required")]),
@@ -292,6 +296,7 @@ BINDINGS: dict[str, dict[str, Any]] = {
 }
 
 PROCESS_URIS: dict[str, str] = {
+    GATEWAY_EXCHANGE_REF: GATEWAY_EXCHANGE_URI,
     RECORD_USAGE_REF: RECORD_USAGE_URI,
     USAGE_REF: USAGE_URI,
     INSPECT_REF: INSPECT_URI,
@@ -311,6 +316,7 @@ PROCESS_URIS: dict[str, str] = {
 }
 
 URI_KIND = {
+    GATEWAY_EXCHANGE_URI: "command",
     RECORD_USAGE_URI: "command",
     USAGE_URI: "query",
     INSPECT_URI: "query",

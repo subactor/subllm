@@ -2,7 +2,8 @@
 set -eu
 
 python scripts/check-docs-report.py
-python -m ruff check --no-respect-gitignore src tests
-python -m compileall -q src tests
+python scripts/check-logs.py
+python -m ruff check --no-respect-gitignore src tests integration
+python -m compileall -q src tests integration
 python -m pytest -q
 python -m build

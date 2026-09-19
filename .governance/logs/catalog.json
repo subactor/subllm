@@ -1,0 +1,18 @@
+{
+  "schema": "wellmanifest.logs/adopter-error-catalog/v1",
+  "namespace": "SUBLLM",
+  "contractSha256": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36",
+  "errorsDirectory": "errors",
+  "diagnosticCodes": [
+    "SUBLLM-ARCHIVE-READ",
+    "SUBLLM-ARCHIVE-WRITE",
+    "SUBLLM-LLM-EXECUTION",
+    "SUBLLM-MCP-INTERRUPTED",
+    "SUBLLM-MCP-PROTOCOL",
+    "SUBLLM-MCP-TOOL",
+    "SUBLLM-UPSTREAM-AUTH",
+    "SUBLLM-UPSTREAM-LIMIT",
+    "SUBLLM-UPSTREAM-TIMEOUT",
+    "SUBLLM-UPSTREAM-TRANSPORT"
+  ]
+}

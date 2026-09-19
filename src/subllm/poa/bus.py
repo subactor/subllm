@@ -40,6 +40,8 @@ from .registry import (
     EDIT_PROCESS_URI,
     EVENTS_URI,
     EXPORT_CONTRACT_URI,
+    GATEWAY_EXCHANGE_REF,
+    GATEWAY_EXCHANGE_URI,
     IMPORT_CREDENTIALS_URI,
     INSPECT_URI,
     LIST_APPLICATIONS_URI,
@@ -107,6 +109,7 @@ class PolicyBus:
             RECEIPT_URI: self._query_receipt,
         }
         self._commands: dict[str, CommandHandler] = {
+            GATEWAY_EXCHANGE_URI: self._command_gateway_exchange,
             RECORD_USAGE_URI: self._command_record_usage,
             CREATE_PLAN_URI: self._command_create_plan,
             EDIT_PROCESS_URI: self._command_edit_process,
@@ -148,6 +151,26 @@ class PolicyBus:
 
     def inspect(self, process_ref: str) -> dict[str, Any]:
         return self.query({"schema": "subllm.query/v1", "process_uri": INSPECT_URI, "process_ref": process_ref})
+
+    def _command_gateway_exchange(self, document: dict[str, Any]) -> dict[str, Any]:
+        payload = exact(document, {"schema", "process_uri", "subject", "idempotency_key", "interaction_ref"})
+        from subllm.interaction_store import IDENT, checked_day
+        ref = payload["interaction_ref"]
+        if not isinstance(ref, str) or len(ref.split("/")) != 2:
+            raise PoaContractError("GATEWAY-REF-001", "Invalid private interaction reference")
+        day, record_id = ref.split("/")
+        try:
+            checked_day(day)
+        except ValueError as exc:
+            raise PoaContractError("GATEWAY-REF-001", "Invalid archive day") from exc
+        if not IDENT.fullmatch(record_id):
+            raise PoaContractError("GATEWAY-REF-001", "Invalid interaction id")
+        plan = self._build_plan({"process_ref": GATEWAY_EXCHANGE_REF, "input_ref": ROUTE_INPUT,
+                                 "input_sha256": digest_document({"interaction_ref": ref}),
+                                 "subject": payload["subject"], "idempotency_key": payload["idempotency_key"]})
+        run_id = "run." + uuid4().hex[:12]
+        self._emit(run_id, plan, "completed")
+        return {"interaction_ref": ref, "accepted": True}
 
     def _command_record_usage(self, document: dict[str, Any]) -> dict[str, Any]:
         from subllm.usage import identifier, record_attempt
