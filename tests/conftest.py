@@ -19,6 +19,7 @@ def _isolate_provider_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> 
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.delenv("ZAI_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("SUBLLM_USAGE_DB", str(tmp_path / "usage.sqlite3"))
     reset_provider_health()
     yield
     reset_provider_health()

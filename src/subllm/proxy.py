@@ -241,6 +241,7 @@ def _complete_model_direct(
     environ: Mapping[str, str] | None = None,
 ) -> CompletionResponse:
     """Execute completion directly for a declared model with sequential failover across providers."""
+    request_id = request_id or uuid.uuid4().hex
     routes = _build_model_resolved_routes(model_id, application, function, environ=environ)
     if not routes:
         raise CompletionError(f"no available provider with valid credentials for model '{model_id}'")

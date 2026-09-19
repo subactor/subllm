@@ -30,6 +30,7 @@ CONFIGURED_ROUTE_URI = "subllm://local/policy/query/configured-route"
 RESOLVE_ROUTE_URI = "subllm://local/policy/query/resolve-route"
 OBSERVE_CREDENTIALS_URI = "subllm://local/policy/query/observe-credentials"
 VALIDATE_URI = "subllm://local/policy/query/validate"
+USAGE_URI = "subllm://local/policy/query/usage"
 EVENTS_URI = "subllm://local/policy/query/events"
 RECEIPT_URI = "subllm://local/policy/query/receipt"
 CREATE_PLAN_URI = "subllm://local/policy/command/create-plan"
@@ -45,6 +46,7 @@ CONFIGURED_ROUTE_REF = "poa://subactor.subllm/process/configured-route/v1"
 RESOLVE_ROUTE_REF = "poa://subactor.subllm/process/resolve-route/v1"
 OBSERVE_CREDENTIALS_REF = "poa://subactor.subllm/process/observe-credentials/v1"
 VALIDATE_REF = "poa://subactor.subllm/process/validate-policy/v1"
+USAGE_REF = "poa://subactor.subllm/process/usage/v1"
 EVENTS_REF = "poa://subactor.subllm/process/list-events/v1"
 RECEIPT_REF = "poa://subactor.subllm/process/get-receipt/v1"
 CREATE_PLAN_REF = "poa://subactor.subllm/process/create-plan/v1"
@@ -103,6 +105,8 @@ def _process(process_ref: str, title: str, steps: list[dict[str, Any]]) -> dict[
 
 
 PROCESSES: dict[str, dict[str, Any]] = {
+    USAGE_REF: _process(USAGE_REF, "Read API usage history",
+                        [_step("usage", CAP_JOURNAL, "query", ["read_data"])]),
     INSPECT_REF: _process(
         INSPECT_REF,
         "Inspect a declared SubLLM process",
@@ -283,6 +287,7 @@ BINDINGS: dict[str, dict[str, Any]] = {
 }
 
 PROCESS_URIS: dict[str, str] = {
+    USAGE_REF: USAGE_URI,
     INSPECT_REF: INSPECT_URI,
     EXPORT_CONTRACT_REF: EXPORT_CONTRACT_URI,
     LIST_ROUTES_REF: LIST_ROUTES_URI,
@@ -300,6 +305,7 @@ PROCESS_URIS: dict[str, str] = {
 }
 
 URI_KIND = {
+    USAGE_URI: "query",
     INSPECT_URI: "query",
     EXPORT_CONTRACT_URI: "query",
     LIST_ROUTES_URI: "query",

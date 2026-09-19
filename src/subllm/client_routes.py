@@ -5,6 +5,7 @@ from collections.abc import Mapping, Sequence
 from dataclasses import replace
 from pathlib import Path
 from typing import Any
+from uuid import uuid4
 
 from .client_types import (
     CompletionAttempt,
@@ -23,9 +24,10 @@ from .health import order_by_health, record_failure, record_success
 from .policy_config import load_policy_config
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
+from .usage import record_attempt
 
 
-def _complete_route(
+def _invoke_route(
     route: ResolvedRoute,
     messages: Sequence[Mapping[str, Any]],
     *,
@@ -60,6 +62,38 @@ def _complete_route(
     raise CompletionError(f"provider {route.provider} uses unsupported transport {route.transport}")
 
 
+
+def _complete_route(
+    route: ResolvedRoute,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    timeout_seconds: float,
+    request_id: str | None,
+    response_format: Mapping[str, Any] | None,
+    cwd: Path,
+) -> CompletionResponse:
+    started = time.monotonic()
+    response = None
+    diagnostic = None
+    try:
+        response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
+                                 request_id=request_id, response_format=response_format, cwd=cwd)
+        return response
+    except Exception as exc:
+        # Never persist exception messages, raw provider errors or headers.
+        if isinstance(exc, _RetryableAttemptError):
+            diagnostic = _attempt_diagnostic_code(exc.outcome)
+        else:
+            diagnostic = "SUBLLM-ATTEMPT-FAILED"
+        raise
+    finally:
+        record_attempt(request_id=request_id or uuid4().hex,
+                       application=route.application, function=route.function,
+                       provider=route.provider, model=route.wire_model,
+                       status="success" if response is not None else "error",
+                       diagnostic_code=diagnostic, duration_ms=round((time.monotonic() - started) * 1000),
+                       usage=response.usage if response is not None else {})
+
 def complete(
     application: str,
     function: str,
@@ -78,6 +112,7 @@ def complete(
     if timeout_seconds <= 0:
         raise CompletionError("timeout_seconds must be greater than zero")
 
+    request_id = request_id or uuid4().hex
     routes = available_routes(application, function, environ=environ, credentials=credentials)
     if not routes:
         configured = configured_routes(application, function, environ=environ)
