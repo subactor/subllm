@@ -1,6 +1,6 @@
 # Ticket 024: Persist provider health across completion processes
 
-- Status: IN_PROGRESS
+- **Status**: DONE
 - Workstream: runtime
 
 ## Goal

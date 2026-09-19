@@ -1,7 +1,6 @@
 # Ticket 072: Enforce Docs and Report completion
-
-Status: IN_PROGRESS
-Workflow state: PUBLICATION
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 
 SESSION_EXECUTION_AUTHORIZATION: execute Maskservice standards adoption after C2004 and MASKFLEET, publish tested changes. GitHub issue 72 allocates this legacy ticket; no managed allocator exists here. Preserve unrelated CLI refactoring.
 

@@ -26,3 +26,17 @@ uv.lock
 .koru/
 .planfile/sprints/*.bak-*
 .cursor/
+
+!.github/
+!.github/**
+!.cursor/
+!.cursor/**
+!.cursor*
+!.aider*
+!.aider.conf.yml
+!scripts/
+!scripts/**
+!project/
+!project/**
+!.subactor/
+!.subactor/**

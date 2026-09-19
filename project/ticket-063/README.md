@@ -1,7 +1,6 @@
 # Ticket 063: Bounded code2dsl projection
-
-Status: IN_PROGRESS
-Workflow state: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 
 SESSION_EXECUTION_AUTHORIZATION: implement and publish autonomy-execution R5/R8 under the existing user request. GitHub issue 63 allocates this legacy ticket. Preserve all canonical semantic records, validate before projection, bind full-record digests and retain compressed/expanded budgets. Reproduce the Core PLF-13887 extraction failure without spending another worker attempt before qualification.
 

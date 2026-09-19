@@ -1,6 +1,5 @@
 # Ticket 090: Safe MCP failure causes
-
-Status: IN_PROGRESS
+- **Status**: DONE
 Owner: codex / mcp-causes-20260919
 Workstream: observability
 

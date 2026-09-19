@@ -24,3 +24,4 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 
 | ticket-045 | Bound periodic supervisor assessment reasoning | IN_PROGRESS | routing |
 | ticket-081 | Ollama and OpenAI-compatible proxy server with ticket attribution and daemon forwarding | DONE | runtime |
+- [ticket-083](project/ticket-083/README.md): Adopt wellmanifest/new-project 0.20.35

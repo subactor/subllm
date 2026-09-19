@@ -2,8 +2,8 @@
 
 - **ID**: ticket-073
 - **Owner**: human:founder
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-09-16
 
 SESSION_EXECUTION_AUTHORIZATION: 2026-09-16, owner asked for the OpenRouter and z.ai

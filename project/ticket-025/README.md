@@ -1,6 +1,6 @@
 # Ticket 025: Skip cooling providers
 
-- Status: IN_PROGRESS
+- **Status**: DONE
 - Workstream: runtime
 
 ## Goal

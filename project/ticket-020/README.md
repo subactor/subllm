@@ -1,6 +1,6 @@
 # Ticket 020: Unify Koru multi-provider transports
 
-- **Status**: IN_PROGRESS
+- **Status**: DONE
 - **Workstream**: runtime
 
 ## Goal

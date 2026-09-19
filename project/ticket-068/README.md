@@ -2,8 +2,8 @@
 
 - **ID**: ticket-068
 - **Owner**: human:founder
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-09-10
 
 SESSION_EXECUTION_AUTHORIZATION: napraw, zmerguj, przetestuj; bounded repair and independent publication. GitHub allocation: issue #68.

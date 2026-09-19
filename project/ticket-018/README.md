@@ -2,8 +2,8 @@
 
 - **ID**: ticket-018
 - **Owner**: founder
-- **Status**: ACTIVE
-- **Workflow state**: IMPLEMENTATION
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-08-26
 
 ## Goal and scope

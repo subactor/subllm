@@ -1,7 +1,6 @@
 # Ticket 066: Context selection profile
-
-Status: IN_PROGRESS
-Workflow state: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 
 SESSION_EXECUTION_AUTHORIZATION: continue authorized autonomy R8 source fixes and tests. PLF-13887 passed extraction but its third attempt ended with OpenRouter GLM 5.3 code-context timeout. Separate semantic evidence selection from code editing using an existing registered model with provider-supported low reasoning effort. Preserve provider membership, deadlines, extraction and attempt limits. This ticket does not authorize requeue or a fourth PLF attempt.
 

@@ -1,6 +1,6 @@
 # Ticket 043: Documentation placement
 
-- **Status**: IN_PROGRESS
+- **Status**: DONE
 - **Workflow state**: PUBLICATION
 - **Created**: 2026-09-06
 - **Issue**: https://github.com/subactor/subllm/issues/43

@@ -1,7 +1,7 @@
 # Ticket 007: Enforce wall-clock OpenAI-compatible attempt deadlines
 
-- Status: IN_PROGRESS
-- Workflow state: PUBLICATION
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - Workstream: runtime
 - Owner: agent:codex under SESSION_EXECUTION_AUTHORIZATION
 - Tracking issue: https://github.com/subactor/subllm/issues/34

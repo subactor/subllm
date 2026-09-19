@@ -1,7 +1,7 @@
 # ticket-047: Local CI publication policy
 
-- **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 
 SESSION_EXECUTION_AUTHORIZATION: user requested implementation and publication across Semcod and Subactor.
 

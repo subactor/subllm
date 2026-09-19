@@ -1,7 +1,7 @@
 # Ticket 008: Allow bounded runtime tuning of attempt deadlines
 
-- Status: DONE
-- Workflow state: DONE
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - Workstream: runtime
 - Owner: agent:codex under SESSION_EXECUTION_AUTHORIZATION
 - Tracking issue: https://github.com/subactor/subllm/issues/36

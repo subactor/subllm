@@ -1,6 +1,5 @@
 # ticket-088: gateway-login-help
-
-Status: IN_PROGRESS
+- **Status**: DONE
 Workstream: observability
 Owner: codex / gateway-login-help-20260919
 

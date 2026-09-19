@@ -1,7 +1,7 @@
 # Ticket 010: Register semcod/prellm routes
 
-- Status: IN_PROGRESS
-- Workflow state: IMPLEMENTATION
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - Workstream: routing
 - Owner: agent:codex under SESSION_EXECUTION_AUTHORIZATION
 

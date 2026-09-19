@@ -1,5 +1,10 @@
 # Ticket 023 — resilient runtime provider failover
 
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
+- **Owner**: antigravity
+
+
 ## Intent
 
 Make `subllm.complete()` finish promptly when a configured provider stalls or

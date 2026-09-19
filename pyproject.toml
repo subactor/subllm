@@ -52,7 +52,7 @@ subllm = ["py.typed", "code2dsl_bridge.mjs", "code2dsl_projection.mjs", "assets/
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-ra"
+addopts = "-p wellmanifest_governance -ra"
 
 [tool.ruff]
 target-version = "py311"
@@ -60,3 +60,8 @@ line-length = 120
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP", "SIM"]
+
+[tool.wellmanifest]
+standard = "0.20.35"
+revision = "cfaa0bf0ea6b0e7349fed0bb62b5ce15792d687d"
+gate = "project/governance-check.sh"

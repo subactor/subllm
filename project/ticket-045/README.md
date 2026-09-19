@@ -1,7 +1,7 @@
 # Ticket 045: Bounded supervisor assessment reasoning
 
-- Status: IN_PROGRESS
-- Workflow state: EDIT
+- **Status**: DONE
+- **Workflow state**: PUBLICATION
 - Issue: https://github.com/subactor/subllm/issues/45
 
 SESSION_EXECUTION_AUTHORIZATION: Continue autonomy repairs, protected publication and scoped runtime deployment. Issue 45 allocates this legacy repository ticket; no managed local allocator exists.
