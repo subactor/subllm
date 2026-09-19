@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 from collections.abc import Mapping
 from contextlib import closing
 from datetime import UTC, datetime
@@ -16,6 +17,7 @@ from typing import Any
 from .poa.errors import PoaContractError
 
 LOG = logging.getLogger(__name__)
+_WRITE_LOCK = threading.Lock()
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 FILTERS = {"application", "provider", "status", "since", "until", "before", "limit"}
 _SCHEMA = """
@@ -79,9 +81,11 @@ def record_attempt(
             pass
         else:
             os.close(fd)
-        with closing(sqlite3.connect(path, timeout=0.5)) as db, db:
-            db.executescript(_SCHEMA)
+        with _WRITE_LOCK, closing(sqlite3.connect(path, timeout=0.5)) as db, db:
             db.execute("BEGIN IMMEDIATE")
+            for statement in _SCHEMA.split(";"):
+                if statement.strip():
+                    db.execute(statement)
             columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
             if "event_key" not in columns:
                 db.execute("ALTER TABLE attempts ADD COLUMN event_key TEXT")
