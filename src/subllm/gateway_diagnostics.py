@@ -100,3 +100,62 @@ def rpc_diagnostic(message):
     if isinstance(result, dict) and result.get("isError") is True:
         return diagnostic("SUBLLM-MCP-TOOL")
     return None
+
+
+def transport_diagnostic(error):
+    """Classify typed evidence only; exception messages and URLs may contain secrets."""
+    import errno
+    import socket
+    import ssl
+
+    import httpx
+
+    queue, seen, errors = [error], set(), []
+    while queue and len(errors) < 64:
+        current = queue.pop(0)
+        if id(current) in seen:
+            continue
+        seen.add(id(current))
+        errors.append(current)
+        if isinstance(current, BaseExceptionGroup):
+            queue.extend(current.exceptions[:64])
+        cause = current.__cause__
+        if cause is None:
+            # HTTP transports may suppress traceback context while retaining typed errno evidence.
+            cause = current.__context__
+        if cause is not None:
+            queue.append(cause)
+
+    def observed(code, transport, fact, status=None):
+        info = diagnostic(code, transport_code=transport, http_status=status)
+        info["root_cause"] = fact
+        return info
+
+    for current in errors:
+        if isinstance(current, httpx.HTTPStatusError):
+            status = current.response.status_code
+            if 100 <= status <= 599:
+                code = (
+                    "SUBLLM-UPSTREAM-AUTH" if status in {401, 403}
+                    else "SUBLLM-UPSTREAM-LIMIT" if status == 429
+                    else "SUBLLM-UPSTREAM-TRANSPORT"
+                )
+                return observed(code, "HTTP_ERROR", f"Upstream returned HTTP {status}.", status)
+        if isinstance(current, ssl.SSLCertVerificationError):
+            return observed(
+                "SUBLLM-UPSTREAM-TRANSPORT", "TLS_CERT_VERIFY_FAILED", "TLS certificate verification failed."
+            )
+        if isinstance(current, socket.gaierror):
+            return observed("SUBLLM-UPSTREAM-TRANSPORT", "DNS_ERROR", "Address resolution failed.")
+        if isinstance(current, OSError) and current.errno == errno.ECONNREFUSED:
+            return observed("SUBLLM-UPSTREAM-TRANSPORT", "ECONNREFUSED", "Connection refused by the upstream endpoint.")
+        if isinstance(current, (TimeoutError, httpx.TimeoutException)):
+            return observed("SUBLLM-UPSTREAM-TIMEOUT", "TIMEOUT", "Upstream transport or session deadline expired.")
+    for current in errors:
+        if isinstance(current, ssl.SSLError):
+            return observed("SUBLLM-UPSTREAM-TRANSPORT", "TLS_ERROR", "TLS negotiation failed.")
+        if isinstance(current, httpx.ConnectError):
+            return observed(
+                "SUBLLM-UPSTREAM-TRANSPORT", "CONNECT_ERROR", "Upstream connection could not be established."
+            )
+    return diagnostic("SUBLLM-UPSTREAM-TRANSPORT")

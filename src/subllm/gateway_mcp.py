@@ -13,7 +13,7 @@ from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.message import SessionMessage
 from mcp.types import JSONRPCMessage
 
-from .gateway_diagnostics import diagnostic, rpc_diagnostic
+from .gateway_diagnostics import diagnostic, rpc_diagnostic, transport_diagnostic
 
 LOG = logging.getLogger(__name__)
 
@@ -44,6 +44,7 @@ class MCPBridge:
 
     async def run(self, downstream_read, downstream_write, options, **kwargs):
         pending = {}
+        failure_responses = {}
 
         def observe(message, direction):
             obj = message.message.model_dump(mode="json", by_alias=True, exclude_none=True)
@@ -90,41 +91,71 @@ class MCPBridge:
             finally:
                 group.cancel_scope.cancel()
 
+        async def reject(record, info):
+            if record["direction"] == "client_to_server":
+                reply = JSONRPCMessage.model_validate(
+                    {"jsonrpc": "2.0", "id": record["request"]["id"],
+                     "error": {"code": -32603, "message": info["code"]}}
+                )
+                with contextlib.suppress(Exception):
+                    await downstream_write.send(SessionMessage(reply))
+                return reply.model_dump(mode="json", by_alias=True, exclude_none=True)
+            return None
+
         first = await downstream_read.receive()
         if isinstance(first, Exception):
             return
         await anyio.to_thread.run_sync(observe, first, "client_to_server")
-        failed = False
+        failure = None
         try:
             with anyio.fail_after(self.config.get("session_lifetime_seconds", 3600)):
                 async with self.upstream() as (up_read, up_write), anyio.create_task_group() as group:
                     await up_write.send(first)
                     group.start_soon(pump, downstream_read, up_write, "client_to_server", group)
                     group.start_soon(pump, up_read, downstream_write, "server_to_client", group)
-        except Exception:
-            failed = True
+        except Exception as error:
+            failure = transport_diagnostic(error)
             # Never let the SDK print arbitrary provider exception text or payloads.
-            LOG.error("SUBLLM-UPSTREAM-TRANSPORT: MCP session failed")
+            LOG.error("%s: MCP session failed", failure["code"])
             for record, _ in pending.values():
-                if record["direction"] == "client_to_server":
-                    reply = JSONRPCMessage.model_validate(
-                        {
-                            "jsonrpc": "2.0",
-                            "id": record["request"]["id"],
-                            "error": {"code": -32603, "message": "SUBLLM-UPSTREAM-TRANSPORT"},
-                        }
-                    )
-                    with contextlib.suppress(Exception):
-                        await downstream_write.send(SessionMessage(reply))
+                failure_responses[record["id"]] = await reject(record, failure)
         finally:
             # No automatic tool retry: a lost response may follow a completed side effect.
             for record, started in pending.values():
                 try:
+                    elapsed = int((time.monotonic() - started) * 1000)
+                    info = dict(failure) if failure else diagnostic("SUBLLM-MCP-INTERRUPTED")
+                    info["durationMs"] = elapsed
                     self.store.finish(
                         record,
-                        None,
-                        duration_ms=int((time.monotonic() - started) * 1000),
-                        diagnostic=diagnostic("SUBLLM-UPSTREAM-TRANSPORT" if failed else "SUBLLM-MCP-INTERRUPTED"),
+                        failure_responses.get(record["id"]),
+                        duration_ms=elapsed,
+                        diagnostic=info,
+                        metadata={"response_origin": "gateway"} if failure_responses.get(record["id"]) else None,
                     )
                 except Exception:
                     LOG.error("SUBLLM-ARCHIVE-WRITE: unfinished interaction remains pending")
+        if failure:
+            # Returning immediately closes the SDK's SSE response streams before delivery.
+            # Keep a failed session alive until DELETE/disconnect, with a bounded grace period.
+            # Later requests are rejected locally; the upstream is never retried.
+            pending.clear()
+            with anyio.move_on_after(30), contextlib.suppress(anyio.ClosedResourceError, anyio.BrokenResourceError):
+                async for message in downstream_read:
+                    if isinstance(message, Exception):
+                        break
+                    try:
+                        await anyio.to_thread.run_sync(observe, message, "client_to_server")
+                    except Exception:
+                        LOG.error("SUBLLM-ARCHIVE-WRITE: rejected request could not be archived")
+                        break
+                    for record, started in pending.values():
+                        response = await reject(record, failure)
+                        elapsed = int((time.monotonic() - started) * 1000)
+                        info = {**failure, "durationMs": elapsed}
+                        try:
+                            self.store.finish(record, response, duration_ms=elapsed, diagnostic=info,
+                                              metadata={"response_origin": "gateway"} if response else None)
+                        except Exception:
+                            LOG.error("SUBLLM-ARCHIVE-WRITE: rejected interaction remains pending")
+                    pending.clear()

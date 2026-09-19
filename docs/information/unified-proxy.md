@@ -3,21 +3,23 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "unified-proxy",
   "kind": "information",
-  "version": 2,
+  "version": 3,
   "title": "Unified LLM and MCP proxy",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-19",
-  "updated": "2026-09-19",
+  "updated": "2026-09-20",
   "review_after": "2026-10-19",
-  "source_revision": "9415a037d9933cbd8c5328041d98f1809b5e595b",
+  "source_revision": "d984e491961ac2bd511f58818202d9b19b681f2f",
   "scope": "repository",
   "affected_repositories": [
     "subactor/subllm"
   ],
   "evidence": [
     "repo://subactor/subllm/tests/test_gateway.py",
-    "https://github.com/subactor/subllm/issues/86"
+    "https://github.com/subactor/subllm/issues/86",
+    "https://github.com/subactor/subllm/issues/90",
+    "repo://subactor/subllm/tests/test_gateway_diagnostics.py"
   ]
 }
 ---
@@ -38,6 +40,8 @@ SubLLM owns one authenticated gateway for policy-routed LLM calls, configured MC
 ## Evidence
 
 The implementation base is `9415a037d9933cbd8c5328041d98f1809b5e595b`. Tests exercise real stdio framing through HTTP, session isolation, tool errors, concurrent writes, midnight completion, unavailable storage, query purity, credential exclusion, response links and the operational hash chain. A local PostgreSQL 16 pilot verified write/readback. These observations do not establish fleet-wide client adoption or protected publication.
+
+A local client rollout at `2026-09-19T21:57:00.912758+00:00` verified 24 additional stdio integrations through the production gateway and PostgreSQL archive. Configuration readback routes 2/2 enabled Cursor servers and 25/26 enabled Codex servers through the gateway; the remaining PyCharm endpoint refused TCP on its configured local port. Disabled integrations stayed disabled, and existing GUI-session reload was not observed. The deployed runtime for that observation was `283a977433089c3bf0ff64f07df0bca2e06ce5aa` (PR 89); the private verification receipt SHA-256 is `ddc699cd994ae3f38dd3524e3af5bb074fe973ddf63f2bd81e5705aeb84192d6`. This establishes configured coverage and explicit probe traffic, not adoption by already running sessions or interception of direct LLM calls.
 
 The MCP adapter pins SDK 1.26.0 and delegates transport framing to its session manager, verified against the [pinned implementation](https://github.com/modelcontextprotocol/python-sdk/blob/v1.26.0/src/mcp/server/streamable_http_manager.py) and [transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports). Runtime does not fetch those URLs.
 
@@ -78,7 +82,7 @@ The gateway records a request before dispatch and records completion separately.
 
 LLM parent interactions link per-provider attempts through `correlation_id`. The archive includes the selected provider/model, failure class and private response body when the OpenAI-compatible worker can capture it. Credential header values never enter that channel; the worker also removes any exact credential echoed by an upstream. Provider response size bounds still apply. SDK/CLI transports expose their normalized response and available metadata; internal SDK messages not exposed by the client are not claimed as wire capture.
 
-Errors distinguish upstream authentication, limits, timeout, transport, MCP protocol failure, MCP `isError`, interrupted sessions and generic LLM execution failures. The panel labels the observed failure class separately from the unproven root cause and links correlated payloads. Daily operational events use a canonical SHA-256 chain; database transactions serialize concurrent writers. The gateway records reference-only commands through PolicyBus; its private archive query method has no write effects.
+Errors distinguish upstream authentication, limits, timeout, transport, MCP protocol failure, MCP `isError`, interrupted sessions and generic LLM execution failures. The panel labels the observed failure class separately from the unproven root cause and links correlated payloads. MCP transport diagnostics traverse bounded nested exception causes and retain only typed evidence: refused connection, timeout, address resolution, TLS verification/negotiation, connection setup or numeric HTTP rejection. Operational `transportCode` and `httpStatus` distinguish these cases; private details show a fixed explanation without copying exception text, URLs or credentials. A refused connection proves refusal at the endpoint, not that a particular process is stopped. Unknown exceptions retain an unproven cause. No automatic MCP retry is added. Failed MCP sessions remain available for up to 30 seconds so the HTTP transport can deliver the error before cleanup; further requests in that failed session are rejected locally. Generated error replies are archived with `metadata.response_origin=gateway`, distinguishing them from upstream replies. Daily operational events use a canonical SHA-256 chain; database transactions serialize concurrent writers. The gateway records reference-only commands through PolicyBus; its private archive query method has no write effects.
 
 For LAN use, bind with an explicit TLS certificate/key, register the actual authority in `allowed_hosts`, and distribute the certificate trust and individual client credentials. PostgreSQL can remain loopback-only; LAN clients connect to the gateway API. [SQLite's deployment guidance](https://www.sqlite.org/whentouse.html) supports choosing a client/server database for many networked writers; this is not a claim that PostgreSQL is always faster. Daily [PostgreSQL partitions](https://www.postgresql.org/docs/current/ddl-partitioning.html) provide storage organization, not separate daily servers.
 
