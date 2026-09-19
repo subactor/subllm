@@ -247,7 +247,8 @@ def test_read_queries_do_not_create_storage(tmp_path):
             store.query(day)
 
 
-def test_worker_private_exchange_preserves_body_without_credential(monkeypatch):
+@pytest.mark.parametrize("credential", ["credential-example", 'credential-"quoted"-example'])
+def test_worker_private_exchange_preserves_body_without_credential(monkeypatch, credential):
     import io
     from urllib.error import HTTPError
 
@@ -260,7 +261,7 @@ def test_worker_private_exchange_preserves_body_without_credential(monkeypatch):
         "request_fields": {},
         "response_format": None,
         "api_base": "https://example.invalid",
-        "api_key": "credential-example",
+        "api_key": credential,
         "extra_headers": {},
         "capture_exchange": True,
     }
@@ -271,14 +272,14 @@ def test_worker_private_exchange_preserves_body_without_credential(monkeypatch):
             429,
             "rate limited",
             {},
-            io.BytesIO(b'{"error":{"message":"quota for credential-example exhausted"}}'),
+            io.BytesIO(json.dumps({"error": {"message": "quota for " + credential + " exhausted"}}).encode()),
         )
 
     monkeypatch.setattr(openai_worker, "urlopen", denied)
     result = openai_worker._execute(source)
     assert result["outcome"] == "http_429"
     assert result["exchange"]["request"]["messages"] == source["messages"]
-    assert "credential-example" not in json.dumps(result)
+    assert credential not in repr(result)
     assert "quota" in result["exchange"]["response"]["error"]["message"]
 
 

@@ -94,9 +94,15 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             return result
         # Only API JSON bodies enter this private channel, never request headers or worker credentials.
         exchange = {"request": body, "response": response}
-        encoded = json.dumps(exchange, ensure_ascii=False)
-        encoded = encoded.replace(str(source["api_key"]), "[credential removed]")
-        return {**result, "exchange": json.loads(encoded)}
+        def scrub(value):
+            if isinstance(value, str):
+                return value.replace(str(source["api_key"]), "[credential removed]")
+            if isinstance(value, Mapping):
+                return {scrub(key): scrub(item) for key, item in value.items()}
+            if isinstance(value, list):
+                return [scrub(item) for item in value]
+            return value
+        return {**result, "exchange": scrub(exchange)}
 
     request = Request(
         f"{str(source['api_base']).rstrip('/')}/chat/completions",
