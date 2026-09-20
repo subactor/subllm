@@ -29,8 +29,15 @@ def _candidate_fits_modality(
     runtime_policy: RuntimePolicyConfig,
     modality: str,
 ) -> bool:
-    provider = PROVIDERS[candidate.provider]
-    model_id = candidate.model or runtime_policy.providers[provider.id].default_model
+    provider = PROVIDERS.get(candidate.provider)
+    if provider is None:
+        return False
+    if candidate.provider in runtime_policy.custom_providers:
+        model_id = candidate.model or runtime_policy.custom_providers[candidate.provider].default_model
+    elif candidate.provider in runtime_policy.providers:
+        model_id = candidate.model or runtime_policy.providers[candidate.provider].default_model
+    else:
+        return False
     model = MODELS.get(model_id)
     if model is None or model.forbidden:
         return False
@@ -49,6 +56,37 @@ def _configured(
 ) -> ConfiguredRoute:
     app = runtime_policy.applications[application]
     provider = PROVIDERS[candidate.provider]
+    if candidate.provider in runtime_policy.custom_providers:
+        custom = runtime_policy.custom_providers[candidate.provider]
+        model_id = candidate.model or custom.default_model
+        model = MODELS[model_id]
+        if model.forbidden:
+            raise InvalidPolicyError(f"forbidden model in route: {model.id}")
+        try:
+            provider_model = model.providers[provider.id]
+        except KeyError as exc:
+            raise InvalidPolicyError(f"model {model.id} is unavailable through provider {provider.id}") from exc
+        if order is None:
+            priority = custom.priority + candidate.priority_offset
+        else:
+            priority = order.index(provider.id) * 10 + candidate.priority_offset
+        return ConfiguredRoute(
+            application=application,
+            application_name=app.name,
+            application_url=app.url,
+            function=function,
+            provider=provider.id,
+            model=model.id,
+            priority=priority,
+            api_base=provider.api_base,
+            api_key_env=provider.api_key_env,
+            litellm_model=provider_model.litellm_model,
+            wire_model=provider_model.wire_model,
+            extra_headers={},
+            transport=provider.transport,
+            modality=route_policy(application, function).modality,
+            model_parameters=candidate.model_parameters,
+        )
     provider_policy = runtime_policy.providers[provider.id]
     model_id = candidate.model or provider_policy.default_model
     model = MODELS[model_id]
@@ -94,10 +132,29 @@ def configured_routes(
     runtime_policy = load_policy_config()
     order_environ = environ if environ is not None else os.environ
     order = routing_provider_order(environ=order_environ)
+    candidates_list = list(policy.candidates)
+    for custom in runtime_policy.custom_providers.values():
+        if not custom.enabled:
+            continue
+        if (
+            "all" in custom.routes
+            or "*" in custom.routes
+            or application in custom.routes
+            or f"{application}/{function}" in custom.routes
+        ):
+            candidates_list.append(
+                RouteCandidate(provider=custom.id, model=custom.default_model, priority_offset=0)
+            )
     candidates = (
         _configured(application, function, item, runtime_policy, order=order)
-        for item in policy.candidates
-        if runtime_policy.providers[item.provider].enabled
+        for item in candidates_list
+        if (
+            (item.provider in runtime_policy.providers and runtime_policy.providers[item.provider].enabled)
+            or (
+                item.provider in runtime_policy.custom_providers
+                and runtime_policy.custom_providers[item.provider].enabled
+            )
+        )
         and (order is None or item.provider in order)
         and _candidate_fits_modality(item, runtime_policy, policy.modality)
     )
@@ -149,6 +206,8 @@ def available_routes(
             if shutil.which(CLI_EXECUTABLES[route.transport], path=environment.get("PATH")) is None:
                 continue
             api_key = ""  # Authentication stays in the local CLI's own credential store.
+        elif not route.api_key_env:
+            api_key = ""  # No API key required for this custom provider.
         elif not credential_is_valid(route.provider, api_key):
             continue
         resolved.append(
@@ -175,7 +234,13 @@ def resolve(
     configured = configured_routes(application, function, environ=environment)
     if provider is not None and not any(route.provider == provider for route in configured):
         raise UnknownRouteError(f"route {application}/{function} does not allow provider {provider}")
-    required = sorted({route.api_key_env for route in configured if provider is None or route.provider == provider})
+    required = sorted(
+        {
+            route.api_key_env
+            for route in configured
+            if route.api_key_env and (provider is None or route.provider == provider)
+        }
+    )
     raise MissingCredentialError(
         f"no valid credential for {application}/{function}; configure one of: {', '.join(required)}"
     )
