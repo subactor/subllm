@@ -1,0 +1,54 @@
+{
+  "ciReceipt": {
+    "sha256": "303e103d0a51f1864c053ea0dc349d4c9d6f3506020e4a434f42cdd40aedf12d",
+    "snapshot": {
+      "checkName": "conformance",
+      "completedAt": "2026-09-19T08:30:32Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 105868631501,
+      "repository": "wellmanifest/merge",
+      "runAttempt": 1,
+      "runId": 35432179806,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/merge/actions/jobs/105868631501",
+      "subjectSha": "d514ea17cdd0dda3e3a540779d91ed53951f76b0",
+      "workflowPath": ".github/workflows/conformance.yml",
+      "workflowSha256": "85813777a80b0b1133787edcab75734967e4239f6f55427406855fbf3100ef27"
+    }
+  },
+  "claimedLevel": "S4",
+  "localBindings": [],
+  "packId": "wellmanifest/merge",
+  "protectionReceipt": {
+    "sha256": "65248f6fcd66d4379d9a5273b7cdea34d9d0c4ee07a564109aff4928aa47e06e",
+    "snapshot": {
+      "branchSelector": "~DEFAULT_BRANCH",
+      "enforcement": "active",
+      "repository": "wellmanifest/merge",
+      "requiredCheck": "conformance",
+      "rulesetId": 20870194,
+      "rulesetName": "main-autonomous-publication",
+      "schema": "semcod.ruleset-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/merge/rulesets/20870194",
+      "strict": true,
+      "target": "branch"
+    }
+  },
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "standard/conformance.py",
+      "sha256": "71d85445d77bb4231bdb8bf057a92e7ffe9d5fe5ea8594d04b0b09eea6980d06",
+      "uri": "https://github.com/wellmanifest/merge/blob/d514ea17cdd0dda3e3a540779d91ed53951f76b0/standard/conformance.py"
+    },
+    "contract": {
+      "path": "standard/merge-decision.schema.json",
+      "sha256": "6cf3766abab6834555ec1275dee4ca42e60ceb99fe57c73b0130e443e9eb53f1",
+      "uri": "https://github.com/wellmanifest/merge/blob/d514ea17cdd0dda3e3a540779d91ed53951f76b0/standard/merge-decision.schema.json"
+    },
+    "repository": "wellmanifest/merge",
+    "revision": "d514ea17cdd0dda3e3a540779d91ed53951f76b0"
+  },
+  "version": "0.1.0-dev"
+}

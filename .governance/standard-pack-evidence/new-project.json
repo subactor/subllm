@@ -1,0 +1,65 @@
+{
+  "ciReceipt": {
+    "sha256": "bd923ee1802acbb69038468ce5e69336a10aac28983fc82e2a288695c2132ed5",
+    "snapshot": {
+      "checkName": "test",
+      "completedAt": "2026-09-19T22:22:03Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 105977377517,
+      "repository": "wellmanifest/new-project",
+      "runAttempt": 1,
+      "runId": 35473031608,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/new-project/actions/jobs/105977377517",
+      "subjectSha": "e2fd653ff801fb228fca818e1d874ee685a4da62",
+      "workflowPath": ".github/workflows/ci.yml",
+      "workflowSha256": "93659dfdbfcd7c372d2af90751f12bd043f945d450ea1a4f8213bcd5c51f952b"
+    }
+  },
+  "claimedLevel": "S4",
+  "localBindings": [
+    {
+      "sha256": "9126f71189dd6ee5c80a53f4d8021718d455501c977ce81da81b437dd0216272",
+      "sourceRole": "contract",
+      "target": ".governance/standard-packs.json"
+    },
+    {
+      "sha256": "412316ef0b35fe1c5f389bc067193693b13c389b7ce9126d78630ebb927c8527",
+      "sourceRole": "conformance",
+      "target": ".governance/standard_pack_check.py"
+    }
+  ],
+  "packId": "wellmanifest/new-project",
+  "protectionReceipt": {
+    "sha256": "9288319177709989c277268de08efbab56c1193b5f71948fb0c8d1f99b64c86c",
+    "snapshot": {
+      "branchSelector": "~DEFAULT_BRANCH",
+      "enforcement": "active",
+      "repository": "wellmanifest/new-project",
+      "requiredCheck": "test",
+      "rulesetId": 20451097,
+      "rulesetName": "main-governance-protection",
+      "schema": "semcod.ruleset-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/new-project/rulesets/20451097",
+      "strict": true,
+      "target": "branch"
+    }
+  },
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "scripts/standard_pack_check.py",
+      "sha256": "412316ef0b35fe1c5f389bc067193693b13c389b7ce9126d78630ebb927c8527",
+      "uri": "https://github.com/wellmanifest/new-project/blob/e2fd653ff801fb228fca818e1d874ee685a4da62/scripts/standard_pack_check.py"
+    },
+    "contract": {
+      "path": "governance/standard-packs.json",
+      "sha256": "9126f71189dd6ee5c80a53f4d8021718d455501c977ce81da81b437dd0216272",
+      "uri": "https://github.com/wellmanifest/new-project/blob/e2fd653ff801fb228fca818e1d874ee685a4da62/governance/standard-packs.json"
+    },
+    "repository": "wellmanifest/new-project",
+    "revision": "e2fd653ff801fb228fca818e1d874ee685a4da62"
+  },
+  "version": "0.20.38"
+}

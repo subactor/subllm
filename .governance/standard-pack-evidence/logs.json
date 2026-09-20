@@ -1,0 +1,34 @@
+{
+  "ciReceipt": null,
+  "claimedLevel": "S2",
+  "localBindings": [
+    {
+      "sha256": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36",
+      "sourceRole": "contract",
+      "target": ".governance/wellmanifest/logs/contracts/logs.contract.v0.5.json"
+    },
+    {
+      "sha256": "aab380273416b72528079679fb9b5d0659ffe305f4c82bdc95025f41926e162e",
+      "sourceRole": "conformance",
+      "target": ".governance/wellmanifest/logs/standard/logs_check.py"
+    }
+  ],
+  "packId": "wellmanifest/logs",
+  "protectionReceipt": null,
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "standard/logs_check.py",
+      "sha256": "aab380273416b72528079679fb9b5d0659ffe305f4c82bdc95025f41926e162e",
+      "uri": "https://github.com/wellmanifest/logs/blob/8374d5364e5c78ae69806fb60a06aa52cd23d1e3/standard/logs_check.py"
+    },
+    "contract": {
+      "path": "contracts/logs.contract.v0.5.json",
+      "sha256": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36",
+      "uri": "https://github.com/wellmanifest/logs/blob/8374d5364e5c78ae69806fb60a06aa52cd23d1e3/contracts/logs.contract.v0.5.json"
+    },
+    "repository": "wellmanifest/logs",
+    "revision": "8374d5364e5c78ae69806fb60a06aa52cd23d1e3"
+  },
+  "version": "0.5.0"
+}
