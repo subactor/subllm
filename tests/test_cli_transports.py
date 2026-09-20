@@ -97,7 +97,8 @@ def test_claude_exit_error_does_not_echo_stderr_or_stdout(fake_cli):
 def test_timeout_reaps_descendants(fake_cli, tmp_path):
     marker = tmp_path / "escaped"
     child = f"import time;time.sleep(0.5);open({str(marker)!r},'w').write('bad')"
-    fake_cli("claude", f"import subprocess,sys,time\nsubprocess.Popen([sys.executable,'-c',{child!r}])\ntime.sleep(5)\n")
+    fake_cli("claude", "import subprocess,sys,time\n"
+                       f"subprocess.Popen([sys.executable,'-c',{child!r}])\ntime.sleep(5)\n")
     with pytest.raises(CompletionError) as exc:
         claude_invoke("claude-sonnet-5", MESSAGES, 0.2, None)
     assert exc.value.diagnostic_code == "SUBLLM-CLAUDE-TIMEOUT"
