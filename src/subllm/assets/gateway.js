@@ -1,11 +1,16 @@
 "use strict";
 const $ = id => document.getElementById(id);
+const SESSION_KEY = "subllm.gateway.credential";
 let credential = "", loading = false, detailText = "", detailVersion = 0;
+try { credential = sessionStorage.getItem(SESSION_KEY) || ""; } catch {}
+function rememberCredential(value) { try { sessionStorage.setItem(SESSION_KEY, value); } catch {} }
+function forgetCredential() { credential = ""; try { sessionStorage.removeItem(SESSION_KEY); } catch {} }
 function clearCopy() { detailText = ""; detailVersion++; $("copy-detail").disabled = true; $("copy-status").textContent = ""; }
 $("day").value = new Date().toISOString().slice(0,10);
 async function api(params) {
   const response = await fetch(`/v1/interactions?${params}`, {headers:{Authorization:`Bearer ${credential}`},cache:"no-store"});
   const data = await response.json();
+  if (response.status === 401) { forgetCredential(); $("connection").textContent = "Sesja wygasła"; }
   if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
   return data.data;
 }
@@ -49,8 +54,9 @@ async function refresh() {
       cell(tr,record.metadata?.provider ? `${record.metadata.provider} / ${record.metadata.model}` : record.target);
       const status=cell(tr,""); const badge=document.createElement("span"); badge.className=`badge ${record.status}`; badge.textContent=record.status; status.append(badge);
       cell(tr,record.duration_ms == null ? "—" : `${record.duration_ms.toLocaleString()} ms`);
+      cell(tr,record.capture === "metadata-only" ? "Tylko metadane" : "Żądanie + odpowiedź");
       const target=cell(tr,""); const link=document.createElement("a");
-      link.href=`#${record.day}/${record.id}`;link.textContent=record.diagnostic?.code || "Żądanie i odpowiedź";
+      link.href=`#${record.day}/${record.id}`;link.textContent=record.diagnostic?.code || "Szczegóły";
       target.append(link);$("rows").append(tr);
     }
     $("connection").textContent="Połączony · odświeżanie co 5 s";
@@ -59,11 +65,13 @@ async function refresh() {
   finally { loading=false; }
 }
 function openHash(){const match=location.hash.match(/^#(\d{4}-\d{2}-\d{2})\/([a-f0-9]{32})$/);if(match && credential) detail(match[1],match[2]);}
-$("connect").onclick=()=>{credential=$("credential").value;$("credential").value="";refresh();openHash();};
-$("disconnect").onclick=()=>{clearCopy();credential="";$("rows").replaceChildren();$("detail").hidden=true;for(const id of ["request","response","metadata"])$(id).textContent="";$("connection").textContent="Rozłączony";};
+$("connect").onclick=()=>{const value=$("credential").value.trim();if(!value){$("notice").textContent="Wklej token operatora lub klienta.";return;}credential=value;rememberCredential(value);$("credential").value="";refresh();openHash();};
+$("disconnect").onclick=()=>{clearCopy();forgetCredential();$("rows").replaceChildren();$("detail").hidden=true;for(const id of ["request","response","metadata"])$(id).textContent="";$("connection").textContent="Rozłączony";};
 $("refresh").onclick=refresh;$("close").onclick=()=>{clearCopy();$("detail").hidden=true;history.replaceState(null,"",location.pathname);};
 for(const name of ["day","kind","status"])$(name).onchange=refresh;
 window.addEventListener("hashchange",openHash);setInterval(refresh,5000);
+
+if (credential) { $("connection").textContent="Wznawianie sesji…"; refresh(); openHash(); }
 
 $("copy-detail").onclick=async()=>{
   if(!detailText) return;
