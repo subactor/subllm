@@ -1,0 +1,54 @@
+{
+  "ciReceipt": {
+    "sha256": "077bbf7c992a7ef7d8c1c714ea58a676f85c15123a754c37f61d938a5e56651c",
+    "snapshot": {
+      "checkName": "standards / lifecycle conformance",
+      "completedAt": "2026-09-19T10:33:42Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 105883159990,
+      "repository": "wellmanifest/git-lifecycle",
+      "runAttempt": 1,
+      "runId": 35437736089,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/git-lifecycle/actions/jobs/105883159990",
+      "subjectSha": "2f8ba2ee724fce603ead2c3067c698d3c2ce0e59",
+      "workflowPath": ".github/workflows/lifecycle-conformance.yml",
+      "workflowSha256": "50de2e56fb5d7c6e8d2ac1ecdbbf426239b453b1b8eb4ececd21e9c14fe7cc5b"
+    }
+  },
+  "claimedLevel": "S4",
+  "localBindings": [],
+  "packId": "wellmanifest/git-lifecycle",
+  "protectionReceipt": {
+    "sha256": "2546432fb2ce4b131be5c1cb8924418fd118ddfc43f22f07aab659f97b312ae7",
+    "snapshot": {
+      "branchSelector": "~DEFAULT_BRANCH",
+      "enforcement": "active",
+      "repository": "wellmanifest/git-lifecycle",
+      "requiredCheck": "standards / lifecycle conformance",
+      "rulesetId": 20838042,
+      "rulesetName": "lifecycle-conformance-v1",
+      "schema": "semcod.ruleset-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/git-lifecycle/rulesets/20838042",
+      "strict": true,
+      "target": "branch"
+    }
+  },
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "standard/conformance.py",
+      "sha256": "752f9ffe0912f67732092f3a426bd301b7fda17b749ac09acf70345d242b0e56",
+      "uri": "https://github.com/wellmanifest/git-lifecycle/blob/2f8ba2ee724fce603ead2c3067c698d3c2ce0e59/standard/conformance.py"
+    },
+    "contract": {
+      "path": "standard/git-lifecycle.schema.json",
+      "sha256": "de3bb3711cb96e90e916253bfddb211b9abba2d0666af061ae6b316a5a689268",
+      "uri": "https://github.com/wellmanifest/git-lifecycle/blob/2f8ba2ee724fce603ead2c3067c698d3c2ce0e59/standard/git-lifecycle.schema.json"
+    },
+    "repository": "wellmanifest/git-lifecycle",
+    "revision": "2f8ba2ee724fce603ead2c3067c698d3c2ce0e59"
+  },
+  "version": "0.2.0-dev"
+}

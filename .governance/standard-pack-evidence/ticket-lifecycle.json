@@ -1,0 +1,40 @@
+{
+  "ciReceipt": {
+    "sha256": "60b9d2b0dda95221e75cbfc446f2cb6026eca3d40e449da3a849f45d190eac4d",
+    "snapshot": {
+      "checkName": "standards / lifecycle conformance",
+      "completedAt": "2026-09-18T09:24:28Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 105549839668,
+      "repository": "wellmanifest/ticket-lifecycle",
+      "runAttempt": 1,
+      "runId": 35329356026,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/ticket-lifecycle/actions/jobs/105549839668",
+      "subjectSha": "ad363efa7705919ff613305172bf8115ccf50b15",
+      "workflowPath": ".github/workflows/lifecycle-conformance.yml",
+      "workflowSha256": "a470943625095a2dab630502eab903771f55c18efecf49c07d778fa4848337ed"
+    }
+  },
+  "claimedLevel": "S3",
+  "localBindings": [],
+  "packId": "wellmanifest/ticket-lifecycle",
+  "protectionReceipt": null,
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "standard/conformance.py",
+      "sha256": "56a857f9701e23e8fc666a60d21bd4e5ab66ea398bd122311b626d1464dd17d8",
+      "uri": "https://github.com/wellmanifest/ticket-lifecycle/blob/ad363efa7705919ff613305172bf8115ccf50b15/standard/conformance.py"
+    },
+    "contract": {
+      "path": "standard/ticket-lifecycle.schema.json",
+      "sha256": "c62f771911c27910a94d2d873bfa7d1627117fa421ec38e3438552b059a2aa31",
+      "uri": "https://github.com/wellmanifest/ticket-lifecycle/blob/ad363efa7705919ff613305172bf8115ccf50b15/standard/ticket-lifecycle.schema.json"
+    },
+    "repository": "wellmanifest/ticket-lifecycle",
+    "revision": "ad363efa7705919ff613305172bf8115ccf50b15"
+  },
+  "version": "0.2.0-dev"
+}

@@ -1,0 +1,54 @@
+{
+  "ciReceipt": {
+    "sha256": "ace0165d1497ac3f4328a88f49f271fbe6527694501e00ebd6f2313e4fff72da",
+    "snapshot": {
+      "checkName": "standards / attestation conformance",
+      "completedAt": "2026-09-16T14:24:59Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 104835289290,
+      "repository": "wellmanifest/validation-attestation",
+      "runAttempt": 1,
+      "runId": 35108349120,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/validation-attestation/actions/jobs/104835289290",
+      "subjectSha": "17017b62374ccf8370d9b50efd3b8f44f66a09e8",
+      "workflowPath": ".github/workflows/standard-conformance.yml",
+      "workflowSha256": "07004ea3784bcf2e7620b0d7311da6b1c5b37083c099bf569dfc4291a65b2f05"
+    }
+  },
+  "claimedLevel": "S4",
+  "localBindings": [],
+  "packId": "wellmanifest/validation-attestation",
+  "protectionReceipt": {
+    "sha256": "bdb76e94a683cb988beec1105b26847ab7714df880987b00138f293564c29a54",
+    "snapshot": {
+      "branchSelector": "~DEFAULT_BRANCH",
+      "enforcement": "active",
+      "repository": "wellmanifest/validation-attestation",
+      "requiredCheck": "standards / attestation conformance",
+      "rulesetId": 20856109,
+      "rulesetName": "autonomy-conformance-v1",
+      "schema": "semcod.ruleset-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/validation-attestation/rulesets/20856109",
+      "strict": true,
+      "target": "branch"
+    }
+  },
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "src/attestation_check.py",
+      "sha256": "deca1279c502a6b9a7db6e5761f4c9a5aaedab787e39c004f55aa285bc7fe803",
+      "uri": "https://github.com/wellmanifest/validation-attestation/blob/17017b62374ccf8370d9b50efd3b8f44f66a09e8/src/attestation_check.py"
+    },
+    "contract": {
+      "path": "schemas/validation-attestation.schema.json",
+      "sha256": "38a8e2c3609849bd05a79f99f42e9e27e41592b31d04c5eb5e9b85669a991d50",
+      "uri": "https://github.com/wellmanifest/validation-attestation/blob/17017b62374ccf8370d9b50efd3b8f44f66a09e8/schemas/validation-attestation.schema.json"
+    },
+    "repository": "wellmanifest/validation-attestation",
+    "revision": "17017b62374ccf8370d9b50efd3b8f44f66a09e8"
+  },
+  "version": "0.1.0-dev"
+}

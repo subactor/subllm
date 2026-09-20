@@ -1,0 +1,40 @@
+{
+  "ciReceipt": {
+    "sha256": "e7bc31c522f1cb1604a92885d5512012893904b5e0f013230cd97358115c3c90",
+    "snapshot": {
+      "checkName": "test",
+      "completedAt": "2026-09-19T08:41:05Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 105869865594,
+      "repository": "wellmanifest/worktrees",
+      "runAttempt": 1,
+      "runId": 35432652222,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/worktrees/actions/jobs/105869865594",
+      "subjectSha": "d8e91cfe1fa923bf825fa7a4aa0da1c6e84a2a93",
+      "workflowPath": ".github/workflows/ci.yml",
+      "workflowSha256": "e4f6588256b808c56a7e7d99fe201959861786f62d8fce9aeb628f852f65a008"
+    }
+  },
+  "claimedLevel": "S3",
+  "localBindings": [],
+  "packId": "wellmanifest/worktrees",
+  "protectionReceipt": null,
+  "schema": "semcod.standard-pack-projection/v1",
+  "source": {
+    "conformance": {
+      "path": "operations/conformance.py",
+      "sha256": "fad10912f3b14913cc348880996b636ba0d31ea66a853dd264b53e4e66f17feb",
+      "uri": "https://github.com/wellmanifest/worktrees/blob/d8e91cfe1fa923bf825fa7a4aa0da1c6e84a2a93/operations/conformance.py"
+    },
+    "contract": {
+      "path": "models/worktrees.schema.json",
+      "sha256": "bb5989c19ee33d9beafa34576ef568ef70384a664ccf763ac2e29dde3a464756",
+      "uri": "https://github.com/wellmanifest/worktrees/blob/d8e91cfe1fa923bf825fa7a4aa0da1c6e84a2a93/models/worktrees.schema.json"
+    },
+    "repository": "wellmanifest/worktrees",
+    "revision": "d8e91cfe1fa923bf825fa7a4aa0da1c6e84a2a93"
+  },
+  "version": "0.5.3"
+}

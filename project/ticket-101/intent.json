@@ -1,0 +1,24 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-101",
+  "summary": "Record baseline standard pack adoption evidence",
+  "workstream": "governance",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-101/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    ".governance/standard-adoption.json",
+    ".governance/standard-pack-evidence/**",
+    ".governance/standard_pack_projection_check.py"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": ["ticket-100"],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
