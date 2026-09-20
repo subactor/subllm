@@ -149,10 +149,14 @@ MODELS = MappingProxyType(
             id="gemini-3.6-flash",
             vision=True,
             providers=_provider_models(
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-3.6-flash",
+                    wire_model="gemini-3.6-flash",
+                ),
                 openrouter=ProviderModelSpec(
                     litellm_model="openrouter/google/gemini-3.6-flash",
                     wire_model="google/gemini-3.6-flash",
-                )
+                ),
             ),
         ),
         "deepseek-v4-pro": ModelSpec(
@@ -178,8 +182,8 @@ MODELS = MappingProxyType(
             providers=_provider_models(
                 **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="gemini-3.1-pro-high")},
                 agy=ProviderModelSpec(
-                    litellm_model="gemini/gemini-3.1-pro-high",
-                    wire_model="gemini-3.1-pro-high",
+                    litellm_model="gemini/gemini-3.1-pro-preview",
+                    wire_model="gemini-3.1-pro-preview",
                 ),
             ),
         ),
@@ -188,8 +192,28 @@ MODELS = MappingProxyType(
             providers=_provider_models(
                 **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="gemini-3.7-flash-medium")},
                 agy=ProviderModelSpec(
-                    litellm_model="gemini/gemini-3.7-flash-medium",
-                    wire_model="gemini-3.7-flash-medium",
+                    litellm_model="gemini/gemini-3.7-flash",
+                    wire_model="gemini-3.7-flash",
+                ),
+            ),
+        ),
+        # Gemini API models available to new AI Studio keys (verified 2026-09-20). The free tier has no Pro quota.
+        "gemini-3.8-flash": ModelSpec(
+            id="gemini-3.8-flash",
+            providers=_provider_models(
+                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="gemini-3.8-flash-medium")},
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-3.8-flash",
+                    wire_model="gemini-3.8-flash",
+                ),
+            ),
+        ),
+        "gemini-3.5-flash-lite": ModelSpec(
+            id="gemini-3.5-flash-lite",
+            providers=_provider_models(
+                agy=ProviderModelSpec(
+                    litellm_model="gemini/gemini-3.5-flash-lite",
+                    wire_model="gemini-3.5-flash-lite",
                 ),
             ),
         ),
@@ -535,6 +559,11 @@ _DEFAULT = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy", model="gemini-3.8-flash"),
+    RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
+    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="claude", model="claude-sonnet-5"),
+    RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter"),
@@ -555,6 +584,11 @@ _REPAIR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy", model="gemini-3.8-flash"),
+    RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
+    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="claude", model="claude-sonnet-5"),
+    RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
@@ -564,6 +598,11 @@ _VALIDATOR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy", model="gemini-3.8-flash"),
+    RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
+    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="claude", model="claude-sonnet-5"),
+    RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
@@ -582,6 +621,11 @@ _CODING = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy", model="gemini-3.8-flash"),
+    RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
+    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="claude", model="claude-sonnet-5"),
+    RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter", model="glm-5.3"),

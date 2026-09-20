@@ -28,6 +28,33 @@ from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 from .usage import record_attempt
 
+NATIVE_API_TRANSPORTS = frozenset({"gemini-sdk", "anthropic"})
+
+
+def _complete_native(
+    route: ResolvedRoute,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    timeout_seconds: float,
+    response_format: Mapping[str, Any] | None,
+) -> CompletionResponse:
+    """Gemini API and Anthropic Messages API, with the same failure classes as the OpenAI worker."""
+    from . import anthropic_api, gemini_api
+    from .native_http import NativeHTTPError
+
+    module = {"gemini-sdk": gemini_api, "anthropic": anthropic_api}[route.transport]
+    try:
+        content, usage, finish_reason = module.invoke(
+            route.api_base, route.api_key, route.wire_model, messages, timeout_seconds,
+            response_format, route.model_parameters,
+        )
+    except NativeHTTPError as exc:
+        detail = f"HTTP {exc.status}" if exc.status else exc.outcome
+        message = f"{route.provider}/{route.wire_model} request failed with {detail}"
+        if exc.retryable:
+            raise _RetryableAttemptError(message, outcome=exc.outcome, provider_level=exc.provider_level) from None
+        raise CompletionError(message) from None
+    return CompletionResponse(content, route.provider, route.wire_model, usage, finish_reason)
 
 def _invoke_route(
     route: ResolvedRoute,
@@ -44,6 +71,8 @@ def _invoke_route(
         invoke = {"codex-cli": codex_cli, "claude-cli": claude_cli, "agy-cli": agy_cli}[route.transport].invoke
         content, usage = invoke(route.wire_model, messages, timeout_seconds, response_format)
         return CompletionResponse(content, route.provider, route.wire_model, usage, "stop")
+    if route.transport in NATIVE_API_TRANSPORTS:
+        return _complete_native(route, messages, timeout_seconds=timeout_seconds, response_format=response_format)
     if route.transport == "cursor-sdk":
         try:
             return _complete_cursor(route, messages, timeout_seconds=timeout_seconds, cwd=cwd)
