@@ -3,14 +3,14 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "unified-proxy",
   "kind": "information",
-  "version": 3,
+  "version": 4,
   "title": "Unified LLM and MCP proxy",
   "status": "implemented",
   "owner": "subactor/subllm",
   "created": "2026-09-19",
   "updated": "2026-09-20",
   "review_after": "2026-10-19",
-  "source_revision": "d984e491961ac2bd511f58818202d9b19b681f2f",
+  "source_revision": "22c678d6b9baa0d51d1d540720ca25321890d34d",
   "scope": "repository",
   "affected_repositories": [
     "subactor/subllm"
@@ -43,7 +43,9 @@ The implementation base is `9415a037d9933cbd8c5328041d98f1809b5e595b`. Tests exe
 
 A local client rollout at `2026-09-19T21:57:00.912758+00:00` verified 24 additional stdio integrations through the production gateway and PostgreSQL archive. Configuration readback routes 2/2 enabled Cursor servers and 25/26 enabled Codex servers through the gateway; the remaining PyCharm endpoint refused TCP on its configured local port. Disabled integrations stayed disabled, and existing GUI-session reload was not observed. The deployed runtime for that observation was `283a977433089c3bf0ff64f07df0bca2e06ce5aa` (PR 89); the private verification receipt SHA-256 is `ddc699cd994ae3f38dd3524e3af5bb074fe973ddf63f2bd81e5705aeb84192d6`. This establishes configured coverage and explicit probe traffic, not adoption by already running sessions or interception of direct LLM calls.
 
-The MCP adapter pins SDK 1.26.0 and delegates transport framing to its session manager, verified against the [pinned implementation](https://github.com/modelcontextprotocol/python-sdk/blob/v1.26.0/src/mcp/server/streamable_http_manager.py) and [transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports). Runtime does not fetch those URLs.
+The MCP adapter pins SDK 1.28.1 and delegates transport framing to its session manager, verified against the [pinned implementation](https://github.com/modelcontextprotocol/python-sdk/blob/v1.28.1/src/mcp/server/streamable_http_manager.py) and [transport specification](https://modelcontextprotocol.io/specification/2025-11-25/basic/transports). Runtime does not fetch those URLs.
+
+The dependency update in issue 92 pins MCP 1.28.1 in both gateway and test extras, raises the pytest minimum to 9.0.3 and replaces the hash-locked Doctor test wheel. Upstream [MCP 1.28.1 release notes](https://github.com/modelcontextprotocol/python-sdk/releases/tag/v1.28.1) and [HTTP principal-binding advisory](https://github.com/modelcontextprotocol/python-sdk/security/advisories/GHSA-jpw9-pfvf-9f58) establish the selected fixes; [pytest 9.0.3](https://github.com/pytest-dev/pytest/releases/tag/9.0.3) fixes its temporary-directory handling. These sources were checked on 2026-09-20; review by 2026-10-19. The gateway keeps a separate session manager per bearer principal and exposes stdio/Streamable HTTP, not WebSocket or experimental task handlers. Updating a manifest alone does not prove that an installed service uses the new SDK; release metadata and live acceptance must be observed separately. Existing transport tests cover cross-principal session denial, bidirectional RPC and error reply delivery.
 
 The adopted Logs contract is `wellmanifest/logs` revision `8374d5364e5c78ae69806fb60a06aa52cd23d1e3`, contract 0.5.0 SHA-256 `72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36`. `.governance/logs/catalog.json` and `policy/adopted/logs/event.schema.json` are checked against that contract by `scripts/check-logs.py`, invoked by `scripts/verify`. Machine runbooks live under `.governance/logs/errors/{CODE}.md` relative to the adopted Logs catalog; they use the Logs schema and section grammar, while this human-facing guide uses Docs. Existing runtime runbooks in the root errors directory retain their historical placement. Operational events carry stable codes, severity, outcome, correlation, timing and remediation references. Private request/response bodies are a separate archive, never `wellmanifest.logs/event/v1` payloads.
 
@@ -99,3 +101,9 @@ The pilot has no automatic disk retention, crash replay, multi-host deployment f
 ## Next actions
 
 Run `./scripts/verify` for the default suite and pinned Logs adoption checks. Run `python -m pytest -q integration/test_gateway_postgres.py` separately with `SUBLLM_TEST_POSTGRES_DSN` pointing to a dedicated test database. This integration suite requires that database and fails when the DSN is missing; it never reports an unexecuted database check as successful. Each run creates and removes its own unique schema, verifying concurrent writes, UTC midnight partitioning and SQLite export. Publish via the protected local executor and independent Validator. Deploy a pinned artifact, migrate clients in bounded batches, verify a real read-only MCP call and LLM call from each consumer, and keep coverage gaps visible until observed traffic confirms adoption.
+
+### Legacy runtime preservation
+
+On 2026-09-20 the local commit guard for ticket-092 rejected overlap with the clean detached checkout `/home/tom/github/subactor/.worktrees/subllm-repair-tests-04a4e22`, source `04a4e22e88b03539e8c43d73d223050e2e78eda9`. No process cwd, command line or environment referenced it during the observation. Seven unit/configuration files still reference that path for three inactive user services: `subactor-subllm-inventory-canary`, `subactor-subllm-v2-canary` and `subactor-coding-agent`. Inactivity does not prove the bindings can be discarded. The original source is not an ancestor or patch-identical commit on current main.
+
+After explicit user authorization, the exact revision was preserved on 2026-09-20 as a standalone runtime checkout at `/home/tom/.local/share/subactor/subllm-preserved-runtime/04a4e22e88b03539e8c43d73d223050e2e78eda9`. Its Git tree and imports were verified, the matching path was replaced in the seven inactive service files after hash checks, and the original clean worktree was unregistered. All three services remained inactive; none was started or restarted. A verified Git bundle, ignored runtime files and original unit files remain in private recovery storage. The operation removes a stale overlap from ticket delivery without discarding the historical runtime or granting publication authority.

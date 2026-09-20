@@ -21,17 +21,17 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
-gateway = ["mcp==1.26.0", "uvicorn>=0.35,<1", "psycopg[binary]>=3.2,<4"]
+gateway = ["mcp==1.28.1", "uvicorn>=0.35,<1", "psycopg[binary]>=3.2,<4"]
 cursor = [
   "cursor-sdk>=1.0.28,<2",
 ]
 test = [
-  "mcp==1.26.0",
+  "mcp==1.28.1",
   "uvicorn>=0.35,<1",
   "psycopg[binary]>=3.2,<4",
   "build>=1.2,<2",
   "jsonschema==4.26.0",
-  "pytest>=8,<10",
+  "pytest>=9.0.3,<10",
   "ruff>=0.12,<1",
 ]
 

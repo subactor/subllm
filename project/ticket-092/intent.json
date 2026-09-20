@@ -1,0 +1,78 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-092",
+  "summary": "Update MCP gateway and pytest to patched dependency versions",
+  "workstream": "integration",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "pyproject.toml",
+    "requirements-test.txt",
+    "docs/information/unified-proxy.md",
+    "project/ticket-092/**"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md",
+    ".env",
+    ".env.*"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "22c678d6b9baa0d51d1d540720ca25321890d34d",
+    "targetBranch": "main",
+    "outcome": "Publish and deploy MCP1.28.1 with validated archive/session compatibility and patched pytest",
+    "nonGoals": [
+      "No change to routing or private client configuration"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 1
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Retain the gateway architecture and update its SDK dependency in an isolated release",
+      "components": [
+        {
+          "name": "gateway",
+          "paths": [
+            "pyproject.toml",
+            "requirements-test.txt",
+            "docs/information/unified-proxy.md"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Restore the prior pinned service ExecStart release and independently verify readback"
+    },
+    "runtimeDependencies": [
+      "mcp==1.28.1"
+    ],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "./scripts/verify",
+          "python -m pytest -q integration/test_gateway_postgres.py"
+        ],
+        "evidence": "Private exact-head receipts and independent OneDev/Validator publication receipts"
+      }
+    ]
+  }
+}
