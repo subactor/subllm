@@ -33,8 +33,8 @@ CREATE INDEX IF NOT EXISTS attempts_provider ON attempts(provider, id);
 """
 
 
-def journal_path() -> Path:
-    override = os.environ.get("SUBLLM_USAGE_DB")
+def journal_path(override: str | Path | None = None) -> Path:
+    override = override or os.environ.get("SUBLLM_USAGE_DB")
     if override:
         return Path(override).expanduser().absolute()
     root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
@@ -131,7 +131,7 @@ def _time(value: Any) -> str:
         raise _invalid() from exc
 
 
-def query_usage(filters: Mapping[str, Any]) -> dict[str, Any]:
+def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) -> dict[str, Any]:
     """Read-only projection: querying an empty installation does not create a database."""
     if set(filters) - FILTERS:
         raise _invalid()
@@ -177,7 +177,7 @@ def query_usage(filters: Mapping[str, Any]) -> dict[str, Any]:
         "Direct external API calls, local Ollama forwarding and code-edit transports are not included. "
         "Application identity is declared by the caller; missing identity appears as subactor-proxy.",
     }
-    path = journal_path()
+    path = journal_path(database)
     if not path.exists():
         return result
     clause = " WHERE " + " AND ".join(where) if where else ""

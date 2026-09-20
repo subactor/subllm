@@ -1,0 +1,28 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-096",
+  "summary": "Persist gateway session and unify LLM/MCP interaction history",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "src/subllm/gateway.py",
+    "src/subllm/usage.py",
+    "src/subllm/assets/gateway.js",
+    "src/subllm/assets/gateway.html",
+    "tests/test_gateway_history.py",
+    "project/ticket-096/**"
+  ],
+  "forbiddenPaths": [
+    ".env",
+    ".env.*",
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": ["python", "javascript", "sqlite"],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
