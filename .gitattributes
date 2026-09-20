@@ -1,3 +1,7 @@
 # Wellmanifest new-project standard git attributes
 project/TICKETS.md merge=wellmanifest-ticket-index
 TODO.md merge=wellmanifest-ticket-index
+
+# Vendored standard packs are digest-pinned upstream content; their exact
+# bytes (including trailing blank lines) are part of the adoption contract.
+.governance/wellmanifest/** whitespace=-blank-at-eof
