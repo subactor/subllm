@@ -411,6 +411,10 @@ def test_all_providers_disabled_fails_closed(tmp_path: Path, monkeypatch: pytest
         cursor_enabled=False,
         zai_enabled=False,
         openrouter_enabled=False,
+        agy_enabled=False,
+        codex_enabled=False,
+        claude_enabled=False,
+        ollama_enabled=False,
     )
     monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
 

@@ -134,13 +134,15 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
 @pytest.mark.parametrize(
     ("model", "provider", "litellm_model", "wire_model"),
     (
-        ("gemini-3.1-pro-high", "agy", "gemini/gemini-3.1-pro-high", "gemini-3.1-pro-high"),
+        ("gemini-3.1-pro-high", "agy", "gemini/gemini-3.1-pro-preview", "gemini-3.1-pro-preview"),
         (
             "gemini-3.7-flash-medium",
             "agy",
-            "gemini/gemini-3.7-flash-medium",
-            "gemini-3.7-flash-medium",
+            "gemini/gemini-3.7-flash",
+            "gemini-3.7-flash",
         ),
+        ("gemini-3.8-flash", "agy", "gemini/gemini-3.8-flash", "gemini-3.8-flash"),
+        ("gemini-3.5-flash-lite", "agy", "gemini/gemini-3.5-flash-lite", "gemini-3.5-flash-lite"),
         ("claude-opus-5", "claude", "anthropic/claude-opus-5", "claude-opus-5"),
         ("claude-sonnet-5", "claude", "anthropic/claude-sonnet-5", "claude-sonnet-5"),
         ("gpt-5.6-sol", "codex", "openai/gpt-5.6-sol", "gpt-5.6-sol"),
@@ -191,7 +193,8 @@ def test_process_editor_has_a_central_llm_route() -> None:
 
     assert routes[0].provider == "zai"
     assert routes[0].model == "glm-5.3"
-    assert {route.provider for route in routes} == {"zai", "openrouter"}
+    # Every credentialed provider is a candidate; a route only runs those with a valid key.
+    assert {route.provider for route in routes} >= {"zai", "openrouter", "agy", "codex", "claude", "ollama"}
 
 
 @pytest.mark.parametrize("function", ("preprocess", "execute"))

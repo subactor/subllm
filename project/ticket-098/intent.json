@@ -1,0 +1,25 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-098",
+  "summary": "Native transports for Gemini and Anthropic API with credential CLI",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-098/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/**",
+    "tests/**"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

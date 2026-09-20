@@ -21,6 +21,29 @@ def _parser() -> argparse.ArgumentParser:
     import_parser = env_subparsers.add_parser("import", help="import credentials from existing .env files")
     import_parser.add_argument("sources", nargs="+", type=Path)
     import_parser.add_argument("--target", type=Path, default=Path(".env"))
+    for name, text in (
+        ("list", "show every credential variable: set, empty, invalid or absent (never a value)"),
+        ("set", "store or replace one key, checked with the provider first"),
+        ("unset", "clear one key (the line stays, the value is emptied)"),
+        ("verify", "ask each provider whether its stored key is accepted"),
+        ("order", "show or change the provider queue (SUBLLM_PROVIDER_ORDER)"),
+    ):
+        sub = env_subparsers.add_parser(name, help=text)
+        sub.add_argument("--file", type=Path, default=None, help="credential file (default: detected)")
+        if name in {"set", "unset"}:
+            sub.add_argument("name", help="provider id (agy) or variable (GEMINI_API_KEY)")
+        if name == "verify":
+            sub.add_argument("names", nargs="*", help="providers or variables; default: every stored key")
+        if name == "set":
+            source = sub.add_mutually_exclusive_group()
+            source.add_argument("--from-file", type=Path, help="read the key from this file (first token)")
+            source.add_argument("--stdin", action="store_true", help="read the key from standard input")
+            sub.add_argument("--no-verify", action="store_true", help="store without asking the provider")
+        if name == "order":
+            choice = sub.add_mutually_exclusive_group()
+            choice.add_argument("--set", dest="order", help="comma-separated provider ids, or empty to clear")
+            choice.add_argument("--preset", help="balanced, high-performance, api-only, cheap or free")
+    env_subparsers.add_parser("template", help="print an annotated .env with every provider and queue presets")
     resolve_parser = subparsers.add_parser("resolve", help="resolve one application/function route")
     resolve_parser.add_argument("application")
     resolve_parser.add_argument("function")
