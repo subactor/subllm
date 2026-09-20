@@ -16,9 +16,9 @@ SPEC.loader.exec_module(adapter)
 
 
 
-# Reviewed adoption 0.20.35 at cfaa0bf0ea6b0e7349fed0bb62b5ce15792d687d.
+# Reviewed adoption 0.20.38 at e2fd653ff801fb228fca818e1d874ee685a4da62.
 # An upgrade must explicitly review this pin; candidate metadata cannot exempt files.
-ADOPTION_LOCK_SHA256 = "763f1dc2f7b31e9001c4c899388e82e9344932fd304463f950302dc0c09acdd5"
+ADOPTION_LOCK_SHA256 = "ba6a96d9239defd435b78ee57dadfcd836c48d61e5beb0aa5513bba30d7e6098"
 
 
 def managed_document_copies(root):

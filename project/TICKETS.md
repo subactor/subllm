@@ -85,4 +85,5 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | **ticket-096** | [`README.md`](./ticket-096/README.md) | - | - | - | - | - |
 | **ticket-097** | [`README.md`](./ticket-097/README.md) | - | - | - | - | - |
 | **ticket-098** | [`README.md`](./ticket-098/README.md) | - | - | - | - | - |
+| **ticket-099** | [`README.md`](./ticket-099/README.md) | - | - | - | - | - |
 <!-- AUTO:TICKET_INDEX:END -->

@@ -8,6 +8,7 @@ venv/
 build/
 dist/
 .env
+*.log
 
 # Local ticket worktrees and private recovery state
 /.worktrees/

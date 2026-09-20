@@ -1,7 +1,9 @@
 {
   "schema": "wellmanifest.docs/policy/v1",
   "id": "wellmanifest/docs",
-  "version": "0.5.0",
+  "version": "0.6.0",
+  "readiness_schema": "wellmanifest.docs/readiness/v1",
+  "readiness_phases": ["unavailable", "unadopted", "configured", "deployed", "verified"],
   "change_contract": {
     "profile": "wellmanifest.docs/change/v1",
     "carrier": "single-dsl-fence-in-compact-document",
