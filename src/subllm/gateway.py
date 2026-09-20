@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import hmac
 import json
 import logging
@@ -32,6 +33,7 @@ from .interaction_context import ACTIVE_ARCHIVE
 from .interaction_store import InteractionStore, utc_now
 from .policy import MODELS, ROUTES
 from .proxy import _complete_model_direct
+from .usage import query_usage
 
 LOG = logging.getLogger(__name__)
 
@@ -41,6 +43,73 @@ class ArchiveAdmissionError(RuntimeError):
 
 
 NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+
+
+def _legacy_usage_id(attempt_id: int) -> str:
+    return hashlib.sha256(f"subllm-usage:{attempt_id}".encode()).hexdigest()[:32]
+
+
+def _legacy_usage_record(attempt: dict) -> dict:
+    """Normalize metadata-only transport telemetry into the private history view."""
+    timestamp = attempt["timestamp"]
+    return {
+        "id": _legacy_usage_id(attempt["id"]),
+        "day": timestamp[:10],
+        "started_at": timestamp,
+        "finished_at": timestamp,
+        "duration_ms": attempt["duration_ms"],
+        "kind": "llm_attempt",
+        "caller": attempt["application"],
+        "target": f"{attempt['provider']}/{attempt['model']}",
+        "direction": "client_to_server",
+        "correlation_id": attempt["request_id"],
+        "status": attempt["status"],
+        "diagnostic": {"code": attempt["diagnostic_code"]} if attempt["diagnostic_code"] else None,
+        "metadata": {
+            "provider": attempt["provider"],
+            "model": attempt["model"],
+            "function": attempt["function"],
+            "input_tokens": attempt["input_tokens"],
+            "output_tokens": attempt["output_tokens"],
+            "source": "transport-telemetry",
+            "capture": "metadata-only",
+        },
+        "capture": "metadata-only",
+        "source": "usage.sqlite3",
+        "request": {
+            "captured": False,
+            "reason": "Wywołanie ominęło gateway; dostępne są tylko metadane transportu.",
+        },
+        "response": {
+            "captured": False,
+            "reason": "Skieruj klienta przez /v1/chat/completions, aby archiwizować żądanie i odpowiedź.",
+        },
+    }
+
+
+def _legacy_usage_records(database, day, *, status=None, before=None, limit=500, caller=None):
+    if not database:
+        return []
+    filters = {"limit": 500}
+    if status:
+        filters["status"] = status
+    try:
+        attempts = query_usage(filters, database).get("attempts", [])
+    except Exception:
+        LOG.warning("SUBLLM-USAGE-READ: legacy metadata unavailable")
+        return []
+    rows = []
+    for attempt in attempts:
+        record = _legacy_usage_record(attempt)
+        if (
+            record["day"] != day
+            or (caller and record["caller"] != caller)
+            or (before and record["started_at"] >= before)
+        ):
+            continue
+        rows.append(record)
+    rows.sort(key=lambda row: (row["started_at"], row["id"]), reverse=True)
+    return rows[:limit]
 
 
 def validate_config(config):
@@ -130,6 +199,7 @@ class GatewayGuard:
 
 def create_app(config, store=None):
     config = validate_config(config)
+    legacy_usage_database = config.get("usage_database")
     store = store or InteractionStore(
         Path(config["archive_directory"]).expanduser().absolute(),
         os.environ.get(config.get("postgres_dsn_env", "SUBLLM_GATEWAY_DATABASE_URL")),
@@ -177,15 +247,69 @@ def create_app(config, store=None):
         if set(params) - {"day", "id", "kind", "status", "limit", "before"}:
             return JSONResponse({"error": "Unknown filter"}, 400)
         try:
-            result = await asyncio.to_thread(
-                bus.interaction_query,
-                day=params.pop("day", utc_now()[:10]),
-                record_id=params.pop("id", None),
-                caller=request.state.principal,
-                read_all=client.get("read_all", False),
-                limit=int(params.pop("limit", "100")),
-                **params,
-            )
+            day = params.pop("day", utc_now()[:10])
+            record_id = params.pop("id", None)
+            kind = params.pop("kind", None)
+            status = params.pop("status", None)
+            limit = int(params.pop("limit", "100"))
+            before = params.pop("before", None)
+            read_all = client.get("read_all", False)
+            visible_caller = None if read_all else request.state.principal
+
+            def query_gateway_rows(query_kind=None):
+                return bus.interaction_query(
+                    day=day,
+                    caller=request.state.principal,
+                    read_all=read_all,
+                    kind=query_kind,
+                    status=status,
+                    limit=limit,
+                    before=before,
+                )
+
+            if record_id:
+                result = bus.interaction_query(
+                    day=day,
+                    record_id=record_id,
+                    caller=request.state.principal,
+                    read_all=read_all,
+                    kind=kind,
+                    status=status,
+                    limit=limit,
+                    before=before,
+                )
+                if result is None and kind in (None, "llm", "llm_attempt"):
+                    legacy_rows = _legacy_usage_records(
+                        legacy_usage_database,
+                        day,
+                        status=status,
+                        before=before,
+                        caller=visible_caller,
+                    )
+                    result = next((row for row in legacy_rows if row["id"] == record_id), None)
+            else:
+                if kind == "llm":
+                    result = query_gateway_rows("llm") + query_gateway_rows("llm_attempt")
+                else:
+                    result = query_gateway_rows(kind)
+                if kind in (None, "llm", "llm_attempt"):
+                    result.extend(
+                        {
+                            key: value
+                            for key, value in row.items()
+                            if key not in {"request", "response"}
+                        }
+                        for row in _legacy_usage_records(
+                            legacy_usage_database,
+                            day,
+                            status=status,
+                            before=before,
+                            limit=limit,
+                            caller=visible_caller,
+                        )
+                    )
+                    result.sort(key=lambda row: (row["started_at"], row["id"]), reverse=True)
+                    result = result[:limit]
             return JSONResponse({"data": result})
         except ValueError:
             return JSONResponse({"error": "Invalid archive query"}, 400)
