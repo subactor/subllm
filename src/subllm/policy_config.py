@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import tomllib
 from collections.abc import Mapping
 from dataclasses import asdict, dataclass
@@ -9,11 +10,19 @@ from types import MappingProxyType
 from urllib.parse import urlsplit
 
 from .errors import InvalidPolicyError
-from .policy import APPLICATIONS, MODELS, PROVIDERS
+from .policy import (
+    APPLICATIONS,
+    MODELS,
+    ProviderSpec,
+    clear_custom_providers,
+    register_custom_provider,
+)
 
 SUBLLM_POLICY_FILE = "SUBLLM_POLICY_FILE"
 SUBLLM_ATTEMPT_TIMEOUT_SECONDS = "SUBLLM_ATTEMPT_TIMEOUT_SECONDS"
 SUBLLM_SLOW_RESPONSE_SECONDS = "SUBLLM_SLOW_RESPONSE_SECONDS"
+_CUSTOM_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_\.-]{0,63}$")
+_ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
 
 @dataclass(frozen=True)
@@ -21,6 +30,18 @@ class ProviderPolicyConfig:
     enabled: bool
     priority: int
     default_model: str
+
+
+@dataclass(frozen=True)
+class CustomProviderConfig:
+    id: str
+    api_base: str
+    api_key_env: str = ""
+    default_model: str = ""
+    models: tuple[str, ...] = ()
+    priority: int = 50
+    enabled: bool = True
+    routes: tuple[str, ...] = ("all",)
 
 
 @dataclass(frozen=True)
@@ -44,6 +65,7 @@ class RuntimePolicyConfig:
     providers: Mapping[str, ProviderPolicyConfig]
     applications: Mapping[str, ApplicationPolicyConfig]
     execution: ExecutionPolicyConfig
+    custom_providers: Mapping[str, CustomProviderConfig] = MappingProxyType({})
     source: Path | None = None
 
 
@@ -280,6 +302,95 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
     )
 
 
+def _validate_custom_provider(name: str, raw: object, *, source: Path) -> CustomProviderConfig:
+    if not isinstance(name, str) or not _CUSTOM_ID_RE.match(name):
+        raise InvalidPolicyError(f"invalid custom provider name '{name}' in {source}")
+    if name in _DEFAULTS:
+        raise InvalidPolicyError(f"custom provider '{name}' conflicts with built-in provider in {source}")
+    if not isinstance(raw, dict):
+        raise InvalidPolicyError(f"custom provider '{name}' must be a table in {source}")
+    allowed_fields = {"api_base", "api_key_env", "default_model", "models", "priority", "enabled", "routes"}
+    unknown = set(raw) - allowed_fields
+    if unknown:
+        raise InvalidPolicyError(f"unknown fields {unknown} for custom provider '{name}' in {source}")
+    if "api_base" not in raw:
+        raise InvalidPolicyError(f"custom provider '{name}' missing required field 'api_base' in {source}")
+    api_base = raw["api_base"]
+    if not isinstance(api_base, str) or not api_base.strip():
+        raise InvalidPolicyError(f"custom provider '{name}' api_base must be a non-empty string in {source}")
+    api_base = api_base.strip()
+    parsed = urlsplit(api_base)
+    is_localhost = (
+        parsed.hostname in {"localhost", "127.0.0.1", "::1"}
+        or (parsed.netloc and parsed.netloc.split(":")[0] in {"localhost", "127.0.0.1", "::1"})
+    )
+    if is_localhost:
+        if parsed.scheme not in {"http", "https"}:
+            raise InvalidPolicyError(f"custom provider '{name}' localhost api_base must use http or https in {source}")
+    else:
+        if parsed.scheme != "https":
+            raise InvalidPolicyError(f"custom provider '{name}' remote api_base must use https in {source}")
+    if parsed.username or parsed.password or parsed.query or parsed.fragment or not parsed.netloc:
+        raise InvalidPolicyError(
+            f"custom provider '{name}' api_base must not contain credentials, query or fragment in {source}"
+        )
+
+    api_key_env = raw.get("api_key_env", "")
+    if not isinstance(api_key_env, str):
+        raise InvalidPolicyError(f"custom provider '{name}' api_key_env must be string in {source}")
+    api_key_env = api_key_env.strip()
+    if api_key_env and not _ENV_NAME_RE.match(api_key_env):
+        raise InvalidPolicyError(
+            f"custom provider '{name}' api_key_env '{api_key_env}' is not a valid environment variable name in {source}"
+        )
+
+    raw_models = raw.get("models")
+    if raw_models is not None:
+        if not isinstance(raw_models, (list, tuple)) or not raw_models:
+            raise InvalidPolicyError(f"custom provider '{name}' models must be a non-empty list in {source}")
+        models = tuple(str(m).strip() for m in raw_models)
+        if any(not m for m in models):
+            raise InvalidPolicyError(f"custom provider '{name}' model names cannot be empty in {source}")
+    else:
+        models = ()
+
+    default_model = raw.get("default_model", "")
+    if not isinstance(default_model, str):
+        raise InvalidPolicyError(f"custom provider '{name}' default_model must be string in {source}")
+    default_model = default_model.strip()
+    if not default_model:
+        default_model = models[0] if models else name
+    if default_model not in models:
+        models = (default_model, *models)
+
+    priority = raw.get("priority", 50)
+    if isinstance(priority, bool) or not isinstance(priority, int) or not 0 <= priority <= 10_000:
+        raise InvalidPolicyError(f"custom provider '{name}' priority must be an integer from 0 to 10000 in {source}")
+
+    enabled = raw.get("enabled", True)
+    if not isinstance(enabled, bool):
+        raise InvalidPolicyError(f"custom provider '{name}' enabled must be boolean in {source}")
+
+    raw_routes = raw.get("routes")
+    if raw_routes is not None:
+        if not isinstance(raw_routes, (list, tuple)):
+            raise InvalidPolicyError(f"custom provider '{name}' routes must be a list in {source}")
+        routes = tuple(str(r).strip() for r in raw_routes)
+    else:
+        routes = ("all",)
+
+    return CustomProviderConfig(
+        id=name,
+        api_base=api_base.rstrip("/"),
+        api_key_env=api_key_env,
+        default_model=default_model,
+        models=models,
+        priority=priority,
+        enabled=enabled,
+        routes=routes,
+    )
+
+
 def load_policy_config(
     *,
     environ: Mapping[str, str] | None = None,
@@ -287,10 +398,12 @@ def load_policy_config(
 ) -> RuntimePolicyConfig:
     source = find_policy_file(environ=environ, cwd=cwd)
     if source is None:
+        clear_custom_providers()
         return RuntimePolicyConfig(
             providers=_DEFAULTS,
             applications=_APPLICATION_DEFAULTS,
             execution=_execution_with_environment(_EXECUTION_DEFAULTS, environ),
+            custom_providers=MappingProxyType({}),
         )
     try:
         with source.open("rb") as handle:
@@ -303,18 +416,19 @@ def load_policy_config(
     expected_keys = {"schema_version", "providers", "applications"}
     if schema_version == 3:
         expected_keys.add("execution")
-    if set(raw) != expected_keys or schema_version not in {2, 3}:
+    allowed_keys = expected_keys | {"custom_providers"}
+    if not (expected_keys <= set(raw) <= allowed_keys) or schema_version not in {2, 3}:
         raise InvalidPolicyError(f"invalid SubLLM policy schema in {source}")
     provider_rows = raw.get("providers")
     # Older operator policies remain valid and do not enable a new local executor.
     for executor in ("codex-cli", "claude-cli", "agy-cli"):
         if isinstance(provider_rows, dict) and executor not in provider_rows:
             provider_rows = {**provider_rows, executor: {**asdict(_DEFAULTS[executor]), "enabled": False}}
-    if not isinstance(provider_rows, dict) or set(provider_rows) != set(PROVIDERS):
-        raise InvalidPolicyError(f"SubLLM policy must configure exactly: {', '.join(PROVIDERS)}")
+    if not isinstance(provider_rows, dict) or set(provider_rows) != set(_DEFAULTS):
+        raise InvalidPolicyError(f"SubLLM policy must configure exactly: {', '.join(_DEFAULTS)}")
     providers = {
         name: _validate_provider(name, provider_rows[name], source=source)
-        for name in PROVIDERS
+        for name in _DEFAULTS
     }
     application_rows = raw.get("applications")
     if isinstance(application_rows, dict):
@@ -327,7 +441,15 @@ def load_policy_config(
         name: _validate_application(name, application_rows[name], source=source)
         for name in APPLICATIONS
     }
+    custom_rows = raw.get("custom_providers", {})
+    if not isinstance(custom_rows, dict):
+        raise InvalidPolicyError(f"custom_providers must be a table in {source}")
+    custom_providers = {
+        name: _validate_custom_provider(name, custom_rows[name], source=source)
+        for name in custom_rows
+    }
     enabled_priorities = [settings.priority for settings in providers.values() if settings.enabled]
+    enabled_priorities += [custom.priority for custom in custom_providers.values() if custom.enabled]
     if len(enabled_priorities) != len(set(enabled_priorities)):
         raise InvalidPolicyError(f"enabled providers must have unique priorities in {source}")
     execution = (
@@ -335,9 +457,20 @@ def load_policy_config(
         if schema_version == 3
         else _EXECUTION_DEFAULTS
     )
+    clear_custom_providers()
+    for custom in custom_providers.values():
+        spec = ProviderSpec(
+            id=custom.id,
+            api_base=custom.api_base,
+            api_key_env=custom.api_key_env,
+            transport="openai-compatible",
+        )
+        register_custom_provider(spec, custom.models)
+
     return RuntimePolicyConfig(
         providers=MappingProxyType(providers),
         applications=MappingProxyType(applications),
         execution=_execution_with_environment(execution, environ),
+        custom_providers=MappingProxyType(custom_providers),
         source=source,
     )

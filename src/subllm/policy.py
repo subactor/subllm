@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from types import MappingProxyType
 
@@ -20,7 +21,7 @@ def _provider_models(**values: ProviderModelSpec) -> MappingProxyType[str, Provi
 # Credential source → provider → transport. Cursor Sol is never an OpenRouter
 # wire id. Catalog twin: wellmanifest/policy-dsl profiles/llm-credential and
 # wellmanifest/env-dsl examples/valid/subllm-credential-strategies.env.
-PROVIDERS = MappingProxyType(
+_BASE_PROVIDERS = MappingProxyType(
     {
         "zai": ProviderSpec(
             id="zai",
@@ -75,16 +76,11 @@ PROVIDERS = MappingProxyType(
     }
 )
 
-CURSOR_API_KEY_ENV = PROVIDERS["cursor"].api_key_env
-EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
-
-# Comma-separated fallback chain. Unknown names fail closed.
-SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
-ORDERABLE_PROVIDER_IDS = (
+_BASE_ORDERABLE_PROVIDER_IDS = (
     "zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli", "claude-cli", "agy-cli",
 )
 
-MODELS = MappingProxyType(
+_BASE_MODELS = MappingProxyType(
     {
         "glm-5.2": ModelSpec(
             id="glm-5.2",
@@ -391,6 +387,146 @@ MODELS = MappingProxyType(
         ),
     }
 )
+
+
+class _ProvidersCatalog(Mapping[str, ProviderSpec]):
+    def __init__(self, base: Mapping[str, ProviderSpec]) -> None:
+        self._base = base
+        self._custom: dict[str, ProviderSpec] = {}
+
+    def register_custom(self, provider_spec: ProviderSpec) -> None:
+        self._custom[provider_spec.id] = provider_spec
+
+    def clear_custom(self) -> None:
+        self._custom.clear()
+
+    def __getitem__(self, key: str) -> ProviderSpec:
+        if key in self._custom:
+            return self._custom[key]
+        return self._base[key]
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self._base
+        for k in self._custom:
+            if k not in self._base:
+                yield k
+
+    def __len__(self) -> int:
+        return len(set(self._base) | set(self._custom))
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._custom or key in self._base
+
+    def get(self, key: str, default: ProviderSpec | None = None) -> ProviderSpec | None:
+        if key in self._custom:
+            return self._custom[key]
+        return self._base.get(key, default)
+
+
+class _ModelsCatalog(Mapping[str, ModelSpec]):
+    def __init__(self, base: Mapping[str, ModelSpec]) -> None:
+        self._base = base
+        self._custom: dict[str, ModelSpec] = {}
+
+    def register_custom(self, model_spec: ModelSpec) -> None:
+        if model_spec.id in self._base:
+            base_model = self._base[model_spec.id]
+            merged_providers = {**base_model.providers, **model_spec.providers}
+            self._custom[model_spec.id] = replace(base_model, providers=MappingProxyType(merged_providers))
+        elif model_spec.id in self._custom:
+            existing = self._custom[model_spec.id]
+            merged_providers = {**existing.providers, **model_spec.providers}
+            self._custom[model_spec.id] = replace(existing, providers=MappingProxyType(merged_providers))
+        else:
+            self._custom[model_spec.id] = model_spec
+
+    def clear_custom(self) -> None:
+        self._custom.clear()
+
+    def __getitem__(self, key: str) -> ModelSpec:
+        if key in self._custom:
+            return self._custom[key]
+        return self._base[key]
+
+    def __iter__(self) -> Iterator[str]:
+        yield from self._base
+        for k in self._custom:
+            if k not in self._base:
+                yield k
+
+    def __len__(self) -> int:
+        return len(set(self._base) | set(self._custom))
+
+    def __contains__(self, key: object) -> bool:
+        return key in self._custom or key in self._base
+
+    def get(self, key: str, default: ModelSpec | None = None) -> ModelSpec | None:
+        if key in self._custom:
+            return self._custom[key]
+        return self._base.get(key, default)
+
+
+class _OrderableProviderIds(Sequence[str]):
+    def __init__(self, base: tuple[str, ...], catalog: _ProvidersCatalog) -> None:
+        self._base = base
+        self._catalog = catalog
+
+    def _all(self) -> tuple[str, ...]:
+        custom_ids = tuple(k for k in self._catalog._custom if k not in self._base)
+        return self._base + custom_ids
+
+    def __getitem__(self, index: int | slice) -> str | Sequence[str]:
+        return self._all()[index]
+
+    def __len__(self) -> int:
+        return len(self._all())
+
+    def __contains__(self, item: object) -> bool:
+        return item in self._base or item in self._catalog._custom
+
+    def __iter__(self) -> Iterator[str]:
+        return iter(self._all())
+
+    def __eq__(self, other: object) -> bool:
+        if isinstance(other, (tuple, list)):
+            return self._all() == tuple(other)
+        if isinstance(other, _OrderableProviderIds):
+            return self._all() == other._all()
+        return False
+
+    def __repr__(self) -> str:
+        return repr(self._all())
+
+
+PROVIDERS = _ProvidersCatalog(_BASE_PROVIDERS)
+CURSOR_API_KEY_ENV = PROVIDERS["cursor"].api_key_env
+EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
+SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
+ORDERABLE_PROVIDER_IDS = _OrderableProviderIds(_BASE_ORDERABLE_PROVIDER_IDS, PROVIDERS)
+MODELS = _ModelsCatalog(_BASE_MODELS)
+
+
+def register_custom_provider(spec: ProviderSpec, models: tuple[str, ...] = ()) -> None:
+    PROVIDERS.register_custom(spec)
+    for model_name in models:
+        model_spec = ModelSpec(
+            id=model_name,
+            providers=MappingProxyType(
+                {
+                    spec.id: ProviderModelSpec(
+                        litellm_model=f"openai/{model_name}",
+                        wire_model=model_name,
+                    )
+                }
+            ),
+        )
+        MODELS.register_custom(model_spec)
+
+
+def clear_custom_providers() -> None:
+    PROVIDERS.clear_custom()
+    MODELS.clear_custom()
+
 
 APPLICATIONS = MappingProxyType(
     {

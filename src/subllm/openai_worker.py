@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 from collections.abc import Mapping
+from contextlib import suppress
 from typing import Any
 from urllib.error import HTTPError, URLError
 from urllib.request import Request, urlopen
@@ -10,6 +11,10 @@ from urllib.request import Request, urlopen
 from .credential_env import credential_is_valid
 from .errors import CompletionError
 from .policy import MODELS, PROVIDERS
+from .policy_config import load_policy_config
+
+with suppress(Exception):
+    load_policy_config()
 
 MAX_OPENAI_WORKER_REQUEST_BYTES = 4_000_000
 
@@ -29,11 +34,18 @@ def _request(source: Any) -> Mapping[str, Any]:
     spec = PROVIDERS.get(provider) if isinstance(provider, str) else None
     if spec is None or spec.transport != "openai-compatible" or source.get("api_base") != spec.api_base:
         raise CompletionError("OpenAI worker provider base is not policy-approved")
-    for field in ("wire_model", "api_key"):
-        value = source.get(field)
-        if not isinstance(value, str) or not value or "\x00" in value:
-            raise CompletionError(f"OpenAI worker {field} must be a non-empty safe string")
-    if not credential_is_valid(provider, source["api_key"]):
+    wire_model = source.get("wire_model")
+    if not isinstance(wire_model, str) or not wire_model or "\x00" in wire_model:
+        raise CompletionError("OpenAI worker wire_model must be a non-empty safe string")
+    api_key = source.get("api_key")
+    if not isinstance(api_key, str) or "\x00" in api_key:
+        raise CompletionError("OpenAI worker api_key must be a safe string")
+    if spec.api_key_env:
+        if not api_key:
+            raise CompletionError("OpenAI worker api_key must be a non-empty safe string")
+        if not credential_is_valid(provider, api_key):
+            raise CompletionError("OpenAI worker credential does not match provider policy")
+    elif api_key and not credential_is_valid(provider, api_key):
         raise CompletionError("OpenAI worker credential does not match provider policy")
     if not any(
         provider in model.providers and model.providers[provider].wire_model == source["wire_model"]
@@ -53,7 +65,7 @@ def _request(source: Any) -> Mapping[str, Any]:
     allowed_request_fields = {
         "zai": {"request_id", "user_id"},
         "openrouter": {"user"},
-    }.get(provider, set())
+    }.get(provider, {"user"})
     if set(source["request_fields"]) - allowed_request_fields:
         raise CompletionError("OpenAI worker request fields are not provider-approved")
     for key, value in source["extra_headers"].items():
@@ -108,8 +120,8 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         f"{str(source['api_base']).rstrip('/')}/chat/completions",
         data=json.dumps(body, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),
         headers={
-            "Authorization": f"Bearer {source['api_key']}",
             "Content-Type": "application/json",
+            **({"Authorization": f"Bearer {source['api_key']}"} if source.get("api_key") else {}),
             **dict(source["extra_headers"]),
         },
         method="POST",
