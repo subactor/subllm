@@ -119,6 +119,8 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
         "agy": "gemini-3.1-pro-high",
         "codex": "gpt-5.6-sol",
         "codex-cli": "gpt-5.6-sol",
+        "agy-cli": "claude-sonnet-4-6",
+        "claude-cli": "claude-sonnet-5",
         "claude": "claude-opus-5",
         "cursor": "gpt-5.6-sol",
         "ollama": "qwen3-coder:30b",

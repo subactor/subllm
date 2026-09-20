@@ -36,6 +36,12 @@ PROVIDERS = MappingProxyType(
         "codex-cli": ProviderSpec(
             id="codex-cli", api_base="", api_key_env="", transport="codex-cli",
         ),
+        "claude-cli": ProviderSpec(
+            id="claude-cli", api_base="", api_key_env="", transport="claude-cli",
+        ),
+        "agy-cli": ProviderSpec(
+            id="agy-cli", api_base="", api_key_env="", transport="agy-cli",
+        ),
         "codex": ProviderSpec(
             id="codex",
             api_base="https://api.openai.com/v1",
@@ -74,7 +80,9 @@ EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
 
 # Comma-separated fallback chain. Unknown names fail closed.
 SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
-ORDERABLE_PROVIDER_IDS = ("zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli")
+ORDERABLE_PROVIDER_IDS = (
+    "zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli", "claude-cli", "agy-cli",
+)
 
 MODELS = MappingProxyType(
     {
@@ -168,6 +176,7 @@ MODELS = MappingProxyType(
         "gemini-3.1-pro-high": ModelSpec(
             id="gemini-3.1-pro-high",
             providers=_provider_models(
+                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="gemini-3.1-pro-high")},
                 agy=ProviderModelSpec(
                     litellm_model="gemini/gemini-3.1-pro-high",
                     wire_model="gemini-3.1-pro-high",
@@ -177,6 +186,7 @@ MODELS = MappingProxyType(
         "gemini-3.7-flash-medium": ModelSpec(
             id="gemini-3.7-flash-medium",
             providers=_provider_models(
+                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="gemini-3.7-flash-medium")},
                 agy=ProviderModelSpec(
                     litellm_model="gemini/gemini-3.7-flash-medium",
                     wire_model="gemini-3.7-flash-medium",
@@ -186,6 +196,7 @@ MODELS = MappingProxyType(
         "claude-opus-5": ModelSpec(
             id="claude-opus-5",
             providers=_provider_models(
+                **{"claude-cli": ProviderModelSpec(litellm_model="", wire_model="claude-opus-5")},
                 claude=ProviderModelSpec(
                     litellm_model="anthropic/claude-opus-5",
                     wire_model="claude-opus-5",
@@ -195,10 +206,24 @@ MODELS = MappingProxyType(
         "claude-sonnet-5": ModelSpec(
             id="claude-sonnet-5",
             providers=_provider_models(
+                **{"claude-cli": ProviderModelSpec(litellm_model="", wire_model="claude-sonnet-5")},
                 claude=ProviderModelSpec(
                     litellm_model="anthropic/claude-sonnet-5",
                     wire_model="claude-sonnet-5",
                 ),
+            ),
+        ),
+        # Claude models Antigravity serves through its own login (no Anthropic key).
+        "claude-sonnet-4-6": ModelSpec(
+            id="claude-sonnet-4-6",
+            providers=_provider_models(
+                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="claude-sonnet-4-6")},
+            ),
+        ),
+        "claude-opus-4-6-thinking": ModelSpec(
+            id="claude-opus-4-6-thinking",
+            providers=_provider_models(
+                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="claude-opus-4-6-thinking")},
             ),
         ),
         "gpt-5.6-sol": ModelSpec(
@@ -227,6 +252,7 @@ MODELS = MappingProxyType(
         "gpt-5.6-luna": ModelSpec(
             id="gpt-5.6-luna",
             providers=_provider_models(
+                **{"codex-cli": ProviderModelSpec(litellm_model="", wire_model="gpt-5.6-luna")},
                 codex=ProviderModelSpec(
                     litellm_model="openai/gpt-5.6-luna",
                     wire_model="gpt-5.6-luna",
@@ -509,6 +535,8 @@ _DEFAULT = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
+    RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter"),
 )
 
@@ -527,6 +555,8 @@ _REPAIR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
+    RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
@@ -534,6 +564,8 @@ _VALIDATOR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
+    RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
 )
 
@@ -550,6 +582,8 @@ _CODING = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
+    RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
+    RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 

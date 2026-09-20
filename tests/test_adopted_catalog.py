@@ -15,7 +15,9 @@ def test_adopted_catalog_matches_python_providers() -> None:
     # The adopted pack describes API credential strategies, not CLI-owned login.
     credential_providers = {key: value for key, value in PROVIDERS.items() if value.api_key_env}
     assert set(by_id) == set(credential_providers)
-    assert {key for key, value in PROVIDERS.items() if not value.api_key_env} == {"codex-cli"}
+    assert {key for key, value in PROVIDERS.items() if not value.api_key_env} == {
+        "codex-cli", "claude-cli", "agy-cli",
+    }
     assert PROVIDERS["codex-cli"].transport == "codex-cli"
     for provider_id, provider in credential_providers.items():
         row = by_id[provider_id]

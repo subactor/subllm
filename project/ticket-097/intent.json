@@ -1,0 +1,38 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-097",
+  "summary": "feat(subllm): CLI transports for Claude Code and Antigravity agy, luna via codex-cli",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-097/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/agy_cli.py",
+    "src/subllm/claude_cli.py",
+    "src/subllm/cli_common.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/policy.py",
+    "src/subllm/policy_config.py",
+    "src/subllm/provider_order.py",
+    "src/subllm/proxy.py",
+    "src/subllm/resolver.py",
+    "src/subllm/types.py",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py",
+    "tests/test_cli_transports.py",
+    "tests/test_provider_order.py",
+    "tests/test_adopted_catalog.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

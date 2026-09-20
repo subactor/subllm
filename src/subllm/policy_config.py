@@ -52,6 +52,9 @@ _DEFAULTS = MappingProxyType(
         "zai": ProviderPolicyConfig(enabled=True, priority=0, default_model="glm-5.3"),
         "agy": ProviderPolicyConfig(enabled=True, priority=10, default_model="gemini-3.1-pro-high"),
         "codex-cli": ProviderPolicyConfig(enabled=True, priority=16, default_model="gpt-5.6-sol"),
+        # CLI-authenticated executors spend a subscription, so they stay off until the operator opts in.
+        "agy-cli": ProviderPolicyConfig(enabled=False, priority=12, default_model="claude-sonnet-4-6"),
+        "claude-cli": ProviderPolicyConfig(enabled=False, priority=17, default_model="claude-sonnet-5"),
         "codex": ProviderPolicyConfig(enabled=True, priority=15, default_model="gpt-5.6-sol"),
         "claude": ProviderPolicyConfig(enabled=True, priority=18, default_model="claude-opus-5"),
         "cursor": ProviderPolicyConfig(enabled=True, priority=20, default_model="gpt-5.6-sol"),
@@ -304,8 +307,9 @@ def load_policy_config(
         raise InvalidPolicyError(f"invalid SubLLM policy schema in {source}")
     provider_rows = raw.get("providers")
     # Older operator policies remain valid and do not enable a new local executor.
-    if isinstance(provider_rows, dict) and "codex-cli" not in provider_rows:
-        provider_rows = {**provider_rows, "codex-cli": {**asdict(_DEFAULTS["codex-cli"]), "enabled": False}}
+    for executor in ("codex-cli", "claude-cli", "agy-cli"):
+        if isinstance(provider_rows, dict) and executor not in provider_rows:
+            provider_rows = {**provider_rows, executor: {**asdict(_DEFAULTS[executor]), "enabled": False}}
     if not isinstance(provider_rows, dict) or set(provider_rows) != set(PROVIDERS):
         raise InvalidPolicyError(f"SubLLM policy must configure exactly: {', '.join(PROVIDERS)}")
     providers = {
