@@ -323,3 +323,106 @@ documentation paths, symlinks and mismatched hashes always fail. Results enumera
 or upstream publication. Preparation binds the same inventory into its plan;
 completion revalidates it. This narrow integration boundary prevents an immutable
 standard manual from being moved into the adopter's product documentation.
+
+## DOCS-012 — Receipt gotowości adoptera
+
+Receipt `wellmanifest.docs/readiness/v1` jest maszynowym, niemutowalnym
+raportem obserwacji jednego adoptera. Plik może pozostać w zewnętrznym
+magazynie receiptów; nie jest dokumentacją ani uprawnieniem. Kanoniczny
+schemat znajduje się w `standard/readiness.schema.json`, a inertny generator
+i walidator w `standard/readiness.py`.
+
+Receipt MUSI zawierać dokładnie: `repository`, `standard_version`, pełne
+`standard_revision`, digesty `policy_sha256` i `checker_sha256`, niepuste i
+unikalne względne `covered_roots`, pełne `base_sha` i `head_sha`, `observed_at`,
+`generator`, fazę oraz osobne tablice dowodów dla każdej fazy:
+`unavailable`, `unadopted`, `configured`, `deployed`, `verified`. Dowody są
+bezpiecznymi referencjami URI; przyszłe fazy pozostają puste. Receipt nie
+może zawierać ścieżek bezpośrednich, sekretów ani wildcardów.
+
+Fazy oznaczają kolejno: brak dostępnego standardu, standard dostępny lecz
+nieprzypięty, przypięcie i generator skonfigurowane, brama wdrożona oraz
+obserwowalnie zweryfikowana. Validator nie awansuje fazy na podstawie samego
+pliku; konsument dołącza niezależne dowody. Przy porównaniu z poprzednim
+receiptem faza i `covered_roots` nie mogą się cofać ani zmieniać w miejscu.
+
+Jeżeli `standard_version` pozostaje taka sama, ale `standard_revision` się
+zmienia, `compatibility_review` MUSI mieć status `accepted`, nazwę reviewera
+i odrębny dowód. Nie wolno wykonywać automatycznej aktualizacji tylko dlatego,
+że wersja semantyczna się nie zmieniła. Zmiana wersji również wymaga zwykłego
+procesu adopcji; receipt nie zastępuje przeglądu, CI ani chronionej publikacji.
+
+Generator jest czystą funkcją danych i powinien być idempotentny dla tych samych
+wejść. Minimalne canary CI MUSZĄ odrzucać: brak fazy/evidence, przyszłe dowody,
+niebezpieczny lub powtórzony root, cofnięcie fazy, zmianę rootów oraz zmianę
+źródła tej samej wersji bez zaakceptowanego review. Lista faz służy do raportu
+gotowości; `verified` nie oznacza zgody na merge, deploy, czyszczenie ani dostęp
+do sekretów. Bounded rollout zaczyna się od jednego checkoutu lub namespace;
+inventory deduplikuje identyczny klucz `(repository, standard_revision,
+covered_roots, base_sha, head_sha, phase)`, a nowy HEAD, root lub faza tworzy
+nową obserwację. Promocja do kolejnego adoptera wymaga osobnego receiptu i
+niezależnej bramy CI; brak, duplikat lub rozbieżność receiptów zatrzymuje
+rollout, nie usuwa danych i kieruje sprawę do review człowieka.
+
+## DOCS-013 — Algorytmiczna deduplikacja, spójność i drift dokumentacji (semcod/algocode)
+
+Dokumentacja techniczna w profilu `wellmanifest/docs` podlega rygorowi
+algorytmicznej unikalności, braku redundancji oraz spójności ze strukturą
+kodu źródłowego repozytorium.
+
+### Unikalność tożsamości i nagłówków (DOCS_DUPLICATE_ID, DOCS_DUPLICATE_TITLE)
+
+Każdy zarządzany dokument w profilu `docs/` MUSI posiadać unikalny
+identyfikator (`id`) oraz unikalny tytuł semantyczny (`title`) w obrębie
+repozytorium i sprawdzanego zbioru. Wykrycie dwóch dokumentów o identycznym
+lub zbieżnym tytule (`DOCS_DUPLICATE_TITLE`) oznacza kolizję dokumentacyjną,
+którą należy rozwiązać poprzez konsolidację w jeden dokument kanoniczny lub
+uściślenie zakresu i tytułów.
+
+### Algorytmiczna detekcja klonów sekcji (semcod/algocode)
+
+Wykrywanie powielonych fragmentów prozy technicznej, powtórzonych
+paragrafów oraz zduplikowanych bloków kodu źródłowego (`fenced code blocks`)
+opiera się na algorytmicznej detekcji klonów (Type-1: identyczny tekst/hash,
+Type-2: znormalizowana struktura syntaktyczna i tokeny).
+
+Narzędziem referencyjnym dla wielojęzycznej analizy klonów i normalizacji
+jest pakiet `semcod/algocode` (funkcja `algocode.scan_duplicates` oraz
+metody klasy `CodeAnalysisEngine`). W przypadku braku instalacji `algocode`,
+brama `check.py` wykonuje wbudowaną kontrolę hashy treści nietrywialnych
+sekcji. Wykrycie zduplikowanej zawartości sekcji generuje ostrzeżenie
+`DOCS_DUPLICATE_SECTION` lub błąd przy weryfikacji rygorystycznej
+(`--check-duplicates`). Zamiast kopiować treść pomiędzy plikami Markdown,
+adopter MUSI wydzielić wspólny dokument referencyjny w `docs/information/`
+bądź `docs/INFORMATION/` i podlinkować go w indeksie.
+
+### Wykrywanie dryfu dokumentacji względem kodu (AST Drift Detection)
+
+Dokumenty techniczne, pliki analiz (`docs/analysis/`), specyfikacje
+procedur oraz opisy architektoniczne powołujące się na symbole źródłowe
+(klasy, metody, funkcje, interfejsy) podlegają weryfikacji dryfu
+(drift detection). Analizator składniowy `algocode.inspect_ast` weryfikuje,
+czy referencjonowane symbole rzeczywiście istnieją w bieżącym drzewie AST
+repozytorium. Odwołanie do usuniętego, przemianowanego lub nieistniejącego
+symbolu stanowi dryf dokumentacji i blokuje zakończenie zadania refaktoryzacji.
+
+### Trójstronna komunikacja oparta o DSL (LLM ↔ Human ↔ Algorytmy)
+
+Integracja standardu dokumentacji z komunikacją opartą na DSL realizuje
+zamknięty podział odpowiedzialności:
+
+1. **Algorytmy (`algocode`, `check.py`)**: Generują niezmienne, deterministyczne
+   fakty — odciski SHA-256 bloków, wykryte klony kodu i tekstu, wskaźniki
+   pokrycia oraz brakujące węzły AST. Fakty te są emitowane w ustrukturyzowanych
+   kontraktach DSL/JSON (np. `wellmanifest.docs/verification/v1`).
+2. **LLM (Agenci sztucznej inteligencji)**: Przetwarzają wygenerowane fakty DSL,
+   proponują bezstratną konsolidację zduplikowanych dokumentów, aktualizują
+   indeksy oraz refaktoryzują opisy bez halucynacji o stanie kodu.
+3. **Człowiek (Właściciel / Reviewer)**: Definiuje intencję biznesową,
+   dokonuje przeglądu merytorycznego (human-in-the-loop) i autoryzuje
+   kanoniczną architekturę dokumentacji oraz decyzje projektowe.
+
+Automatyzacja CI/OneDev egzekwuje te reguły w trybie fail-closed: brak
+zgodności deklaracji, powielenie tytułów lub nierozwiązany dryf dokumentacji
+wstrzymuje proces publikacji przed chronionym merge.
+

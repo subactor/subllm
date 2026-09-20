@@ -1,0 +1,106 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-100",
+  "summary": "Synchronize wellmanifest standards: new-project, docs, lifecycles, and logs",
+  "workstream": "governance",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-100/**",
+    "project/TICKETS.md",
+    "TODO.md",
+    "AGENTS.md",
+    "project/new-ticket.sh",
+    ".governance/**",
+    ".gitignore",
+    ".gitattributes",
+    "pyproject.toml",
+    "scripts/**",
+    "standards/**"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "492003ace4ab62b28cd5cac7d5e7a92b6d9b3f59",
+    "targetBranch": "main",
+    "outcome": "Synchronize wellmanifest standards: new-project 0.20.38, docs 0.6.0, lifecycles, and logs.",
+    "nonGoals": [
+      "No production logic modifications"
+    ],
+    "complexity": "L",
+    "estimatedMinutes": 45,
+    "standardAdoption": {
+      "sourceRepository": "wellmanifest/new-project",
+      "fromRevision": "cfaa0bf0ea6b0e7349fed0bb62b5ce15792d687d",
+      "toRevision": "e2fd653ff801fb228fca818e1d874ee685a4da62"
+    },
+    "budgets": {
+      "maxImplementationFiles": 15,
+      "maxAffectedComponents": 5,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Synchronize wellmanifest standards and adoption pins.",
+      "components": [
+        {
+          "name": "governance",
+          "paths": [
+            ".governance/**",
+            ".gitattributes",
+            ".gitignore",
+            "pyproject.toml",
+            "scripts/check-docs-report.py",
+            "standards/**"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "git revert"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": ["goal governance adopt --target-root . --latest --check"],
+        "evidence": "Adoption check confirms new-project 0.20.38 is up to date"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": ["python3 .governance/ticket_activity.py validate"],
+        "evidence": "Ticket activity override enables git-ancestry resolution"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": ["python3 scripts/check-docs-report.py"],
+        "evidence": "Documentation report check passes against docs 0.6.0"
+      },
+      {
+        "criterion": "AC-04",
+        "commands": ["git check-ignore test.log"],
+        "evidence": "Log files are ignored by git"
+      },
+      {
+        "criterion": "AC-05",
+        "commands": ["bash project/governance-check.sh", "bash scripts/verify"],
+        "evidence": "Full test and governance verification pass"
+      }
+    ]
+  }
+}

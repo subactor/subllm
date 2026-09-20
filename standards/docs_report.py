@@ -7,7 +7,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-DOCS_REVISION = "6f475fb223e7a259d514b5483fb0d62f0e80a46e"
+DOCS_REVISION = "19efafbeb18923cfd51cc69bd519330488500137"
 REPORT_REVISION = "3eafc9c212bbfd4060fe15b63eb97e4614725234"
 ARTIFACTS = {
     "docs": {

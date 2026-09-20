@@ -3,25 +3,25 @@
   "standards": [
     {
       "id": "wellmanifest/docs",
-      "version": "0.5.0",
+      "version": "0.6.0",
       "status": "published",
       "sourceRepository": "https://github.com/wellmanifest/docs",
-      "sourceRevision": "6f475fb223e7a259d514b5483fb0d62f0e80a46e",
+      "sourceRevision": "19efafbeb18923cfd51cc69bd519330488500137",
       "artifacts": [
         {
           "sourcePath": "docs/standard/check.py",
           "targetPath": ".governance/wellmanifest/docs/docs/standard/check.py",
-          "sha256": "69217f1fa83bff0d2796ec22d662986dc178e2c8a6fa72fa169669f827a4a4f5"
+          "sha256": "b7a23ee84e66d3c58a27646abdc6e130962c985da37f83c1b08a7897a40f7e31"
         },
         {
           "sourcePath": "docs/standard/policy.json",
           "targetPath": ".governance/wellmanifest/docs/docs/standard/policy.json",
-          "sha256": "af5fde2d52e1c292e569cd47a4068f0e42181a8f8fb9fc21737a569bee9a206f"
+          "sha256": "fac05e720ec49370ba393e817a4a03b895d7ed33828e09b3420f9fcfb09264b0"
         },
         {
           "sourcePath": "docs/standard/POLICY.md",
           "targetPath": ".governance/wellmanifest/docs/docs/standard/POLICY.md",
-          "sha256": "ec4342948049b69c18d6d92398ccd9a44bc783a2b81749b53f273d8b0b31d9ba"
+          "sha256": "f113fcc733c08e6e3ff9afa94d5a22b3eda40d4f4ff999518e939c8057c3c919"
         },
         {
           "sourcePath": "docs/standard/change_contract.py",

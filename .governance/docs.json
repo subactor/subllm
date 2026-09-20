@@ -2,6 +2,6 @@
   "schema": "wellmanifest.docs/adoption/v1",
   "repository": "subactor/subllm",
   "standard": "wellmanifest/docs",
-  "source_revision": "6f475fb223e7a259d514b5483fb0d62f0e80a46e",
-  "policy_sha256": "af5fde2d52e1c292e569cd47a4068f0e42181a8f8fb9fc21737a569bee9a206f"
+  "source_revision": "19efafbeb18923cfd51cc69bd519330488500137",
+  "policy_sha256": "fac05e720ec49370ba393e817a4a03b895d7ed33828e09b3420f9fcfb09264b0"
 }
