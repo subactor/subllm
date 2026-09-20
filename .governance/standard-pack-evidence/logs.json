@@ -1,6 +1,23 @@
 {
-  "ciReceipt": null,
-  "claimedLevel": "S2",
+  "ciReceipt": {
+    "sha256": "8e22e2192cdc22f6a33b398412694967f77deaac46159c13026fb9a300457d60",
+    "snapshot": {
+      "checkName": "governance / governance / enforce",
+      "completedAt": "2026-09-20T17:52:32Z",
+      "conclusion": "success",
+      "event": "push",
+      "jobId": 106121425689,
+      "repository": "wellmanifest/logs",
+      "runAttempt": 1,
+      "runId": 35527239458,
+      "schema": "semcod.ci-check-receipt/v1",
+      "sourceUri": "https://api.github.com/repos/wellmanifest/logs/actions/jobs/106121425689",
+      "subjectSha": "cd9d9558e09b9135ef92712096eb951fd524aa75",
+      "workflowPath": ".github/workflows/governance.yml",
+      "workflowSha256": "3be3bddb297e9b969a63192e5cfee6e8a572f63947ec59a7787ab5d033f5a461"
+    }
+  },
+  "claimedLevel": "S3",
   "localBindings": [
     {
       "sha256": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36",
@@ -20,15 +37,15 @@
     "conformance": {
       "path": "standard/logs_check.py",
       "sha256": "aab380273416b72528079679fb9b5d0659ffe305f4c82bdc95025f41926e162e",
-      "uri": "https://github.com/wellmanifest/logs/blob/8374d5364e5c78ae69806fb60a06aa52cd23d1e3/standard/logs_check.py"
+      "uri": "https://github.com/wellmanifest/logs/blob/cd9d9558e09b9135ef92712096eb951fd524aa75/standard/logs_check.py"
     },
     "contract": {
       "path": "contracts/logs.contract.v0.5.json",
       "sha256": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36",
-      "uri": "https://github.com/wellmanifest/logs/blob/8374d5364e5c78ae69806fb60a06aa52cd23d1e3/contracts/logs.contract.v0.5.json"
+      "uri": "https://github.com/wellmanifest/logs/blob/cd9d9558e09b9135ef92712096eb951fd524aa75/contracts/logs.contract.v0.5.json"
     },
     "repository": "wellmanifest/logs",
-    "revision": "8374d5364e5c78ae69806fb60a06aa52cd23d1e3"
+    "revision": "cd9d9558e09b9135ef92712096eb951fd524aa75"
   },
   "version": "0.5.0"
 }

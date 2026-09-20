@@ -241,7 +241,7 @@
     {
       "artifacts": [
         {
-          "sha256": "3d521e597c05da43f49da6545f8be76360e1132ee19cfbb01528d2cc0b74b57f",
+          "sha256": "f279dee10ccae9d8f5166673e1a8c5354e792fa1d03b2776b198b87cbabac5d0",
           "target": ".governance/standard-pack-evidence/logs.json"
         },
         {
@@ -257,23 +257,28 @@
         {
           "level": "S0",
           "sha256": "72e16ac823359879e01722e1e3e7017f50524c8cdf54e8eaec9d8802bc804e36",
-          "uri": "https://github.com/wellmanifest/logs/blob/8374d5364e5c78ae69806fb60a06aa52cd23d1e3/contracts/logs.contract.v0.5.json"
+          "uri": "https://github.com/wellmanifest/logs/blob/cd9d9558e09b9135ef92712096eb951fd524aa75/contracts/logs.contract.v0.5.json"
         },
         {
           "level": "S1",
           "sha256": "aab380273416b72528079679fb9b5d0659ffe305f4c82bdc95025f41926e162e",
-          "uri": "https://github.com/wellmanifest/logs/blob/8374d5364e5c78ae69806fb60a06aa52cd23d1e3/standard/logs_check.py"
+          "uri": "https://github.com/wellmanifest/logs/blob/cd9d9558e09b9135ef92712096eb951fd524aa75/standard/logs_check.py"
         },
         {
           "level": "S2",
-          "sha256": "3d521e597c05da43f49da6545f8be76360e1132ee19cfbb01528d2cc0b74b57f",
-          "uri": "urn:sha256:3d521e597c05da43f49da6545f8be76360e1132ee19cfbb01528d2cc0b74b57f"
+          "sha256": "f279dee10ccae9d8f5166673e1a8c5354e792fa1d03b2776b198b87cbabac5d0",
+          "uri": "urn:sha256:f279dee10ccae9d8f5166673e1a8c5354e792fa1d03b2776b198b87cbabac5d0"
+        },
+        {
+          "level": "S3",
+          "sha256": "8e22e2192cdc22f6a33b398412694967f77deaac46159c13026fb9a300457d60",
+          "uri": "urn:sha256:8e22e2192cdc22f6a33b398412694967f77deaac46159c13026fb9a300457d60"
         }
       ],
       "id": "wellmanifest/logs",
-      "level": "S2",
-      "model": "local-conformance",
-      "revision": "8374d5364e5c78ae69806fb60a06aa52cd23d1e3",
+      "level": "S3",
+      "model": "protected-conformance",
+      "revision": "cd9d9558e09b9135ef92712096eb951fd524aa75",
       "version": "0.5.0"
     }
   ],
