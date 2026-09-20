@@ -26,7 +26,9 @@ def test_resolve_prefers_direct_zai_when_all_credentials_are_available() -> None
     )
     assert route.provider == "zai"
     assert route.model == "glm-5.3"
-    assert ORDERABLE_PROVIDER_IDS == ("zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli")
+    assert ORDERABLE_PROVIDER_IDS == (
+        "zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli", "claude-cli", "agy-cli",
+    )
 
 
 def test_default_order_puts_direct_zai_first_when_key_present() -> None:

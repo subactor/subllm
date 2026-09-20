@@ -14,6 +14,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from .cli_common import CLI_EXECUTABLES
 from .client_routes import _complete_route, complete
 from .client_types import CompletionResponse, _RetryableAttemptError
 from .credential_env import credential_is_valid, merged_environment
@@ -191,9 +192,11 @@ def _build_model_resolved_routes(
         if provider_policy and not provider_policy.enabled:
             continue
 
-        api_key = environment.get(provider_spec.api_key_env, "")
-        if provider_spec.transport == "codex-cli":
-            if shutil.which("codex", path=environment.get("PATH")) is None:
+        api_key = (
+            environment.get(provider_spec.api_key_env, "")
+        )
+        if provider_spec.transport in CLI_EXECUTABLES:
+            if shutil.which(CLI_EXECUTABLES[provider_spec.transport], path=environment.get("PATH")) is None:
                 continue
             api_key = ""
         elif not credential_is_valid(provider_id, api_key):

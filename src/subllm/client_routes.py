@@ -7,6 +7,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .cli_common import CLI_EXECUTABLES
 from .client_types import (
     CompletionAttempt,
     CompletionResponse,
@@ -37,9 +38,10 @@ def _invoke_route(
     response_format: Mapping[str, Any] | None,
     cwd: Path,
 ) -> CompletionResponse:
-    if route.transport == "codex-cli":
-        from .codex_cli import invoke
+    if route.transport in CLI_EXECUTABLES:
+        from . import agy_cli, claude_cli, codex_cli
 
+        invoke = {"codex-cli": codex_cli, "claude-cli": claude_cli, "agy-cli": agy_cli}[route.transport].invoke
         content, usage = invoke(route.wire_model, messages, timeout_seconds, response_format)
         return CompletionResponse(content, route.provider, route.wire_model, usage, "stop")
     if route.transport == "cursor-sdk":

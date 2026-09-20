@@ -4,6 +4,7 @@ import os
 import shutil
 from collections.abc import Mapping
 
+from .cli_common import CLI_EXECUTABLES
 from .credential_env import credential_is_valid, merged_environment
 from .errors import (
     InvalidPolicyError,
@@ -141,11 +142,13 @@ def available_routes(
     explicit = credentials or {}
     resolved: list[ResolvedRoute] = []
     for route in configured_routes(application, function, environ=environment):
-        api_key = explicit.get(route.provider, environment.get(route.api_key_env, ""))
-        if route.transport == "codex-cli":
-            if shutil.which("codex", path=environment.get("PATH")) is None:
+        api_key = (
+            explicit.get(route.provider, environment.get(route.api_key_env, ""))
+        )
+        if route.transport in CLI_EXECUTABLES:
+            if shutil.which(CLI_EXECUTABLES[route.transport], path=environment.get("PATH")) is None:
                 continue
-            api_key = ""  # Authentication stays in the Codex CLI credential store.
+            api_key = ""  # Authentication stays in the local CLI's own credential store.
         elif not credential_is_valid(route.provider, api_key):
             continue
         resolved.append(
