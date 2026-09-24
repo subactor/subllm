@@ -288,6 +288,24 @@ _BASE_MODELS = MappingProxyType(
                 ),
             ),
         ),
+        "qwen2.5:1.5b": ModelSpec(
+            id="qwen2.5:1.5b",
+            providers=_provider_models(
+                ollama=ProviderModelSpec(
+                    litellm_model="ollama/qwen2.5:1.5b",
+                    wire_model="qwen2.5:1.5b",
+                ),
+            ),
+        ),
+        "qwen2.5": ModelSpec(
+            id="qwen2.5",
+            providers=_provider_models(
+                ollama=ProviderModelSpec(
+                    litellm_model="ollama/qwen2.5:1.5b",
+                    wire_model="qwen2.5:1.5b",
+                ),
+            ),
+        ),
         "grok-4.6": ModelSpec(
             id="grok-4.6",
             providers=_provider_models(

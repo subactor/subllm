@@ -155,7 +155,10 @@ def find_policy_file(
     cwd: Path | None = None,
 ) -> Path | None:
     environment = os.environ if environ is None else environ
-    working_directory = (cwd or Path.cwd()).resolve()
+    try:
+        working_directory = (cwd or Path.cwd()).resolve()
+    except Exception:
+        working_directory = (cwd or Path.home()).resolve()
     configured = environment.get(SUBLLM_POLICY_FILE, "").strip()
     if configured:
         path = Path(configured).expanduser()

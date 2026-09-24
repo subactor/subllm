@@ -195,6 +195,8 @@ def _build_model_resolved_routes(
         api_key = (
             environment.get(provider_spec.api_key_env, "")
         )
+        if provider_id == "ollama" and not api_key:
+            api_key = "ollama"
         if provider_spec.transport in CLI_EXECUTABLES:
             if shutil.which(CLI_EXECUTABLES[provider_spec.transport], path=environment.get("PATH")) is None:
                 continue
@@ -268,6 +270,13 @@ def _complete_model_direct(
             break
         attempt_timeout = min(remaining, execution.attempt_timeout_seconds) if execution.failover_enabled else remaining
         attempt_started = time.monotonic()
+        safe_cwd = Path.home()
+        try:
+            cur = Path.cwd()
+            if cur.exists():
+                safe_cwd = cur
+        except Exception:
+            pass
         try:
             response = _complete_route(
                 route,
@@ -275,7 +284,7 @@ def _complete_model_direct(
                 timeout_seconds=attempt_timeout,
                 request_id=request_id,
                 response_format=response_format,
-                cwd=Path.cwd(),
+                cwd=safe_cwd,
             )
             duration = time.monotonic() - attempt_started
             record_success(route.provider, latency_seconds=duration, policy=execution)
@@ -468,12 +477,16 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
 
+        # Upstream Ollama forward fast-path for models not registered in SubLLM policy
+        if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+            self._forward_upstream("POST", "/v1/chat/completions", payload)
+            return
+
         t0 = time.monotonic()
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, req_id, payload)
         except Exception as exc:
-            # Check upstream fallback if model unknown to subllm
-            if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+            if is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/v1/chat/completions", payload)
                 return
             self._error(500, "COMPLETION_FAILED", str(exc))
@@ -581,11 +594,16 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
 
+        # Upstream Ollama forward fast-path for models not registered in SubLLM policy
+        if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+            self._forward_upstream("POST", "/api/chat", payload)
+            return
+
         t0 = time.monotonic()
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
         except Exception as exc:
-            if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+            if is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/api/chat", payload)
                 return
             self._error(500, "COMPLETION_FAILED", str(exc))
@@ -679,11 +697,16 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
 
+        # Upstream Ollama forward fast-path for models not registered in SubLLM policy
+        if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+            self._forward_upstream("POST", "/api/generate", payload)
+            return
+
         t0 = time.monotonic()
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
         except Exception as exc:
-            if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+            if is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/api/generate", payload)
                 return
             self._error(500, "COMPLETION_FAILED", str(exc))
