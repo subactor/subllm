@@ -1,0 +1,24 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-103",
+  "summary": "Direct Ollama routing and credential handling in SubLLM proxy",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-103/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/**"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
