@@ -62,3 +62,40 @@ def test_http_rejects_unknown_path() -> None:
     finally:
         server.shutdown()
         server.server_close()
+
+
+def test_http_usage_detail_endpoint(tmp_path) -> None:
+    from subllm.interaction_store import InteractionStore, set_default_interaction_store
+
+    store = InteractionStore(tmp_path / "archive")
+    set_default_interaction_store(store)
+    record = store.begin(
+        kind="llm_attempt",
+        caller="http-test",
+        target="openai/gpt-5",
+        request={"messages": [{"role": "user", "content": "detail-test-prompt"}]},
+    )
+    store.finish(
+        record,
+        {"content": "detail-test-response"},
+        duration_ms=10,
+    )
+    base, server = _start()
+    try:
+        # Missing id returns 400
+        req_missing = Request(f"{base}/v1/usage/detail", method="GET")
+        try:
+            urlopen(req_missing, timeout=5)
+        except HTTPError as exc:
+            assert exc.code == 400
+
+        # Existing record returns full interaction
+        detail = _json("GET", f"{base}/v1/usage/detail?id={record['id']}")
+        assert detail["id"] == record["id"]
+        assert detail["request"]["messages"] == [{"role": "user", "content": "detail-test-prompt"}]
+        assert detail["response"]["content"] == "detail-test-response"
+    finally:
+        server.shutdown()
+        server.server_close()
+        set_default_interaction_store(None)
+

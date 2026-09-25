@@ -177,6 +177,36 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         "Direct external API calls, local Ollama forwarding and code-edit transports are not included. "
         "Application identity is declared by the caller; missing identity appears as subactor-proxy.",
     }
+
+    from .interaction_store import default_postgres_dsn, get_default_interaction_store
+
+    postgres_dsn = None
+    if isinstance(database, str) and (database.startswith("postgresql://") or database.startswith("postgres://")):
+        postgres_dsn = database
+    elif database is None and not os.environ.get("SUBLLM_USAGE_DB"):
+        postgres_dsn = default_postgres_dsn()
+
+    if postgres_dsn:
+        try:
+            from .interaction_store import InteractionStore
+
+            root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
+            store = InteractionStore(directory=root / "subllm" / "archive", postgres_dsn=postgres_dsn)
+            pg_res = store.query_attempts(
+                application=filters.get("application"),
+                provider=filters.get("provider"),
+                status=filters.get("status"),
+                since=filters.get("since"),
+                until=filters.get("until"),
+                before=filters.get("before"),
+                limit=limit,
+                include_payloads=True,
+            )
+            if pg_res["summary"]["attempts"] > 0 or not journal_path(database).exists():
+                return pg_res
+        except Exception as exc:
+            LOG.warning("PostgreSQL usage query failed; falling back to SQLite: %s", exc)
+
     path = journal_path(database)
     if not path.exists():
         return result
@@ -216,3 +246,15 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         return result
     except sqlite3.Error as exc:
         raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
+
+
+def query_interaction_detail(record_id: str) -> dict[str, Any] | None:
+    from .interaction_store import get_default_interaction_store
+
+    store = get_default_interaction_store()
+    if store is None:
+        return None
+    try:
+        return store.get_interaction(record_id)
+    except Exception:
+        return None

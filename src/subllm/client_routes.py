@@ -108,7 +108,7 @@ def _complete_route(
     response = None
     diagnostic = None
     attempt_error = None
-    archive = begin_attempt(route, messages, response_format)
+    archive = begin_attempt(route, messages, response_format, request_id=request_id)
     try:
         response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
                                  request_id=request_id, response_format=response_format, cwd=cwd)

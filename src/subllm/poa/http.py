@@ -27,9 +27,23 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
             self._error(421, "POA-HTTP-001", "host is not a local bind")
             return
         parsed = urlparse(self.path)
-        if parsed.path in {"/", "/assets/usage.css", "/assets/usage.js", "/v1/usage"}:
+        if parsed.path in {"/", "/assets/usage.css", "/assets/usage.js", "/v1/usage", "/v1/usage/detail"}:
             if not self._same_origin():
                 self._error(403, "USAGE-ORIGIN-001", "Cross-origin access is not allowed")
+                return
+            if parsed.path == "/v1/usage/detail":
+                from subllm.usage import query_interaction_detail
+
+                query = parse_qs(parsed.query)
+                record_id = query.get("id", [None])[0] or query.get("record_id", [None])[0]
+                if not record_id:
+                    self._error(400, "USAGE-PARAM-001", "Missing id parameter")
+                    return
+                detail = query_interaction_detail(record_id)
+                if detail is None:
+                    self._error(404, "USAGE-NOT-FOUND-001", "Interaction detail not found")
+                    return
+                self._json(200, detail)
                 return
             if parsed.path == "/v1/usage":
                 from subllm.usage import FILTERS
