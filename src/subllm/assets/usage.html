@@ -22,6 +22,29 @@
 <div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
 <p id="empty" hidden>Brak zarejestrowanych prób. Dane pojawią się po wywołaniu modelu przez zaktualizowany SubLLM. Przy aktywnych filtrach spróbuj je wyczyścić.</p>
 <div class="paging"><button id="latest" class="secondary" type="button">Najnowsze</button><span id="page-info"></span><button id="older" class="secondary" type="button" disabled>Starsze próby →</button></div>
-<aside><h2>Co obejmuje ten widok?</h2><p>Wywołania przez zaktualizowanego klienta SubLLM i trasy lub modele katalogowe jego proxy. Ruch wysyłany bezpośrednio do innych API, przekazywany do lokalnego Ollama oraz operacje edycji kodu nie są tutaj rejestrowane. Procesy korzystające ze starszej wersji wymagają aktualizacji i restartu.</p><p>Aplikacja jest deklarowana przez klienta. <code>subactor-proxy</code> oznacza brak osobnej identyfikacji aplikacji w proxy. Ten sam identyfikator żądania łączy próby u kolejnych dostawców. „—” oznacza brak danych o tokenach, nie zerowe zużycie. Koszt nie jest szacowany bez wiarygodnego cennika. Dla nieudanych prób zużycie może być nieznane.</p><p>Historia zaczyna się od włączenia rejestracji. Nie zapisujemy treści promptów, odpowiedzi ani kluczy API.</p></aside>
+<section id="detail" class="detail-section" hidden>
+<div class="detail-head">
+<h2>Szczegóły próby <code id="detail-id">—</code></h2>
+<div class="detail-actions">
+<button id="copy-detail" class="secondary" type="button">Kopiuj całość</button>
+<button id="close-detail" class="secondary" type="button">✕ Zamknij</button>
+</div>
+</div>
+<div class="detail-grid">
+<div class="detail-block">
+<h3>Wysłany Prompt (Messages)</h3>
+<pre id="detail-prompt" tabindex="0"></pre>
+</div>
+<div class="detail-block">
+<h3>Otrzymana Odpowiedź (Response)</h3>
+<pre id="detail-response" tabindex="0"></pre>
+</div>
+</div>
+<details id="detail-meta-wrap">
+<summary>Metadane i diagnostyka</summary>
+<pre id="detail-meta"></pre>
+</details>
+</section>
+<aside><h2>Co obejmuje ten widok?</h2><p>Wywołania przez zaktualizowanego klienta SubLLM i trasy lub modele katalogowe jego proxy. Ruch wysyłany bezpośrednio do innych API, przekazywany do lokalnego Ollama oraz operacje edycji kodu nie są tutaj rejestrowane. Procesy korzystające ze starszej wersji wymagają aktualizacji i restartu.</p><p>Aplikacja jest deklarowana przez klienta. <code>subactor-proxy</code> oznacza brak osobnej identyfikacji aplikacji w proxy. Ten sam identyfikator żądania łączy próby u kolejnych dostawców. „—” oznacza brak danych o tokenach, nie zerowe zużycie. Koszt nie jest szacowany bez wiarygodnego cennika. Dla nieudanych prób zużycie może być nieznane.</p><p>Historia zaczyna się od włączenia rejestracji. Po skonfigurowaniu bazy PostgreSQL rejestrowane są pełne prompty i odpowiedzi z zachowaniem lokalnej prywatności środowiska deweloperskiego.</p></aside>
 <footer>SubLLM · Lokalny panel użycia API <span id="updated"></span></footer>
 </main></body></html>

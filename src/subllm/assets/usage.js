@@ -32,6 +32,9 @@ async function refresh() {
     $('rows').replaceChildren();
     for (const attempt of data.attempts) {
       const tr = document.createElement('tr');
+      tr.style.cursor = 'pointer';
+      tr.title = 'Kliknij, aby wyświetlić prompt i odpowiedź';
+      tr.addEventListener('click', () => showDetail(attempt, tr));
       cell(tr, new Date(attempt.timestamp).toLocaleString('pl-PL'));
       cell(tr, attempt.application, attempt.function); cell(tr, attempt.provider, attempt.model);
       const td = cell(tr, ''); const badge = document.createElement('span');
@@ -46,7 +49,7 @@ async function refresh() {
     next = data.next_before; $('older').disabled = !next;
     $('empty').hidden = data.attempts.length > 0;
     $('notice').hidden = true; $('dot').className='ready';
-    $('connection').textContent = data.storage === 'empty' ? 'Oczekiwanie na pierwsze wywołanie' : 'Połączono z historią';
+    $('connection').textContent = data.storage === 'empty' ? 'Oczekiwanie na pierwsze wywołanie' : (data.storage === 'postgres' ? 'Połączono z PostgreSQL' : 'Połączono z historią');
     $('page-info').textContent = `Widoczne: ${data.attempts.length} · ${before ? 'starsza strona' : 'najnowsza strona'}`;
     $('updated').textContent = 'Odczyt: ' + new Date().toLocaleTimeString('pl-PL');
   } catch (error) {
@@ -54,6 +57,71 @@ async function refresh() {
     $('connection').textContent='Brak aktualnych danych'; $('dot').className=''; $('older').disabled=true;
   } finally { busy=false; }
 }
+let currentSelectedAttempt = null;
+function formatMessages(req) {
+  if (!req) return 'Brak zarejestrowanego promptu (wywołanie bez przechwytywania payloadu).';
+  if (Array.isArray(req.messages)) {
+    return req.messages.map(m => `--- [${(m.role || 'user').toUpperCase()}] ---\n${m.content || ''}`).join('\n\n');
+  }
+  return typeof req === 'string' ? req : JSON.stringify(req, null, 2);
+}
+function formatResponse(resp) {
+  if (!resp) return 'Brak zarejestrowanej odpowiedzi.';
+  if (typeof resp.content === 'string') return resp.content;
+  if (resp.choices && resp.choices[0]?.message?.content) return resp.choices[0].message.content;
+  return typeof resp === 'string' ? resp : JSON.stringify(resp, null, 2);
+}
+function showDetail(attempt, tr) {
+  currentSelectedAttempt = attempt;
+  $('detail').hidden = false;
+  $('detail-id').textContent = attempt.request_id || attempt.id;
+  $('detail-prompt').textContent = formatMessages(attempt.request);
+  $('detail-response').textContent = formatResponse(attempt.response);
+  $('detail-meta').textContent = JSON.stringify({
+    id: attempt.id,
+    timestamp: attempt.timestamp,
+    request_id: attempt.request_id,
+    application: attempt.application,
+    function: attempt.function,
+    provider: attempt.provider,
+    model: attempt.model,
+    status: attempt.status,
+    duration_ms: attempt.duration_ms,
+    tokens: { input: attempt.input_tokens, output: attempt.output_tokens },
+    diagnostic_code: attempt.diagnostic_code
+  }, null, 2);
+
+  if ((!attempt.request || !attempt.response) && attempt.id) {
+    fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id))
+      .then(r => r.ok ? r.json() : null)
+      .then(d => {
+        if (d) {
+          if (d.request) $('detail-prompt').textContent = formatMessages(d.request);
+          if (d.response) $('detail-response').textContent = formatResponse(d.response);
+        }
+      })
+      .catch(() => {});
+  }
+
+  for (const r of $('rows').children) r.classList.remove('selected');
+  if (tr) tr.classList.add('selected');
+  $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+$('close-detail')?.addEventListener('click', () => {
+  $('detail').hidden = true;
+  for (const r of $('rows').children) r.classList.remove('selected');
+});
+$('copy-detail')?.addEventListener('click', () => {
+  if (!currentSelectedAttempt) return;
+  const payload = {
+    prompt: $('detail-prompt').textContent,
+    response: $('detail-response').textContent,
+    meta: currentSelectedAttempt
+  };
+  navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
+    .then(() => alert('Skopiowano szczegóły do schowka'))
+    .catch(() => {});
+});
 $('filters').addEventListener('submit', event => {
   event.preventDefault(); if (busy) return;
   const params=new URLSearchParams();
