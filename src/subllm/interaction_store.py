@@ -332,6 +332,7 @@ class InteractionStore:
         before: str | None = None,
         limit: int = 100,
         include_payloads: bool = True,
+        search: str | None = None,
     ) -> dict[str, Any]:
         if not 1 <= limit <= 500:
             raise ValueError("Limit must be between 1 and 500")
@@ -363,6 +364,9 @@ class InteractionStore:
                 if before:
                     clauses.append("document::jsonb->>'started_at' < %s")
                     args.append(before)
+                if search:
+                    clauses.append("document::text ILIKE %s")
+                    args.append(f"%{search}%")
                 where_clause = " WHERE " + " AND ".join(clauses)
 
                 sum_sql = (

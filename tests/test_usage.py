@@ -217,3 +217,32 @@ def test_query_does_not_mutate_sqlite_metadata():
     query_usage({})
     with closing(sqlite3.connect(journal_path())) as db:
         assert db.execute("PRAGMA schema_version").fetchone() == before
+
+
+def test_query_usage_search_filter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+    monkeypatch.setenv("SUBLLM_USAGE_DB", str(tmp_path / "usage.sqlite3"))
+    monkeypatch.delenv("SUBLLM_POSTGRES_DSN", raising=False)
+    monkeypatch.delenv("SUBLLM_DATABASE_URL", raising=False)
+    monkeypatch.delenv("SUBLLM_GATEWAY_DATABASE_URL", raising=False)
+
+    record(application="app-alpha", function="chat", provider="openai", model="gpt-4o")
+    record(application="app-beta", function="edit", provider="anthropic", model="claude-3-5-sonnet")
+
+    res_all = query_usage({})
+    assert len(res_all["attempts"]) == 2
+
+    res_search = query_usage({"search": "alpha"})
+    assert len(res_search["attempts"]) == 1
+    assert res_search["attempts"][0]["application"] == "app-alpha"
+
+    res_model = query_usage({"search": "claude"})
+    assert len(res_model["attempts"]) == 1
+    assert res_model["attempts"][0]["model"] == "claude-3-5-sonnet"
+
+    res_none = query_usage({"search": "nonexistent"})
+    assert len(res_none["attempts"]) == 0
+
+    with pytest.raises(PoaContractError) as caught:
+        query_usage({"search": "a" * 300})
+    assert caught.value.code == "USAGE-FILTER-001"
+

@@ -19,7 +19,7 @@ from .poa.errors import PoaContractError
 LOG = logging.getLogger(__name__)
 _WRITE_LOCK = threading.Lock()
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
-FILTERS = {"application", "provider", "status", "since", "until", "before", "limit"}
+FILTERS = {"application", "provider", "status", "since", "until", "before", "limit", "search"}
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS attempts (
  id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, request_id TEXT NOT NULL,
@@ -178,6 +178,14 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         "Application identity is declared by the caller; missing identity appears as subactor-proxy.",
     }
 
+    search = filters.get("search")
+    if search is not None:
+        if not isinstance(search, str) or len(search) > 256:
+            raise _invalid()
+        search = search.strip()
+        if not search:
+            search = None
+
     from .interaction_store import default_postgres_dsn, get_default_interaction_store
 
     postgres_dsn = None
@@ -201,6 +209,7 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
                 before=filters.get("before"),
                 limit=limit,
                 include_payloads=True,
+                search=search,
             )
             if pg_res["summary"]["attempts"] > 0 or not journal_path(database).exists():
                 return pg_res
@@ -210,6 +219,12 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
     path = journal_path(database)
     if not path.exists():
         return result
+    if search:
+        where.append(
+            "(application LIKE ? OR function LIKE ? OR provider LIKE ? OR model LIKE ? OR diagnostic_code LIKE ?)"
+        )
+        pattern = f"%{search}%"
+        values.extend([pattern, pattern, pattern, pattern, pattern])
     clause = " WHERE " + " AND ".join(where) if where else ""
     try:
         with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=0.5)) as db:
