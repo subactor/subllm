@@ -4,7 +4,7 @@ import os
 import re
 import tomllib
 from collections.abc import Mapping
-from dataclasses import asdict, dataclass
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
@@ -65,7 +65,7 @@ class RuntimePolicyConfig:
     providers: Mapping[str, ProviderPolicyConfig]
     applications: Mapping[str, ApplicationPolicyConfig]
     execution: ExecutionPolicyConfig
-    custom_providers: Mapping[str, CustomProviderConfig] = MappingProxyType({})
+    custom_providers: Mapping[str, CustomProviderConfig] = field(default_factory=lambda: MappingProxyType({}))
     source: Path | None = None
 
 
