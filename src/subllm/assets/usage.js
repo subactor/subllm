@@ -50,7 +50,8 @@ async function refresh() {
     $('empty').hidden = data.attempts.length > 0;
     $('notice').hidden = true; $('dot').className='ready';
     $('connection').textContent = data.storage === 'empty' ? 'Oczekiwanie na pierwsze wywołanie' : (data.storage === 'postgres' ? 'Połączono z PostgreSQL' : 'Połączono z historią');
-    $('page-info').textContent = `Widoczne: ${data.attempts.length} · ${before ? 'starsza strona' : 'najnowsza strona'}`;
+    const searchQ = applied.get('search');
+    $('page-info').textContent = `Widoczne: ${data.attempts.length}${searchQ ? ` · Szukaj: "${searchQ}"` : ''} · ${before ? 'starsza strona' : 'najnowsza strona'}`;
     $('updated').textContent = 'Odczyt: ' + new Date().toLocaleTimeString('pl-PL');
   } catch (error) {
     $('notice').hidden=false; $('notice').textContent='Odczyt nie powiódł się. Widoczne dane mogą być nieaktualne. ' + error.message;

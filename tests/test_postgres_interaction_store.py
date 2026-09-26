@@ -154,5 +154,15 @@ def test_query_usage_postgres_integration(monkeypatch: pytest.MonkeyPatch, tmp_p
         assert detail is not None
         assert detail["id"] == record["id"]
         assert detail["response"]["content"] == "PG response test"
+
+        # Search filter verification in Postgres
+        res_search_prompt = query_usage({"search": "prompt test"}, database=dsn)
+        assert any(a["id"] == record["id"] for a in res_search_prompt["attempts"])
+
+        res_search_resp = query_usage({"search": "response test"}, database=dsn)
+        assert any(a["id"] == record["id"] for a in res_search_resp["attempts"])
+
+        res_search_none = query_usage({"search": "unmatched_search_token_xyz_99"}, database=dsn)
+        assert not any(a["id"] == record["id"] for a in res_search_none["attempts"])
     finally:
         set_default_interaction_store(None)
