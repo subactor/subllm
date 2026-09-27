@@ -20,7 +20,7 @@
 </form>
 <div class="table-heading"><h2>Historia prób</h2><label class="toggle"><input id="auto" type="checkbox" checked> Odświeżaj co 5 s</label></div>
 <p id="notice" role="alert" hidden></p>
-<div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Zadanie (Planfile)</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
 <p id="empty" hidden>Brak zarejestrowanych prób. Dane pojawią się po wywołaniu modelu przez zaktualizowany SubLLM. Przy aktywnych filtrach spróbuj je wyczyścić.</p>
 <div class="paging"><button id="latest" class="secondary" type="button">Najnowsze</button><span id="page-info"></span><button id="older" class="secondary" type="button" disabled>Starsze próby →</button></div>
 <section id="detail" class="detail-section" hidden>
@@ -30,6 +30,15 @@
 <button id="copy-detail" class="secondary" type="button">Kopiuj całość</button>
 <button id="close-detail" class="secondary" type="button">✕ Zamknij</button>
 </div>
+</div>
+<div id="detail-planfile" class="detail-planfile" hidden>
+  <div class="detail-planfile-head">
+    <span class="detail-planfile-badge" id="detail-planfile-id">—</span>
+    <span class="detail-planfile-project" id="detail-planfile-project">—</span>
+    <a id="detail-planfile-gh" href="#" target="_blank" rel="noopener" class="detail-planfile-link" hidden>GitHub Issue ↗</a>
+  </div>
+  <p id="detail-planfile-title" class="detail-planfile-title"></p>
+  <code id="detail-planfile-cmd" class="detail-planfile-cmd"></code>
 </div>
 <div class="detail-grid">
 <div class="detail-block">

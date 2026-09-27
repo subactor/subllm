@@ -180,8 +180,9 @@ def server():
 def test_http_panel_and_api_are_read_only(server):
     record()
     before = journal_path().read_bytes()
-    for path, marker in [("/", b"Kto korzysta z API?"), ("/assets/usage.js", b"textContent"),
-                         ("/assets/usage.css", b"color-scheme")]:
+    for path, marker in [("/", b"Kto korzysta z API?"), ("/", b"Zadanie (Planfile)"),
+                         ("/assets/usage.js", b"extractPlanfileInfo"),
+                         ("/assets/usage.css", b"ticket-badge")]:
         with urlopen(server + path, timeout=5) as response:
             assert marker in response.read()
             assert "frame-ancestors 'none'" in response.headers["Content-Security-Policy"]

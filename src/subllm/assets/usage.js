@@ -14,6 +14,63 @@ function cell(row, main, detail) {
   if (detail) { const small = document.createElement('small'); small.textContent = detail; td.append(small); }
   row.append(td); return td;
 }
+function extractPlanfileInfo(attempt) {
+  let content = '';
+  if (attempt.request && Array.isArray(attempt.request.messages)) {
+    for (const m of attempt.request.messages) content += ' ' + (m.content || '');
+  } else if (typeof attempt.request === 'string') {
+    content = attempt.request;
+  }
+  if (attempt.response && typeof attempt.response.content === 'string') {
+    content += ' ' + attempt.response.content;
+  }
+  let ticketId = null;
+  const plfMatch = content.match(/\b(PLF-[0-9]+)\b/i);
+  if (plfMatch) {
+    ticketId = plfMatch[1].toUpperCase();
+  } else {
+    const tktMatch = content.match(/\b(ticket-[0-9]+)\b/i);
+    if (tktMatch) {
+      ticketId = tktMatch[1].toLowerCase();
+    } else {
+      const ghMatch = content.match(/\b(GITHUB-[0-9]+)\b/i);
+      if (ghMatch) ticketId = ghMatch[1].toUpperCase();
+    }
+  }
+  if (!ticketId) return null;
+  let project = null, repoShort = null;
+  const cLower = content.toLowerCase();
+  if (cLower.includes('src/koru') || cLower.includes('semcod/koru') || cLower.includes(' koru ')) {
+    project = 'semcod/koru'; repoShort = 'koru';
+  } else if (cLower.includes('src/nxdo') || cLower.includes('semcod/nxdo') || cLower.includes(' nxdo ')) {
+    project = 'semcod/nxdo'; repoShort = 'nxdo';
+  } else if (cLower.includes('src/prefact') || cLower.includes('semcod/prefact') || cLower.includes(' prefact ')) {
+    project = 'semcod/prefact'; repoShort = 'prefact';
+  } else if (cLower.includes('src/repatch') || cLower.includes('repatch/') || cLower.includes('semcod/repatch') || cLower.includes(' repatch ')) {
+    project = 'semcod/repatch'; repoShort = 'repatch';
+  } else if (cLower.includes('src/tagi') || cLower.includes('semcod/tagi') || cLower.includes(' tagi ')) {
+    project = 'semcod/tagi'; repoShort = 'tagi';
+  } else if (cLower.includes('maskservice/c2004') || cLower.includes('c2004') || cLower.includes('displaynet') || cLower.includes('stacknet')) {
+    project = 'maskservice/c2004'; repoShort = 'c2004';
+  } else if (cLower.includes('subactor') || cLower.includes('subllm')) {
+    project = 'subactor/subllm'; repoShort = 'subllm';
+  }
+  let title = '';
+  const titleMatch = content.match(/Title:\s*([^\n\r]+)/i);
+  if (titleMatch) {
+    title = titleMatch[1].trim();
+  } else {
+    const promptMatch = content.match(/Driven prompt:\s*code2llm reports `([^`]+)`/i);
+    if (promptMatch) {
+      title = promptMatch[1].trim();
+    } else {
+      const smellMatch = content.match(/Address code smell:\s*([^\n\r.]+)/i);
+      if (smellMatch) title = 'Address code smell: ' + smellMatch[1].trim();
+    }
+  }
+  const githubUrl = project ? `https://github.com/${project}/issues?q=${encodeURIComponent(ticketId)}` : null;
+  return { ticketId, project, repoShort, title, githubUrl };
+}
 async function refresh() {
   if (busy) return;
   busy = true;
@@ -36,7 +93,43 @@ async function refresh() {
       tr.title = 'Kliknij, aby wyświetlić prompt i odpowiedź';
       tr.addEventListener('click', () => showDetail(attempt, tr));
       cell(tr, new Date(attempt.timestamp).toLocaleString('pl-PL'));
-      cell(tr, attempt.application, attempt.function); cell(tr, attempt.provider, attempt.model);
+      cell(tr, attempt.application, attempt.function);
+      const planfileTd = cell(tr, '');
+      const taskInfo = extractPlanfileInfo(attempt);
+      if (taskInfo) {
+        const badge = document.createElement('span');
+        badge.className = 'ticket-badge';
+        badge.textContent = taskInfo.ticketId;
+        badge.title = `Filtruj po zadaniu ${taskInfo.ticketId}`;
+        badge.addEventListener('click', (e) => {
+          e.stopPropagation();
+          $('search').value = taskInfo.ticketId;
+          applied = new URLSearchParams({ search: taskInfo.ticketId });
+          before = null;
+          refresh();
+        });
+        planfileTd.append(badge);
+        if (taskInfo.githubUrl) {
+          const a = document.createElement('a');
+          a.href = taskInfo.githubUrl;
+          a.target = '_blank';
+          a.rel = 'noopener';
+          a.className = 'ticket-ext-link';
+          a.title = `Otwórz na GitHub (${taskInfo.project || ''})`;
+          a.textContent = '↗';
+          a.addEventListener('click', (e) => e.stopPropagation());
+          planfileTd.append(a);
+        }
+        if (taskInfo.repoShort) {
+          const proj = document.createElement('small');
+          proj.className = 'project-tag';
+          proj.textContent = taskInfo.repoShort;
+          planfileTd.append(proj);
+        }
+      } else {
+        planfileTd.textContent = '—';
+      }
+      cell(tr, attempt.provider, attempt.model);
       const td = cell(tr, ''); const badge = document.createElement('span');
       badge.className = 'badge' + (attempt.status === 'error' ? ' error' : '');
       badge.textContent = attempt.status === 'success' ? 'Sukces' : 'Błąd'; td.append(badge);
@@ -72,10 +165,32 @@ function formatResponse(resp) {
   if (resp.choices && resp.choices[0]?.message?.content) return resp.choices[0].message.content;
   return typeof resp === 'string' ? resp : JSON.stringify(resp, null, 2);
 }
+function renderDetailPlanfile(attempt) {
+  const taskInfo = extractPlanfileInfo(attempt);
+  const planfileWrap = $('detail-planfile');
+  if (taskInfo && planfileWrap) {
+    planfileWrap.hidden = false;
+    $('detail-planfile-id').textContent = taskInfo.ticketId;
+    $('detail-planfile-project').textContent = taskInfo.project ? `Projekt: ${taskInfo.project}` : '';
+    const ghLink = $('detail-planfile-gh');
+    if (taskInfo.githubUrl) {
+      ghLink.hidden = false;
+      ghLink.href = taskInfo.githubUrl;
+      ghLink.textContent = `Zobacz ${taskInfo.ticketId} na GitHub ↗`;
+    } else {
+      ghLink.hidden = true;
+    }
+    $('detail-planfile-title').textContent = taskInfo.title ? `Tytuł / cel: ${taskInfo.title}` : '';
+    $('detail-planfile-cmd').textContent = `planfile ticket show ${taskInfo.ticketId}`;
+  } else if (planfileWrap) {
+    planfileWrap.hidden = true;
+  }
+}
 function showDetail(attempt, tr) {
   currentSelectedAttempt = attempt;
   $('detail').hidden = false;
   $('detail-id').textContent = attempt.request_id || attempt.id;
+  renderDetailPlanfile(attempt);
   $('detail-prompt').textContent = formatMessages(attempt.request);
   $('detail-response').textContent = formatResponse(attempt.response);
   $('detail-meta').textContent = JSON.stringify({
@@ -97,8 +212,15 @@ function showDetail(attempt, tr) {
       .then(r => r.ok ? r.json() : null)
       .then(d => {
         if (d) {
-          if (d.request) $('detail-prompt').textContent = formatMessages(d.request);
-          if (d.response) $('detail-response').textContent = formatResponse(d.response);
+          if (d.request) {
+            attempt.request = d.request;
+            $('detail-prompt').textContent = formatMessages(d.request);
+          }
+          if (d.response) {
+            attempt.response = d.response;
+            $('detail-response').textContent = formatResponse(d.response);
+          }
+          renderDetailPlanfile(attempt);
         }
       })
       .catch(() => {});
