@@ -19,7 +19,7 @@ def begin_attempt(route, messages, response_format, request_id=None, timeout_sec
         "model_parameters": dict(route.model_parameters),
     }
     if timeout_seconds is not None:
-        req_payload["timeout_seconds"] = round(float(timeout_seconds), 1)
+        req_payload["timeout_seconds"] = float(timeout_seconds)
 
     if context is not None:
         store, parent = context

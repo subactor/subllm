@@ -15,6 +15,16 @@ function cell(row, main, detail) {
   if (detail) { const small = document.createElement('small'); small.textContent = detail; td.append(small); }
   row.append(td); return td;
 }
+function timeoutLimit(attempt) {
+  const value = Number(attempt.request?.timeout_seconds);
+  return Number.isFinite(value) && value > 0 ? value : null;
+}
+function latencySeverity(durationMs, limitSeconds) {
+  if (!Number.isFinite(durationMs) || limitSeconds == null) return '';
+  if (durationMs >= limitSeconds * 1000) return 'latency-exceeded';
+  if (durationMs >= limitSeconds * 800) return 'latency-near-limit';
+  return '';
+}
 function extractPlanfileInfo(attempt) {
   let content = '';
   if (attempt.request && Array.isArray(attempt.request.messages)) {
@@ -136,7 +146,10 @@ async function refresh() {
       badge.className = 'badge' + (attempt.status === 'error' ? ' error' : '');
       badge.textContent = attempt.status === 'success' ? 'Sukces' : 'Błąd'; td.append(badge);
       if(attempt.diagnostic_code) { const small=document.createElement('small'); small.textContent=attempt.diagnostic_code; td.append(small); }
-      cell(tr, number(attempt.duration_ms) + ' ms');
+      const limit = timeoutLimit(attempt);
+      const durationCell = cell(tr, number(attempt.duration_ms) + ' ms');
+      durationCell.className = latencySeverity(Number(attempt.duration_ms), limit);
+      cell(tr, limit == null ? '—' : number(limit) + ' s');
       cell(tr, `${number(attempt.input_tokens)} / ${number(attempt.output_tokens)}`);
       const request = cell(tr, ''); const code = document.createElement('code'); code.textContent=attempt.request_id; request.append(code);
       $('rows').append(tr);

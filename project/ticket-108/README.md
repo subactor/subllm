@@ -1,9 +1,9 @@
 # Ticket 108: Centralized timeout hierarchy and usage timeout display
 
 - **ID**: ticket-108
-- **Owner**: unresolved:human
+- **Owner**: agent:codex
 - **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-09-28
 
 ## Goal and scope
@@ -29,3 +29,30 @@ User explicit request "kolejno" authorizing execution of proposed improvements (
 
 This directory contains the minimal reviewed intent. Optional participant prose
 and raw command logs are not required delivery output.
+
+## Explicit handoff and continuation
+
+The user confirmed that agent agy finished and handed this scope to Codex for
+publication and deployment. The prior expired claim was terminally released,
+then a bounded replacement was acquired with monotonic fencing. Source and
+commits are preserved. Initial read-only policy/environment tests: 35 passed.
+Review found caller-deadline expansion, silent fallback for invalid overrides,
+and omitted dynamic timeout values during credential-file import. These must
+pass focused regressions before publication.
+
+- [ ] AC-06: Independent protected publication and approved runtime activation.
+
+## Validation and final behavior
+
+525 full-suite tests pass. Eleven focused deadline regressions initially showed
+10 failures; all pass after correction. Explicit and default caller budgets are
+never enlarged; failover shares one deadline. Invalid overrides fail closed,
+and dynamic timeout settings survive private-file import. Archive records keep
+the exact effective attempt budget. Panel columns and latency boundaries are
+checked with Node vectors and syntax validation. Ruff and governance pass, and
+wheel/sdist build successfully. Ten pre-existing lint findings in the archive,
+usage reader and PostgreSQL tests were corrected without behavior changes to
+satisfy the configured OneDev gate. Source defaults stay at 12/10 seconds;
+existing deployed environment overrides remain authoritative.
+
+AC-06 remains pending independent publication and approved runtime activation.

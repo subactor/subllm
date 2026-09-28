@@ -148,7 +148,6 @@ def _unquote(value: str, *, path: Path, line_number: int) -> str:
 def load_env_file(path: Path, *, allow_other_names: bool = False) -> dict[str, str]:
     path = path.absolute()
     _validate_file(path)
-    allowed = set(allowed_env_names())
     credentials: dict[str, str] = {}
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -214,6 +213,8 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
         raise CredentialFileError("no provider credentials found in the source files")
 
     target.parent.mkdir(parents=True, exist_ok=True)
+    timeout_names = sorted(name for name in imported if name.startswith('SUBLLM_TIMEOUT_'))
+    names = tuple(dict.fromkeys((*allowed_env_names(), *timeout_names)))
     temporary_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -226,7 +227,7 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
             temporary_name = temporary.name
             os.fchmod(temporary.fileno(), 0o600)
             temporary.write("# Local provider credentials. Never commit this file.\n")
-            for name in allowed_env_names():
+            for name in names:
                 if name in imported:
                     temporary.write(f"{name}={imported[name]}\n")
             temporary.flush()
@@ -240,4 +241,4 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
         if temporary_name is not None:
             with suppress(FileNotFoundError):
                 Path(temporary_name).unlink()
-    return tuple(name for name in allowed_env_names() if name in imported)
+    return tuple(name for name in names if name in imported)

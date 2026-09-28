@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime
 import json
+import math
 import re
 import shutil
 import time
@@ -246,6 +247,8 @@ def _complete_model_direct(
     environ: Mapping[str, str] | None = None,
 ) -> CompletionResponse:
     """Execute completion directly for a declared model with sequential failover across providers."""
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
+        raise CompletionError('timeout_seconds must be finite and greater than zero')
     request_id = request_id or uuid.uuid4().hex
     routes = _build_model_resolved_routes(model_id, application, function, environ=environ)
     if not routes:
@@ -273,10 +276,10 @@ def _complete_model_direct(
             default=execution.attempt_timeout_seconds,
             input_chars=input_chars,
         )
-        remaining = max(timeout_seconds, attempt_budget) - elapsed
+        remaining = timeout_seconds - elapsed
         if remaining <= 0:
             break
-        attempt_timeout = min(remaining, attempt_budget) if execution.failover_enabled else min(remaining, attempt_budget)
+        attempt_timeout = min(remaining, attempt_budget)
         attempt_started = time.monotonic()
         safe_cwd = Path.home()
         try:
@@ -817,14 +820,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         req_id: str | None,
         payload: Mapping[str, Any],
     ) -> CompletionResponse:
-        input_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, Mapping))
-        configured_budget = resolve_attempt_timeout(
-            "",
-            clean_model,
-            default=timeout,
-            input_chars=input_chars,
-        )
-        effective_timeout = max(timeout, configured_budget)
+        effective_timeout = timeout
 
         # 1. Direct application/function notation e.g. "koru-agent/queue-executor"
         if "/" in clean_model:

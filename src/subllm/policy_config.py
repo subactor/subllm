@@ -95,8 +95,8 @@ _APPLICATION_DEFAULTS = MappingProxyType(
 
 _EXECUTION_DEFAULTS = ExecutionPolicyConfig(
     failover_enabled=True,
-    attempt_timeout_seconds=30.0,
-    slow_response_seconds=20.0,
+    attempt_timeout_seconds=12.0,
+    slow_response_seconds=10.0,
     cooldown_seconds=60.0,
     failure_threshold=1,
     max_attempts=6,
@@ -146,7 +146,7 @@ def resolve_attempt_timeout(
     8. SUBLLM_TIMEOUT_DEFAULT
     9. Default fallback (policy attempt_timeout_seconds)
 
-    If input_chars > 1500 and resolved timeout < 30.0, a 30s floor is guaranteed.
+    Input size never increases an explicitly configured limit.
     """
     from .credential_env import merged_environment
 
@@ -169,22 +169,10 @@ def resolve_attempt_timeout(
         "SUBLLM_TIMEOUT_DEFAULT",
     ])
 
-    resolved: float | None = None
     for key in candidates:
         if key in env:
-            try:
-                resolved = _environment_number(env, key, default)
-                break
-            except Exception:
-                continue
-
-    if resolved is None:
-        resolved = default
-
-    if input_chars > 1500 and resolved < 30.0:
-        resolved = 30.0
-
-    return resolved
+            return _environment_number(env, key, default)
+    return _environment_number({'policy_timeout': str(default)}, 'policy_timeout', default)
 
 
 def _execution_with_environment(
@@ -225,11 +213,11 @@ def _execution_with_environment(
     failure_threshold = execution.failure_threshold
     if SUBLLM_FAILURE_THRESHOLD in environment:
         try:
-            val = int(float(environment[SUBLLM_FAILURE_THRESHOLD]))
-            if 1 <= val <= 100:
-                failure_threshold = val
-        except (ValueError, TypeError):
-            pass
+            failure_threshold = int(environment[SUBLLM_FAILURE_THRESHOLD])
+        except (ValueError, TypeError) as exc:
+            raise InvalidPolicyError('runtime SUBLLM_FAILURE_THRESHOLD must be an integer') from exc
+        if not 1 <= failure_threshold <= 100:
+            raise InvalidPolicyError('runtime SUBLLM_FAILURE_THRESHOLD must be from 1 to 100')
 
     return ExecutionPolicyConfig(
         failover_enabled=execution.failover_enabled,

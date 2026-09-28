@@ -522,8 +522,8 @@ def test_resolve_attempt_timeout_hierarchy() -> None:
     # Default fallback
     assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ={}, default=25.0) == 25.0
 
-    # Long input floor: guarantees at least 30s when input_chars > 1500
-    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ={}, default=12.0, input_chars=2000) == 30.0
+    # Input size does not increase a configured timeout.
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ={}, default=12.0, input_chars=2000) == 12.0
 
     # Global default in env
     env = {"SUBLLM_TIMEOUT_DEFAULT": "40"}
@@ -553,5 +553,4 @@ def test_resolve_attempt_timeout_hierarchy() -> None:
         "SUBLLM_TIMEOUT_AGY_GEMINI_3_8_FLASH": "75",
     }
     assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ=env) == 75.0
-
 

@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import json
 from pathlib import Path
-from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -11,7 +9,6 @@ from subllm.interaction_context import begin_attempt, finish_attempt
 from subllm.interaction_store import (
     InteractionStore,
     default_postgres_dsn,
-    get_default_interaction_store,
     set_default_interaction_store,
 )
 from subllm.resolver import configured_route

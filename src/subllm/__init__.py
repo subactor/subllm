@@ -9,10 +9,10 @@ from .credential_env import (
     cursor_api_key,
     find_env_file,
     import_credentials,
+    is_allowed_env_name,
     load_env_file,
     load_shared_environment,
     merged_environment,
-    is_allowed_env_name,
 )
 from .errors import (
     CURSOR_WORKER_TIMEOUT_CODE,

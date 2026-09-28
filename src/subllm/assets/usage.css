@@ -702,3 +702,7 @@ footer {
     flex-direction: column;
   }
 }
+
+/* Actual attempt budget; historical rows without a budget stay unclassified. */
+.latency-near-limit { color: #92400e; font-weight: 600; }
+.latency-exceeded { color: #b91c1c; font-weight: 600; }
