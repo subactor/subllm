@@ -118,7 +118,7 @@ async function refresh() {
           a.rel = 'noopener';
           a.className = 'ticket-ext-link';
           a.title = `Otwórz na GitHub (${taskInfo.project || ''})`;
-          a.textContent = '↗';
+          a.innerHTML = '<svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>';
           a.addEventListener('click', (e) => e.stopPropagation());
           planfileTd.append(a);
         }
@@ -275,8 +275,8 @@ $('copy-table-all')?.addEventListener('click', async () => {
     return;
   }
   const btn = $('copy-table-all');
-  const originalText = btn.textContent;
-  btn.textContent = '⏳ Pobieranie detali…';
+  const originalHtml = btn.innerHTML;
+  btn.innerHTML = '<svg class="ui-icon spinning" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9" stroke-dasharray="30" stroke-dashoffset="10"></circle></svg> <span>Pobieranie…</span>';
   btn.disabled = true;
 
   try {
@@ -319,7 +319,7 @@ $('copy-table-all')?.addEventListener('click', async () => {
   } catch (err) {
     alert('Błąd eksportu do schowka: ' + err);
   } finally {
-    btn.textContent = originalText;
+    btn.innerHTML = originalHtml;
     btn.disabled = false;
   }
 });
