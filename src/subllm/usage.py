@@ -186,7 +186,7 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         if not search:
             search = None
 
-    from .interaction_store import default_postgres_dsn, get_default_interaction_store
+    from .interaction_store import default_postgres_dsn
 
     postgres_dsn = None
     if isinstance(database, str) and (database.startswith("postgresql://") or database.startswith("postgres://")):

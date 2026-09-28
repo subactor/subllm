@@ -9,6 +9,7 @@ from .credential_env import (
     cursor_api_key,
     find_env_file,
     import_credentials,
+    is_allowed_env_name,
     load_env_file,
     load_shared_environment,
     merged_environment,
@@ -44,6 +45,8 @@ from .policy_config import (
     RuntimePolicyConfig,
     find_policy_file,
     load_policy_config,
+    normalize_timeout_key_part,
+    resolve_attempt_timeout,
 )
 from .provider_order import (
     available_provider_order,
@@ -136,4 +139,7 @@ __all__ = [
     "resolve",
     "route_policy",
     "validate_policy",
+    "is_allowed_env_name",
+    "normalize_timeout_key_part",
+    "resolve_attempt_timeout",
 ]

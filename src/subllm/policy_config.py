@@ -21,6 +21,7 @@ from .policy import (
 SUBLLM_POLICY_FILE = "SUBLLM_POLICY_FILE"
 SUBLLM_ATTEMPT_TIMEOUT_SECONDS = "SUBLLM_ATTEMPT_TIMEOUT_SECONDS"
 SUBLLM_SLOW_RESPONSE_SECONDS = "SUBLLM_SLOW_RESPONSE_SECONDS"
+SUBLLM_FAILURE_THRESHOLD = "SUBLLM_FAILURE_THRESHOLD"
 _CUSTOM_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_\.-]{0,63}$")
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -119,32 +120,111 @@ def _environment_number(
     return value
 
 
+def normalize_timeout_key_part(value: str) -> str:
+    """Normalize model or provider name for environment variable lookup."""
+    return re.sub(r"[^A-Za-z0-9]+", "_", value.strip()).strip("_").upper()
+
+
+def resolve_attempt_timeout(
+    provider: str,
+    model: str,
+    *,
+    environ: Mapping[str, str] | None = None,
+    default: float = 30.0,
+    input_chars: int = 0,
+) -> float:
+    """Resolve attempt timeout for a specific provider and model.
+
+    Precedence order:
+    1. SUBLLM_TIMEOUT_{PROVIDER}_{MODEL} (e.g. SUBLLM_TIMEOUT_AGY_GEMINI_3_8_FLASH)
+    2. SUBLLM_TIMEOUT_MODEL_{MODEL} (e.g. SUBLLM_TIMEOUT_MODEL_GEMINI_3_8_FLASH)
+    3. SUBLLM_TIMEOUT_{MODEL} (e.g. SUBLLM_TIMEOUT_GEMINI_3_8_FLASH)
+    4. SUBLLM_TIMEOUT_PROVIDER_{PROVIDER} (e.g. SUBLLM_TIMEOUT_PROVIDER_AGY)
+    5. SUBLLM_TIMEOUT_{PROVIDER} (e.g. SUBLLM_TIMEOUT_AGY)
+    6. SUBLLM_ATTEMPT_TIMEOUT_SECONDS
+    7. SUBLLM_TIMEOUT_SECONDS
+    8. SUBLLM_TIMEOUT_DEFAULT
+    9. Default fallback (policy attempt_timeout_seconds)
+
+    Input size never increases an explicitly configured limit.
+    """
+    from .credential_env import merged_environment
+
+    env = merged_environment(environ=environ)
+    norm_provider = normalize_timeout_key_part(provider)
+    norm_model = normalize_timeout_key_part(model)
+
+    candidates: list[str] = []
+    if norm_provider and norm_model:
+        candidates.append(f"SUBLLM_TIMEOUT_{norm_provider}_{norm_model}")
+    if norm_model:
+        candidates.append(f"SUBLLM_TIMEOUT_MODEL_{norm_model}")
+        candidates.append(f"SUBLLM_TIMEOUT_{norm_model}")
+    if norm_provider:
+        candidates.append(f"SUBLLM_TIMEOUT_PROVIDER_{norm_provider}")
+        candidates.append(f"SUBLLM_TIMEOUT_{norm_provider}")
+    candidates.extend([
+        SUBLLM_ATTEMPT_TIMEOUT_SECONDS,
+        "SUBLLM_TIMEOUT_SECONDS",
+        "SUBLLM_TIMEOUT_DEFAULT",
+    ])
+
+    for key in candidates:
+        if key in env:
+            return _environment_number(env, key, default)
+    return _environment_number({'policy_timeout': str(default)}, 'policy_timeout', default)
+
+
 def _execution_with_environment(
     execution: ExecutionPolicyConfig,
     environ: Mapping[str, str] | None,
 ) -> ExecutionPolicyConfig:
-    environment = os.environ if environ is None else environ
-    attempt_timeout = _environment_number(
-        environment,
+    from .credential_env import merged_environment
+
+    environment = merged_environment(environ=environ)
+    attempt_timeout = execution.attempt_timeout_seconds
+    for key in (
         SUBLLM_ATTEMPT_TIMEOUT_SECONDS,
-        execution.attempt_timeout_seconds,
-    )
-    slow_response = _environment_number(
-        environment,
-        SUBLLM_SLOW_RESPONSE_SECONDS,
-        execution.slow_response_seconds,
-    )
-    if slow_response > attempt_timeout:
-        raise InvalidPolicyError(
-            f"runtime {SUBLLM_SLOW_RESPONSE_SECONDS} must not exceed "
-            f"{SUBLLM_ATTEMPT_TIMEOUT_SECONDS}"
+        "SUBLLM_TIMEOUT_SECONDS",
+        "SUBLLM_TIMEOUT_DEFAULT",
+    ):
+        if key in environment:
+            attempt_timeout = _environment_number(
+                environment,
+                key,
+                attempt_timeout,
+            )
+            break
+
+    if SUBLLM_SLOW_RESPONSE_SECONDS in environment:
+        slow_response = _environment_number(
+            environment,
+            SUBLLM_SLOW_RESPONSE_SECONDS,
+            execution.slow_response_seconds,
         )
+        if slow_response > attempt_timeout:
+            raise InvalidPolicyError(
+                f"runtime {SUBLLM_SLOW_RESPONSE_SECONDS} must not exceed "
+                f"{SUBLLM_ATTEMPT_TIMEOUT_SECONDS}"
+            )
+    else:
+        slow_response = min(execution.slow_response_seconds, attempt_timeout)
+
+    failure_threshold = execution.failure_threshold
+    if SUBLLM_FAILURE_THRESHOLD in environment:
+        try:
+            failure_threshold = int(environment[SUBLLM_FAILURE_THRESHOLD])
+        except (ValueError, TypeError) as exc:
+            raise InvalidPolicyError('runtime SUBLLM_FAILURE_THRESHOLD must be an integer') from exc
+        if not 1 <= failure_threshold <= 100:
+            raise InvalidPolicyError('runtime SUBLLM_FAILURE_THRESHOLD must be from 1 to 100')
+
     return ExecutionPolicyConfig(
         failover_enabled=execution.failover_enabled,
         attempt_timeout_seconds=attempt_timeout,
         slow_response_seconds=slow_response,
         cooldown_seconds=execution.cooldown_seconds,
-        failure_threshold=execution.failure_threshold,
+        failure_threshold=failure_threshold,
         max_attempts=execution.max_attempts,
     )
 
@@ -171,7 +251,10 @@ def find_policy_file(
         return repository_policy
 
     for root in (working_directory, *working_directory.parents):
-        candidates = [root / "subllm" / "subllm.toml"]
+        candidates = [
+            root / "subllm" / "subllm.toml",
+            root / "subactor" / "subllm" / "subllm.toml",
+        ]
         if root.name == "subllm":
             candidates.insert(0, root / "subllm.toml")
         for candidate in candidates:

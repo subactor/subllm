@@ -18,6 +18,11 @@ POLICY_ENV_NAMES = (
     "SUBLLM_DATABASE_URL",
     "SUBLLM_GATEWAY_DATABASE_URL",
     "SUBLLM_USAGE_DB",
+    "SUBLLM_ATTEMPT_TIMEOUT_SECONDS",
+    "SUBLLM_SLOW_RESPONSE_SECONDS",
+    "SUBLLM_TIMEOUT_DEFAULT",
+    "SUBLLM_TIMEOUT_SECONDS",
+    "SUBLLM_FAILURE_THRESHOLD",
 )
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PLACEHOLDER_PARTS = (
@@ -43,6 +48,10 @@ def credential_names() -> tuple[str, ...]:
 
 def allowed_env_names() -> tuple[str, ...]:
     return tuple(dict.fromkeys((*credential_names(), *POLICY_ENV_NAMES)))
+
+
+def is_allowed_env_name(name: str) -> bool:
+    return name in set(allowed_env_names()) or name.startswith("SUBLLM_TIMEOUT_")
 
 
 def credential_is_valid(provider: str, value: str | None) -> bool:
@@ -139,7 +148,6 @@ def _unquote(value: str, *, path: Path, line_number: int) -> str:
 def load_env_file(path: Path, *, allow_other_names: bool = False) -> dict[str, str]:
     path = path.absolute()
     _validate_file(path)
-    allowed = set(allowed_env_names())
     credentials: dict[str, str] = {}
     try:
         lines = path.read_text(encoding="utf-8").splitlines()
@@ -155,7 +163,7 @@ def load_env_file(path: Path, *, allow_other_names: bool = False) -> dict[str, s
         name = name.strip()
         if not separator or not _ENV_NAME.fullmatch(name):
             raise CredentialFileError(f"invalid assignment in {path} at line {line_number}")
-        if name not in allowed:
+        if not is_allowed_env_name(name):
             if allow_other_names:
                 continue
             raise CredentialFileError(f"unsupported variable {name} in SubLLM credential file: {path}")
@@ -205,6 +213,8 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
         raise CredentialFileError("no provider credentials found in the source files")
 
     target.parent.mkdir(parents=True, exist_ok=True)
+    timeout_names = sorted(name for name in imported if name.startswith('SUBLLM_TIMEOUT_'))
+    names = tuple(dict.fromkeys((*allowed_env_names(), *timeout_names)))
     temporary_name: str | None = None
     try:
         with tempfile.NamedTemporaryFile(
@@ -217,7 +227,7 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
             temporary_name = temporary.name
             os.fchmod(temporary.fileno(), 0o600)
             temporary.write("# Local provider credentials. Never commit this file.\n")
-            for name in allowed_env_names():
+            for name in names:
                 if name in imported:
                     temporary.write(f"{name}={imported[name]}\n")
             temporary.flush()
@@ -231,4 +241,4 @@ def import_credentials(source_paths: Iterable[Path], target: Path) -> tuple[str,
         if temporary_name is not None:
             with suppress(FileNotFoundError):
                 Path(temporary_name).unlink()
-    return tuple(name for name in allowed_env_names() if name in imported)
+    return tuple(name for name in names if name in imported)

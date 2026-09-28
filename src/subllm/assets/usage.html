@@ -18,24 +18,31 @@
 <label>Do (czas lokalny)<input type="datetime-local" name="until"></label>
 <button type="submit">Filtruj / Szukaj</button><button type="button" id="clear-filters" class="secondary">Wyczyść</button>
 </form>
-<div class="table-heading"><h2>Historia prób</h2><label class="toggle"><input id="auto" type="checkbox" checked> Odświeżaj co 5 s</label></div>
+<div class="table-heading">
+  <h2>Historia prób</h2>
+  <div class="table-actions">
+    <button id="copy-table-all" class="secondary" type="button" title="Kopiuj całą widoczną tabelę wraz ze szczegółami promptów, odpowiedzi i metadanych do JSON"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>Kopiuj JSON</span></button>
+    <button id="copy-table-tsv" class="secondary" type="button" title="Kopiuj widoczne wiersze tabeli jako TSV (dla arkusza / diagnostyki)"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> <span>Kopiuj TSV</span></button>
+    <label class="toggle"><input id="auto" type="checkbox" checked> Odświeżaj co 5 s</label>
+  </div>
+</div>
 <p id="notice" role="alert" hidden></p>
-<div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Zadanie (Planfile)</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
+<div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Zadanie (Planfile)</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Limit próby</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
 <p id="empty" hidden>Brak zarejestrowanych prób. Dane pojawią się po wywołaniu modelu przez zaktualizowany SubLLM. Przy aktywnych filtrach spróbuj je wyczyścić.</p>
 <div class="paging"><button id="latest" class="secondary" type="button">Najnowsze</button><span id="page-info"></span><button id="older" class="secondary" type="button" disabled>Starsze próby →</button></div>
 <section id="detail" class="detail-section" hidden>
 <div class="detail-head">
 <h2>Szczegóły próby <code id="detail-id">—</code></h2>
 <div class="detail-actions">
-<button id="copy-detail" class="secondary" type="button">Kopiuj całość</button>
-<button id="close-detail" class="secondary" type="button">✕ Zamknij</button>
+<button id="copy-detail" class="secondary" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>Kopiuj całość</span></button>
+<button id="close-detail" class="secondary" type="button"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg> <span>Zamknij</span></button>
 </div>
 </div>
 <div id="detail-planfile" class="detail-planfile" hidden>
   <div class="detail-planfile-head">
     <span class="detail-planfile-badge" id="detail-planfile-id">—</span>
     <span class="detail-planfile-project" id="detail-planfile-project">—</span>
-    <a id="detail-planfile-gh" href="#" target="_blank" rel="noopener" class="detail-planfile-link" hidden>GitHub Issue ↗</a>
+    <a id="detail-planfile-gh" href="#" target="_blank" rel="noopener" class="detail-planfile-link" hidden>GitHub Issue <svg class="ui-icon ui-icon-xs" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg></a>
   </div>
   <p id="detail-planfile-title" class="detail-planfile-title"></p>
   <code id="detail-planfile-cmd" class="detail-planfile-cmd"></code>

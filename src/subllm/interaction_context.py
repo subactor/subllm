@@ -11,19 +11,23 @@ ACTIVE_ARCHIVE = ContextVar("subllm_interaction_archive", default=None)
 LOG = logging.getLogger(__name__)
 
 
-def begin_attempt(route, messages, response_format, request_id=None):
+def begin_attempt(route, messages, response_format, request_id=None, timeout_seconds=None):
     context = ACTIVE_ARCHIVE.get()
+    req_payload = {
+        "messages": list(messages),
+        "response_format": response_format,
+        "model_parameters": dict(route.model_parameters),
+    }
+    if timeout_seconds is not None:
+        req_payload["timeout_seconds"] = float(timeout_seconds)
+
     if context is not None:
         store, parent = context
         record = store.begin(
             kind="llm_attempt",
             caller=parent["caller"],
             target=route.wire_model,
-            request={
-                "messages": list(messages),
-                "response_format": response_format,
-                "model_parameters": dict(route.model_parameters),
-            },
+            request=req_payload,
             correlation_id=parent["id"],
         )
         return store, record
@@ -40,11 +44,7 @@ def begin_attempt(route, messages, response_format, request_id=None):
             kind="llm_attempt",
             caller=route.application or "direct",
             target=f"{route.provider}/{route.wire_model}",
-            request={
-                "messages": list(messages),
-                "response_format": response_format,
-                "model_parameters": dict(route.model_parameters),
-            },
+            request=req_payload,
             correlation_id=request_id or uuid.uuid4().hex,
         )
         return store, record

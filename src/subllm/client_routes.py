@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -16,6 +17,7 @@ from .client_types import (
 )
 from .client_vision import _validate_vision_messages
 from .client_workers import _complete_cursor, _complete_openai_compatible
+from .credential_env import merged_environment
 from .errors import (
     PROVIDER_CHAIN_EXHAUSTED_CODE,
     CompletionError,
@@ -23,7 +25,7 @@ from .errors import (
 )
 from .health import order_by_health, record_failure, record_success
 from .interaction_context import begin_attempt, finish_attempt
-from .policy_config import load_policy_config
+from .policy_config import load_policy_config, resolve_attempt_timeout
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 from .usage import record_attempt
@@ -108,7 +110,7 @@ def _complete_route(
     response = None
     diagnostic = None
     attempt_error = None
-    archive = begin_attempt(route, messages, response_format, request_id=request_id)
+    archive = begin_attempt(route, messages, response_format, request_id=request_id, timeout_seconds=timeout_seconds)
     try:
         response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
                                  request_id=request_id, response_format=response_format, cwd=cwd)
@@ -145,7 +147,7 @@ def complete(
     """Execute a policy-resolved chat completion with bounded runtime failover."""
     if not messages:
         raise CompletionError("chat completion requires at least one message")
-    if timeout_seconds <= 0:
+    if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise CompletionError("timeout_seconds must be greater than zero")
 
     request_id = request_id or uuid4().hex
@@ -167,23 +169,25 @@ def complete(
     if first_route.modality == "vision" and first_route.transport != "openai-compatible":
         raise CompletionError("vision routes require an OpenAI-compatible transport")
     started_at = time.monotonic()
+    timeout_environment = merged_environment(environ=environ)
+    attempt_budgets = tuple(resolve_attempt_timeout(
+        route.provider, route.wire_model, environ=timeout_environment,
+        default=execution.attempt_timeout_seconds,
+    ) for route in routes)
+    caller_limit = timeout_seconds
     attempts: list[CompletionAttempt] = []
     failed_providers: set[str] = set()
     last_error: CompletionError | None = None
-    for route in routes:
+    for route, attempt_budget in zip(routes, attempt_budgets, strict=True):
         if len(attempts) >= execution.max_attempts:
             break
         if route.provider in failed_providers:
             continue
         elapsed = time.monotonic() - started_at
-        remaining = timeout_seconds - elapsed
+        remaining = caller_limit - elapsed
         if remaining <= 0:
             break
-        attempt_timeout = (
-            min(remaining, execution.attempt_timeout_seconds)
-            if execution.failover_enabled
-            else remaining
-        )
+        attempt_timeout = min(remaining, attempt_budget)
         attempt_started = time.monotonic()
         try:
             response = _complete_route(

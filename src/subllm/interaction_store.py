@@ -7,11 +7,10 @@ import os
 import re
 import sqlite3
 import uuid
+from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
-
-from collections.abc import Mapping
 from typing import Any
 
 from .interaction_events import canonical, make_event
@@ -374,10 +373,14 @@ class InteractionStore:
                     "COUNT(*) as attempts, "
                     "COUNT(DISTINCT document::jsonb->>'correlation_id') as requests, "
                     "COALESCE(SUM(CASE WHEN document::jsonb->>'status' = 'error' THEN 1 ELSE 0 END), 0) as errors, "
-                    "SUM(COALESCE((document::jsonb->'metadata'->>'input_tokens')::numeric, (document::jsonb->'response'->'usage'->>'prompt_tokens')::numeric, 0)) as input_tokens, "
-                    "SUM(COALESCE((document::jsonb->'metadata'->>'output_tokens')::numeric, (document::jsonb->'response'->'usage'->>'completion_tokens')::numeric, 0)) as output_tokens, "
+                    "SUM(COALESCE((document::jsonb->'metadata'->>'input_tokens')::numeric, "
+                    "(document::jsonb->'response'->'usage'->>'prompt_tokens')::numeric, 0)) as input_tokens, "
+                    "SUM(COALESCE((document::jsonb->'metadata'->>'output_tokens')::numeric, "
+                    "(document::jsonb->'response'->'usage'->>'completion_tokens')::numeric, 0)) as output_tokens, "
                     "ROUND(AVG(COALESCE((document::jsonb->>'duration_ms')::numeric, 0))) as average_ms, "
-                    "COALESCE(SUM(CASE WHEN (document::jsonb->'metadata'->>'input_tokens' IS NOT NULL OR document::jsonb->'response'->'usage'->>'prompt_tokens' IS NOT NULL) THEN 1 ELSE 0 END), 0) as usage_known "
+                    "COALESCE(SUM(CASE WHEN (document::jsonb->'metadata'->>'input_tokens' IS NOT NULL "
+                    "OR document::jsonb->'response'->'usage'->>'prompt_tokens' IS NOT NULL) "
+                    "THEN 1 ELSE 0 END), 0) as usage_known "
                     f"FROM interactions {where_clause}"
                 )
                 sum_row = db.execute(sum_sql, args).fetchone()
@@ -392,7 +395,8 @@ class InteractionStore:
                 provs = [
                     r[0]
                     for r in db.execute(
-                        "SELECT DISTINCT COALESCE(document::jsonb->'metadata'->>'provider', split_part(document::jsonb->>'target', '/', 1)) "
+                        "SELECT DISTINCT COALESCE(document::jsonb->'metadata'->>'provider', "
+                        "split_part(document::jsonb->>'target', '/', 1)) "
                         "FROM interactions WHERE document::jsonb->>'target' IS NOT NULL ORDER BY 1 LIMIT 500"
                     ).fetchall()
                 ]
