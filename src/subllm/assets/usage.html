@@ -18,7 +18,14 @@
 <label>Do (czas lokalny)<input type="datetime-local" name="until"></label>
 <button type="submit">Filtruj / Szukaj</button><button type="button" id="clear-filters" class="secondary">Wyczyść</button>
 </form>
-<div class="table-heading"><h2>Historia prób</h2><label class="toggle"><input id="auto" type="checkbox" checked> Odświeżaj co 5 s</label></div>
+<div class="table-heading">
+  <h2>Historia prób</h2>
+  <div class="table-actions" style="display: flex; gap: 8px; align-items: center;">
+    <button id="copy-table-all" class="secondary" type="button" title="Kopiuj całą widoczną tabelę wraz ze szczegółami promptów, odpowiedzi i metadanych do JSON">📋 Kopiuj tabelę z żądaniami (JSON)</button>
+    <button id="copy-table-tsv" class="secondary" type="button" title="Kopiuj widoczne wiersze tabeli jako TSV (dla arkusza / diagnostyki)">📋 Kopiuj tabelę (TSV)</button>
+    <label class="toggle"><input id="auto" type="checkbox" checked> Odświeżaj co 5 s</label>
+  </div>
+</div>
 <p id="notice" role="alert" hidden></p>
 <div class="table-wrap"><table><thead><tr><th>Czas</th><th>Aplikacja / funkcja</th><th>Zadanie (Planfile)</th><th>Dostawca / model</th><th>Wynik</th><th>Czas trwania</th><th>Tokeny wej. / wyj.</th><th>Żądanie</th></tr></thead><tbody id="rows"></tbody></table></div>
 <p id="empty" hidden>Brak zarejestrowanych prób. Dane pojawią się po wywołaniu modelu przez zaktualizowany SubLLM. Przy aktywnych filtrach spróbuj je wyczyścić.</p>

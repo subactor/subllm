@@ -18,6 +18,11 @@ POLICY_ENV_NAMES = (
     "SUBLLM_DATABASE_URL",
     "SUBLLM_GATEWAY_DATABASE_URL",
     "SUBLLM_USAGE_DB",
+    "SUBLLM_ATTEMPT_TIMEOUT_SECONDS",
+    "SUBLLM_SLOW_RESPONSE_SECONDS",
+    "SUBLLM_TIMEOUT_DEFAULT",
+    "SUBLLM_TIMEOUT_SECONDS",
+    "SUBLLM_FAILURE_THRESHOLD",
 )
 _ENV_NAME = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _PLACEHOLDER_PARTS = (
@@ -43,6 +48,10 @@ def credential_names() -> tuple[str, ...]:
 
 def allowed_env_names() -> tuple[str, ...]:
     return tuple(dict.fromkeys((*credential_names(), *POLICY_ENV_NAMES)))
+
+
+def is_allowed_env_name(name: str) -> bool:
+    return name in set(allowed_env_names()) or name.startswith("SUBLLM_TIMEOUT_")
 
 
 def credential_is_valid(provider: str, value: str | None) -> bool:
@@ -155,7 +164,7 @@ def load_env_file(path: Path, *, allow_other_names: bool = False) -> dict[str, s
         name = name.strip()
         if not separator or not _ENV_NAME.fullmatch(name):
             raise CredentialFileError(f"invalid assignment in {path} at line {line_number}")
-        if name not in allowed:
+        if not is_allowed_env_name(name):
             if allow_other_names:
                 continue
             raise CredentialFileError(f"unsupported variable {name} in SubLLM credential file: {path}")

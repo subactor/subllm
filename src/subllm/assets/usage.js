@@ -1,6 +1,7 @@
 'use strict';
 const $ = id => document.getElementById(id);
 let next = null, before = null, busy = false, applied = new URLSearchParams();
+let currentVisibleAttempts = [];
 const number = value => value == null ? '—' : Number(value).toLocaleString('pl-PL');
 function choices(id, values) {
   const select = $(id), selected = select.value;
@@ -86,6 +87,7 @@ async function refresh() {
     $('tokens').textContent = `${number(s.input_tokens)} / ${number(s.output_tokens)}`;
     $('coverage').textContent = `Pełne dane o tokenach: ${number(s.usage_known)} z ${number(s.attempts)} prób`;
     choices('application', data.applications); choices('provider', data.providers);
+    currentVisibleAttempts = Array.isArray(data.attempts) ? data.attempts : [];
     $('rows').replaceChildren();
     for (const attempt of data.attempts) {
       const tr = document.createElement('tr');
@@ -193,7 +195,7 @@ function showDetail(attempt, tr) {
   renderDetailPlanfile(attempt);
   $('detail-prompt').textContent = formatMessages(attempt.request);
   $('detail-response').textContent = formatResponse(attempt.response);
-  $('detail-meta').textContent = JSON.stringify({
+  const metaObj = {
     id: attempt.id,
     timestamp: attempt.timestamp,
     request_id: attempt.request_id,
@@ -203,9 +205,11 @@ function showDetail(attempt, tr) {
     model: attempt.model,
     status: attempt.status,
     duration_ms: attempt.duration_ms,
+    timeout_limit_seconds: attempt.request?.timeout_seconds ? `${attempt.request.timeout_seconds}s` : '—',
     tokens: { input: attempt.input_tokens, output: attempt.output_tokens },
     diagnostic_code: attempt.diagnostic_code
-  }, null, 2);
+  };
+  $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
 
   if ((!attempt.request || !attempt.response) && attempt.id) {
     fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id))
@@ -215,6 +219,10 @@ function showDetail(attempt, tr) {
           if (d.request) {
             attempt.request = d.request;
             $('detail-prompt').textContent = formatMessages(d.request);
+            if (d.request.timeout_seconds) {
+              metaObj.timeout_limit_seconds = `${d.request.timeout_seconds}s`;
+              $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
+            }
           }
           if (d.response) {
             attempt.response = d.response;
@@ -244,6 +252,76 @@ $('copy-detail')?.addEventListener('click', () => {
   navigator.clipboard.writeText(JSON.stringify(payload, null, 2))
     .then(() => alert('Skopiowano szczegóły do schowka'))
     .catch(() => {});
+});
+$('copy-table-tsv')?.addEventListener('click', () => {
+  const rows = $('rows').querySelectorAll('tr');
+  if (!rows || rows.length === 0) {
+    alert('Brak danych w tabeli do skopiowania');
+    return;
+  }
+  const headers = ['Czas', 'Aplikacja / funkcja', 'Zadanie (Planfile)', 'Dostawca / model', 'Wynik', 'Czas trwania', 'Tokeny wej. / wyj.', 'Żądanie'];
+  const lines = [headers.join('\t')];
+  for (const tr of rows) {
+    const cols = Array.from(tr.querySelectorAll('td')).map(td => td.innerText.replace(/[\t\r\n]+/g, ' ').trim());
+    lines.push(cols.join('\t'));
+  }
+  navigator.clipboard.writeText(lines.join('\n'))
+    .then(() => alert(`Skopiowano ${rows.length} wierszy tabeli (TSV) do schowka.`))
+    .catch(e => alert('Błąd kopiowania: ' + e));
+});
+$('copy-table-all')?.addEventListener('click', async () => {
+  if (!currentVisibleAttempts || currentVisibleAttempts.length === 0) {
+    alert('Brak prób w tabeli do skopiowania');
+    return;
+  }
+  const btn = $('copy-table-all');
+  const originalText = btn.textContent;
+  btn.textContent = '⏳ Pobieranie detali…';
+  btn.disabled = true;
+
+  try {
+    const exportData = [];
+    for (const attempt of currentVisibleAttempts) {
+      const item = {
+        id: attempt.id,
+        timestamp: attempt.timestamp,
+        request_id: attempt.request_id,
+        application: attempt.application,
+        function: attempt.function,
+        provider: attempt.provider,
+        model: attempt.model,
+        status: attempt.status,
+        duration_ms: attempt.duration_ms,
+        tokens: { input: attempt.input_tokens, output: attempt.output_tokens },
+        diagnostic_code: attempt.diagnostic_code,
+        task: extractPlanfileInfo(attempt),
+        request: attempt.request || null,
+        response: attempt.response || null
+      };
+
+      if ((!item.request || !item.response) && attempt.id) {
+        try {
+          const res = await fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id));
+          if (res.ok) {
+            const detail = await res.json();
+            if (detail) {
+              if (detail.request) item.request = detail.request;
+              if (detail.response) item.response = detail.response;
+            }
+          }
+        } catch (_) {}
+      }
+      exportData.push(item);
+    }
+
+    await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
+    alert(`Skopiowano pełne dane diagnostyczne (${exportData.length} żądań z promptami i odpowiedziami) do schowka.`);
+  } catch (err) {
+    alert('Błąd eksportu do schowka: ' + err);
+  } finally {
+    btn.textContent = originalText;
+    btn.disabled = false;
+  }
 });
 $('filters').addEventListener('submit', event => {
   event.preventDefault(); if (busy) return;

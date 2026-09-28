@@ -512,3 +512,46 @@ def test_root_subllm_toml_disables_cursor_provider(monkeypatch: pytest.MonkeyPat
     assert providers[0] == "zai"
     assert providers[-1] == "openrouter"
 
+
+def test_resolve_attempt_timeout_hierarchy() -> None:
+    from subllm import normalize_timeout_key_part, resolve_attempt_timeout
+
+    assert normalize_timeout_key_part("gemini-3.8-flash") == "GEMINI_3_8_FLASH"
+    assert normalize_timeout_key_part("qwen3-coder:30b") == "QWEN3_CODER_30B"
+
+    # Default fallback
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ={}, default=25.0) == 25.0
+
+    # Long input floor: guarantees at least 30s when input_chars > 1500
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ={}, default=12.0, input_chars=2000) == 30.0
+
+    # Global default in env
+    env = {"SUBLLM_TIMEOUT_DEFAULT": "40"}
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ=env, default=25.0) == 40.0
+
+    # Provider override
+    env = {
+        "SUBLLM_TIMEOUT_DEFAULT": "40",
+        "SUBLLM_TIMEOUT_AGY": "50",
+    }
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ=env) == 50.0
+    assert resolve_attempt_timeout("zai", "glm-5.3", environ=env) == 40.0
+
+    # Model override
+    env = {
+        "SUBLLM_TIMEOUT_DEFAULT": "40",
+        "SUBLLM_TIMEOUT_AGY": "50",
+        "SUBLLM_TIMEOUT_GEMINI_3_8_FLASH": "60",
+    }
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ=env) == 60.0
+
+    # Provider + Model override
+    env = {
+        "SUBLLM_TIMEOUT_DEFAULT": "40",
+        "SUBLLM_TIMEOUT_AGY": "50",
+        "SUBLLM_TIMEOUT_GEMINI_3_8_FLASH": "60",
+        "SUBLLM_TIMEOUT_AGY_GEMINI_3_8_FLASH": "75",
+    }
+    assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ=env) == 75.0
+
+

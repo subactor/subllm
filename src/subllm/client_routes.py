@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -23,7 +24,7 @@ from .errors import (
 )
 from .health import order_by_health, record_failure, record_success
 from .interaction_context import begin_attempt, finish_attempt
-from .policy_config import load_policy_config
+from .policy_config import load_policy_config, resolve_attempt_timeout
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 from .usage import record_attempt
@@ -108,7 +109,7 @@ def _complete_route(
     response = None
     diagnostic = None
     attempt_error = None
-    archive = begin_attempt(route, messages, response_format, request_id=request_id)
+    archive = begin_attempt(route, messages, response_format, request_id=request_id, timeout_seconds=timeout_seconds)
     try:
         response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
                                  request_id=request_id, response_format=response_format, cwd=cwd)
@@ -135,7 +136,7 @@ def complete(
     function: str,
     messages: Sequence[Mapping[str, Any]],
     *,
-    timeout_seconds: float = 30.0,
+    timeout_seconds: float | None = None,
     request_id: str | None = None,
     response_format: Mapping[str, Any] | None = None,
     environ: Mapping[str, str] | None = None,
@@ -145,7 +146,7 @@ def complete(
     """Execute a policy-resolved chat completion with bounded runtime failover."""
     if not messages:
         raise CompletionError("chat completion requires at least one message")
-    if timeout_seconds <= 0:
+    if timeout_seconds is not None and timeout_seconds <= 0:
         raise CompletionError("timeout_seconds must be greater than zero")
 
     request_id = request_id or uuid4().hex
@@ -176,13 +177,34 @@ def complete(
         if route.provider in failed_providers:
             continue
         elapsed = time.monotonic() - started_at
-        remaining = timeout_seconds - elapsed
+        input_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, Mapping))
+        attempt_budget = resolve_attempt_timeout(
+            route.provider,
+            route.wire_model,
+            environ=environ,
+            default=execution.attempt_timeout_seconds,
+            input_chars=input_chars,
+        )
+        if timeout_seconds is not None:
+            remaining = timeout_seconds - elapsed
+        else:
+            env_map = environ if environ is not None else os.environ
+            has_explicit_timeout_env = any(
+                k.startswith("SUBLLM_TIMEOUT_") or k in (
+                    "SUBLLM_ATTEMPT_TIMEOUT_SECONDS",
+                    "SUBLLM_TIMEOUT_SECONDS",
+                    "SUBLLM_TIMEOUT_DEFAULT",
+                )
+                for k in env_map
+            )
+            caller_limit = max(30.0, attempt_budget) if has_explicit_timeout_env else 30.0
+            remaining = caller_limit - elapsed
         if remaining <= 0:
             break
         attempt_timeout = (
-            min(remaining, execution.attempt_timeout_seconds)
+            min(remaining, attempt_budget)
             if execution.failover_enabled
-            else remaining
+            else min(remaining, attempt_budget)
         )
         attempt_started = time.monotonic()
         try:

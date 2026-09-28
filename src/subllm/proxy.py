@@ -21,7 +21,7 @@ from .credential_env import credential_is_valid, merged_environment
 from .errors import CompletionError, SubLLMError
 from .health import order_by_health, record_failure, record_success
 from .policy import MODELS, PROVIDERS, ROUTES
-from .policy_config import load_policy_config
+from .policy_config import load_policy_config, resolve_attempt_timeout
 from .types import ResolvedRoute
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
@@ -265,10 +265,18 @@ def _complete_model_direct(
         if route.provider in failed_providers:
             continue
         elapsed = time.monotonic() - started_at
-        remaining = timeout_seconds - elapsed
+        input_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, Mapping))
+        attempt_budget = resolve_attempt_timeout(
+            route.provider,
+            route.wire_model,
+            environ=environ,
+            default=execution.attempt_timeout_seconds,
+            input_chars=input_chars,
+        )
+        remaining = max(timeout_seconds, attempt_budget) - elapsed
         if remaining <= 0:
             break
-        attempt_timeout = min(remaining, execution.attempt_timeout_seconds) if execution.failover_enabled else remaining
+        attempt_timeout = min(remaining, attempt_budget) if execution.failover_enabled else min(remaining, attempt_budget)
         attempt_started = time.monotonic()
         safe_cwd = Path.home()
         try:
@@ -809,14 +817,23 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         req_id: str | None,
         payload: Mapping[str, Any],
     ) -> CompletionResponse:
+        input_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, Mapping))
+        configured_budget = resolve_attempt_timeout(
+            "",
+            clean_model,
+            default=timeout,
+            input_chars=input_chars,
+        )
+        effective_timeout = max(timeout, configured_budget)
+
         # 1. Direct application/function notation e.g. "koru-agent/queue-executor"
         if "/" in clean_model:
             target_app, target_func = clean_model.split("/", 1)
-            return complete(target_app, target_func, messages, timeout_seconds=timeout, request_id=req_id)
+            return complete(target_app, target_func, messages, timeout_seconds=effective_timeout, request_id=req_id)
 
         # 2. If app and func specified from headers and exists in ROUTES
         if app and func and (app, func) in ROUTES:
-            return complete(app, func, messages, timeout_seconds=timeout, request_id=req_id)
+            return complete(app, func, messages, timeout_seconds=effective_timeout, request_id=req_id)
 
         # 3. Model is a known catalog model in MODELS
         if clean_model in MODELS:
@@ -825,12 +842,12 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 messages,
                 application=app or "subactor-proxy",
                 function=func or "chat",
-                timeout_seconds=timeout,
+                timeout_seconds=effective_timeout,
                 request_id=req_id,
             )
 
         # 4. Fallback to default subactor-proxy/chat
-        return complete("subactor-proxy", "chat", messages, timeout_seconds=timeout, request_id=req_id)
+        return complete("subactor-proxy", "chat", messages, timeout_seconds=effective_timeout, request_id=req_id)
 
     def _forward_upstream(self, method: str, path: str, payload: Any | None) -> None:
         url = f"{self.ollama_upstream.rstrip('/')}{path}"
