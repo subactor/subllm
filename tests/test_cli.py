@@ -65,7 +65,7 @@ def test_configured_application_name_field(capsys) -> None:
 
 def test_resolve_output_never_contains_credential(tmp_path: Path, monkeypatch, capsys) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("OPENROUTER_API_KEY=or-cli-secret\n", encoding="utf-8")
+    env_file.write_text("OPENROUTER_API_KEY=test-cli-secret\n", encoding="utf-8")
     env_file.chmod(0o600)
     monkeypatch.setenv("SUBLLM_ENV_FILE", str(env_file))
     monkeypatch.delenv("ZAI_API_KEY", raising=False)
@@ -83,7 +83,7 @@ def test_resolve_output_never_contains_credential(tmp_path: Path, monkeypatch, c
 
 def test_env_check_reports_names_without_values(tmp_path: Path, monkeypatch, capsys) -> None:
     env_file = tmp_path / ".env"
-    env_file.write_text("ZAI_API_KEY=id.cli-secret\nOPENROUTER_API_KEY=\n", encoding="utf-8")
+    env_file.write_text("ZAI_API_KEY=test-id.cli-secret\nOPENROUTER_API_KEY=\n", encoding="utf-8")
     env_file.chmod(0o600)
     monkeypatch.setenv("SUBLLM_ENV_FILE", str(env_file))
 
