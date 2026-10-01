@@ -821,15 +821,18 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         payload: Mapping[str, Any],
     ) -> CompletionResponse:
         effective_timeout = timeout
+        response_format = payload.get("response_format")
 
         # 1. Direct application/function notation e.g. "koru-agent/queue-executor"
         if "/" in clean_model:
             target_app, target_func = clean_model.split("/", 1)
-            return complete(target_app, target_func, messages, timeout_seconds=effective_timeout, request_id=req_id)
+            return complete(target_app, target_func, messages, timeout_seconds=effective_timeout, request_id=req_id,
+                            response_format=response_format)
 
         # 2. If app and func specified from headers and exists in ROUTES
         if app and func and (app, func) in ROUTES:
-            return complete(app, func, messages, timeout_seconds=effective_timeout, request_id=req_id)
+            return complete(app, func, messages, timeout_seconds=effective_timeout, request_id=req_id,
+                            response_format=response_format)
 
         # 3. Model is a known catalog model in MODELS
         if clean_model in MODELS:
@@ -840,10 +843,12 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 function=func or "chat",
                 timeout_seconds=effective_timeout,
                 request_id=req_id,
+                response_format=response_format,
             )
 
         # 4. Fallback to default subactor-proxy/chat
-        return complete("subactor-proxy", "chat", messages, timeout_seconds=effective_timeout, request_id=req_id)
+        return complete("subactor-proxy", "chat", messages, timeout_seconds=effective_timeout, request_id=req_id,
+                        response_format=response_format)
 
     def _forward_upstream(self, method: str, path: str, payload: Any | None) -> None:
         url = f"{self.ollama_upstream.rstrip('/')}{path}"

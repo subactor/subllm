@@ -14,7 +14,10 @@ The local login works with Auto while Cloud Agent SDK requires a paid plan.
 Add a separate, explicitly opted-in Cursor CLI transport with bounded execution,
 no inherited API credentials, private workspace and denied agent tools.
 Auto is a routing mode, not a qualified model or a guarantee of cost or quality.
-Keep it disabled by default; do not change deployed protected review policy.
+Keep it disabled by default. The operator explicitly authorized enabling Auto
+in local deployment on 2026-10-01, prioritizing any available provider over the
+previous model-quality baseline. The existing Validator can reach it through
+the OpenAI-compatible proxy; preserve response_format end to end.
 
 ## Acceptance criteria
 

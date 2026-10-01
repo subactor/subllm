@@ -140,3 +140,35 @@ def test_timeout_reaps_cursor_descendants(fake_cursor, tmp_path):
     status = Path(f"/proc/{int(pid_file.read_text())}/stat")
     # An orphan may briefly remain as a zombie awaiting the host init reaper.
     assert not status.exists() or status.read_text().split()[2] == "Z"
+
+
+def test_openai_api_preserves_cursor_json_mode(fake_cursor, monkeypatch, tmp_path):
+    import threading
+    from urllib.request import Request, urlopen
+
+    from subllm.proxy import make_proxy_server
+
+    policy = Path(__file__).resolve().parents[1] / "subllm.toml"
+    enabled = tmp_path / "proxy.toml"
+    enabled.write_text(policy.read_text() +
+                       '\n[providers.cursor-cli]\nenabled = true\npriority = 21\ndefault_model = "cursor-auto"\n')
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(enabled))
+    fake_cursor('import json,sys\nassert "single valid JSON object" in sys.argv[-1]\n'
+                'print(json.dumps({"type":"result","subtype":"success","is_error":False,'
+                '"result":"```json\\n{\\"ok\\":true}\\n```"}))')
+    server = make_proxy_server(port=0, ollama_upstream="http://127.0.0.1:1")
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    try:
+        request = Request(f"http://127.0.0.1:{server.server_port}/v1/chat/completions",
+                          data=json.dumps({"model":"cursor-auto", "messages":MESSAGES,
+                                           "response_format":{"type":"json_object"}}).encode(),
+                          headers={"Content-Type":"application/json"})
+        with urlopen(request, timeout=10) as response:
+            result = json.load(response)
+            assert response.headers["X-Subactor-Provider"] == "cursor-cli"
+        assert json.loads(result["choices"][0]["message"]["content"]) == {"ok":True}
+    finally:
+        server.shutdown()
+        thread.join(timeout=5)
+        server.server_close()
