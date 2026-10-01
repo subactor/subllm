@@ -1,0 +1,31 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-111",
+  "summary": "Adaptive quota recovery and model class substitution",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-111/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/adaptive.py",
+    "src/subllm/cli_common.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/codex_cli.py",
+    "src/subllm/proxy.py",
+    "tests/test_adaptive.py",
+    "tests/test_codex_cli.py",
+    "tests/test_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

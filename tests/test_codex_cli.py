@@ -86,3 +86,26 @@ def test_route_is_explicit_and_preserves_api_provider(fake_codex, monkeypatch):
 def test_missing_binary_has_no_available_route(monkeypatch, tmp_path):
     monkeypatch.delenv("SUBLLM_PROVIDER_ORDER", raising=False)
     assert not available_routes("organism-guard", "refactor", environ={"PATH": str(tmp_path)})
+
+
+def test_json_object_mode_does_not_require_external_schema(fake_codex):
+    fake_codex('''import sys,json
+from pathlib import Path
+request=json.load(sys.stdin)
+assert request['messages'][-1]['role']=='system'
+assert '--output-schema' not in sys.argv
+Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text('{"ok":true}')
+print(json.dumps({'type':'turn.completed','usage':{}}))
+''')
+    answer,_=invoke('gpt-5.6-luna',[{'role':'user','content':'hello'}],2,{'type':'json_object'})
+    assert json.loads(answer)=={'ok':True}
+
+
+def test_json_object_mode_rejects_non_object(fake_codex):
+    fake_codex('''import sys,json
+from pathlib import Path
+Path(sys.argv[sys.argv.index('--output-last-message')+1]).write_text('[]')
+print(json.dumps({'type':'turn.completed','usage':{}}))
+''')
+    with pytest.raises(CompletionError,match='invalid output'):
+        invoke('gpt-5.6-luna',[{'role':'user','content':'hello'}],2,{'type':'json_object'})

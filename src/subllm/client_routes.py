@@ -152,6 +152,21 @@ def complete(
         raise CompletionError("timeout_seconds must be greater than zero")
 
     request_id = request_id or uuid4().hex
+    from . import adaptive
+    adaptive_policy = adaptive.policy(environ)
+    requirement = adaptive_policy and adaptive_policy.get("routes", {}).get(f"{application}/{function}")
+    if requirement:
+        from .proxy import _build_model_resolved_routes
+        config = {**adaptive_policy, "aliases": {**adaptive_policy.get("aliases", {}), "__route__": requirement}}
+        environment = dict(merged_environment(environ=environ))
+        from .policy import PROVIDERS
+        for provider, credential in (credentials or {}).items():
+            if provider in PROVIDERS:
+                environment[PROVIDERS[provider].api_key_env] = credential
+        return adaptive.execute(config, "__route__", messages,
+            build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environment),
+            invoke=_complete_route, timeout_seconds=timeout_seconds,
+            response_format=response_format, request_id=request_id, cwd=Path(cwd) if cwd else None, environ=environment)
     routes = available_routes(application, function, environ=environ, credentials=credentials)
     if not routes:
         configured = configured_routes(application, function, environ=environ)

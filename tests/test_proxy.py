@@ -282,3 +282,60 @@ def test_openai_invalid_timeout_is_rejected_before_dispatch(proxy_server, monkey
     })
     assert status == 400
     assert body["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_adaptive_http_alias_exposes_actual_model_and_preserves_strength(proxy_server, monkeypatch, tmp_path):
+    from subllm.types import ResolvedRoute
+    config = tmp_path / 'adaptive.json'
+    config.write_text(json.dumps({'classes': {'strong': ['gemini-3.1-pro-high'], 'fast': ['gpt-5.6-luna']},
+                                 'aliases': {'vendor/unavailable-pro': 'strong'},
+                                 'routes': {'subactor-proxy/chat': 'strong'}}))
+    monkeypatch.setenv('SUBLLM_ADAPTIVE_POLICY', str(config))
+    def build(model, *args, **kwargs):
+        return [ResolvedRoute(application='subactor-proxy', application_name='test', application_url='',
+            function='chat', provider='agy-cli', model=model, priority=1, api_base='', api_key_env='',
+            litellm_model='', wire_model=model, extra_headers={}, transport='agy-cli', api_key='')]
+    monkeypatch.setattr(proxy, '_build_model_resolved_routes', build)
+    monkeypatch.setattr(proxy, '_complete_route',
+                        lambda r, *a, **k: CompletionResponse('{"ok":true}', r.provider, r.model))
+    base_url,_=proxy_server
+    status,body,headers=_request('POST',base_url+'/v1/chat/completions',{
+        'model':'vendor/unavailable-pro','messages':[{'role':'user','content':'hello'}],
+        'response_format':{'type':'json_object'}})
+    assert status==200
+    assert body['model']=='gemini-3.1-pro-high'
+    assert headers['X-Subactor-Provider']=='agy-cli'
+    status, body, _ = _request('POST', base_url+'/v1/chat/completions', {
+        'model': 'gpt-5.6-luna', 'messages': [{'role':'user','content':'hello'}]})
+    assert status == 200
+    assert body['model'] == 'gemini-3.1-pro-high'
+    monkeypatch.setattr(proxy, '_build_model_resolved_routes',
+                        lambda model, *a, **k: build(model) if model == 'gpt-5.6-luna' else [])
+    monkeypatch.setattr(proxy, 'is_upstream_ollama_alive', lambda *a,**k:True)
+    # An unrelated live Ollama upstream must never bypass the required class.
+    status,body,_=_request('POST',base_url+'/v1/chat/completions',{
+        'model':'vendor/unavailable-pro','messages':[{'role':'user','content':'hello'}]})
+    assert status==500
+    assert 'requested model class' in body['error']['message']
+
+
+def test_direct_candidates_respect_enabled_custom_provider_without_key(monkeypatch, tmp_path):
+    from pathlib import Path
+    policy = tmp_path / 'policy.toml'
+    base = (Path(__file__).resolve().parents[1] / 'subllm.toml').read_text()
+    custom = '''
+[custom_providers.quota-test]
+api_base = "http://127.0.0.1:1/v1"
+api_key_env = ""
+default_model = "quota-test-model"
+models = ["quota-test-model"]
+priority = 1
+enabled = true
+routes = ["subactor-proxy"]
+'''
+    policy.write_text(base + custom)
+    monkeypatch.setenv('SUBLLM_POLICY_FILE', str(policy))
+    routes = proxy._build_model_resolved_routes('quota-test-model')
+    assert len(routes) == 1 and routes[0].api_key == ''
+    policy.write_text(base + custom.replace('enabled = true', 'enabled = false'))
+    assert proxy._build_model_resolved_routes('quota-test-model') == ()

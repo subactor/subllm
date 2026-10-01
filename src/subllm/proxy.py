@@ -15,6 +15,7 @@ from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
+from . import adaptive
 from .cli_common import CLI_EXECUTABLES
 from .client_routes import _complete_route, complete
 from .client_types import CompletionResponse, _RetryableAttemptError
@@ -23,6 +24,7 @@ from .errors import CompletionError, SubLLMError
 from .health import order_by_health, record_failure, record_success
 from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
+from .provider_order import routing_provider_order
 from .types import ResolvedRoute
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
@@ -175,7 +177,7 @@ def _build_model_resolved_routes(
 ) -> tuple[ResolvedRoute, ...]:
     """Build candidate ResolvedRoute objects for a specific model ID across valid providers."""
     environment = merged_environment(environ=environ)
-    runtime_policy = load_policy_config()
+    runtime_policy = load_policy_config(environ=environ)
     model_spec = MODELS.get(model_id)
     if model_spec is None or model_spec.forbidden:
         return ()
@@ -184,13 +186,15 @@ def _build_model_resolved_routes(
     app_name = app_spec.name if app_spec else application
     app_url = app_spec.url if app_spec else "https://github.com/subactor/subllm"
 
+    order = routing_provider_order(environ=environment)
     candidates: list[ResolvedRoute] = []
     for provider_id, provider_model in model_spec.providers.items():
         provider_spec = PROVIDERS.get(provider_id)
-        if not provider_spec:
+        if not provider_spec or (order is not None and provider_id not in order):
             continue
-        provider_policy = runtime_policy.providers.get(provider_id)
-        if provider_policy and not provider_policy.enabled:
+        provider_policy = (runtime_policy.providers.get(provider_id)
+                           or runtime_policy.custom_providers.get(provider_id))
+        if provider_policy is None or not provider_policy.enabled:
             continue
 
         api_key = (
@@ -202,14 +206,14 @@ def _build_model_resolved_routes(
             if shutil.which(CLI_EXECUTABLES[provider_spec.transport], path=environment.get("PATH")) is None:
                 continue
             api_key = ""
-        elif not credential_is_valid(provider_id, api_key):
+        elif provider_spec.api_key_env and not credential_is_valid(provider_id, api_key):
             continue
 
         headers: dict[str, str] = {}
         if provider_spec.attribution_headers:
             headers = {"HTTP-Referer": app_url, "X-OpenRouter-Title": app_name}
 
-        priority = (provider_policy.priority if provider_policy else 50)
+        priority = order.index(provider_id) * 10 if order is not None else provider_policy.priority
 
         candidates.append(
             ResolvedRoute(
@@ -250,6 +254,13 @@ def _complete_model_direct(
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise CompletionError('timeout_seconds must be finite and greater than zero')
     request_id = request_id or uuid.uuid4().hex
+    adaptive_policy = adaptive.policy(environ)
+    if adaptive_policy and adaptive.requested_class(adaptive_policy, model_id) is not None:
+        return adaptive.execute(adaptive_policy, model_id, messages,
+            build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environ),
+            invoke=_complete_route, timeout_seconds=timeout_seconds,
+            response_format=response_format, request_id=request_id, environ=environ,
+            minimum_class=adaptive_policy.get("routes", {}).get(f"{application}/{function}"))
     routes = _build_model_resolved_routes(model_id, application, function, environ=environ)
     if not routes:
         raise CompletionError(f"no available provider with valid credentials for model '{model_id}'")
@@ -497,7 +508,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
 
         # Upstream Ollama forward fast-path for models not registered in SubLLM policy
-        if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
+                and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", "/v1/chat/completions", payload)
             return
 
@@ -505,7 +517,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, req_id, payload)
         except Exception as exc:
-            if is_upstream_ollama_alive(self.ollama_upstream):
+            if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/v1/chat/completions", payload)
                 return
             self._error(500, "COMPLETION_FAILED", str(exc))
@@ -542,7 +554,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                     "id": req_id,
                     "object": "chat.completion.chunk",
                     "created": created_ts,
-                    "model": clean_model,
+                    "model": response.model,
                     "choices": [
                         {
                             "index": 0,
@@ -563,7 +575,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 "id": req_id,
                 "object": "chat.completion.chunk",
                 "created": created_ts,
-                "model": clean_model,
+                "model": response.model,
                 "choices": [{"index": 0, "delta": {}, "finish_reason": response.finish_reason or "stop"}],
             }
             self.wfile.write(f"data: {json.dumps(stop_payload)}\n\n".encode())
@@ -575,7 +587,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             "id": req_id,
             "object": "chat.completion",
             "created": created_ts,
-            "model": clean_model,
+            "model": response.model,
             "choices": [
                 {
                     "index": 0,
@@ -614,7 +626,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
 
         # Upstream Ollama forward fast-path for models not registered in SubLLM policy
-        if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
+                and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", "/api/chat", payload)
             return
 
@@ -622,7 +635,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
         except Exception as exc:
-            if is_upstream_ollama_alive(self.ollama_upstream):
+            if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/api/chat", payload)
                 return
             self._error(500, "COMPLETION_FAILED", str(exc))
@@ -659,7 +672,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             for i in range(0, len(content), chunk_size):
                 chunk_text = content[i : i + chunk_size]
                 chunk_line = {
-                    "model": clean_model,
+                    "model": response.model,
                     "created_at": now_iso,
                     "message": {"role": "assistant", "content": chunk_text},
                     "done": False,
@@ -668,7 +681,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
 
             done_line = {
-                "model": clean_model,
+                "model": response.model,
                 "created_at": now_iso,
                 "message": {"role": "assistant", "content": ""},
                 "done": True,
@@ -684,7 +697,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         self._json(
             200,
             {
-                "model": clean_model,
+                "model": response.model,
                 "created_at": now_iso,
                 "message": {
                     "role": "assistant",
@@ -717,7 +730,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
 
         # Upstream Ollama forward fast-path for models not registered in SubLLM policy
-        if clean_model not in MODELS and "/" not in clean_model and is_upstream_ollama_alive(self.ollama_upstream):
+        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
+                and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", "/api/generate", payload)
             return
 
@@ -725,7 +739,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
         except Exception as exc:
-            if is_upstream_ollama_alive(self.ollama_upstream):
+            if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/api/generate", payload)
                 return
             self._error(500, "COMPLETION_FAILED", str(exc))
@@ -762,7 +776,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             for i in range(0, len(content), chunk_size):
                 chunk_text = content[i : i + chunk_size]
                 chunk_line = {
-                    "model": clean_model,
+                    "model": response.model,
                     "created_at": now_iso,
                     "response": chunk_text,
                     "done": False,
@@ -771,7 +785,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.flush()
 
             done_line = {
-                "model": clean_model,
+                "model": response.model,
                 "created_at": now_iso,
                 "response": "",
                 "done": True,
@@ -787,7 +801,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         self._json(
             200,
             {
-                "model": clean_model,
+                "model": response.model,
                 "created_at": now_iso,
                 "response": response.content,
                 "done": True,
@@ -831,6 +845,12 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         effective_timeout = timeout
         response_format = payload.get("response_format")
 
+        adaptive_policy = adaptive.policy()
+        if adaptive_policy and adaptive.requested_class(adaptive_policy, clean_model) is not None:
+            return _complete_model_direct(clean_model, messages, application=app or "subactor-proxy",
+                function=func or "chat", timeout_seconds=effective_timeout,
+                request_id=req_id, response_format=response_format)
+
         # 1. Direct application/function notation e.g. "koru-agent/queue-executor"
         if "/" in clean_model:
             target_app, target_func = clean_model.split("/", 1)
@@ -853,6 +873,9 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 request_id=req_id,
                 response_format=response_format,
             )
+
+        if adaptive_policy:
+            raise CompletionError("unknown model: declare a replacement class or an explicit route")
 
         # 4. Fallback to default subactor-proxy/chat
         return complete("subactor-proxy", "chat", messages, timeout_seconds=effective_timeout, request_id=req_id,

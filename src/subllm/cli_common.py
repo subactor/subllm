@@ -6,6 +6,7 @@ working root is a private empty directory. The directory is not a VM sandbox.
 """
 from __future__ import annotations
 
+import json
 import os
 import subprocess
 import tempfile
@@ -122,6 +123,8 @@ def run_cli(
         finally:
             # Reap descendants even if the CLI exited before its children.
             _terminate_worker_process_group(process)
+    if quota_failure(stdout_path.read_bytes()[:max_bytes]):
+        raise CompletionError(f"{label} quota exhausted", diagnostic_code=f"{code_prefix}-HTTP-429")
     if process.returncode != 0 and not completed:
         raise CompletionError(f"{label} failed; check the local CLI login and model access",
                               diagnostic_code=f"{code_prefix}-FAILED")
@@ -129,6 +132,33 @@ def run_cli(
     if len(data) > max_bytes:
         raise CompletionError(f"{label} output exceeds byte budget", diagnostic_code=f"{code_prefix}-BUDGET")
     return data
+
+
+def quota_failure(raw: bytes) -> bool:
+    """Recognize only structured CLI error records, never successful answer text."""
+    try:
+        rows = [json.loads(raw)]
+    except (ValueError, UnicodeError):
+        rows = []
+        for line in raw.splitlines():
+            try:
+                rows.append(json.loads(line))
+            except (ValueError, UnicodeError):
+                continue
+    for row in rows:
+        if not isinstance(row, dict):
+            continue
+        if not (row.get("is_error") or row.get("type") in {"error", "turn.failed"}
+                or row.get("status") in {"ERROR", "FAILED"}):
+            continue
+        if row.get("api_error_status") in (402, 429):
+            return True
+        detail = json.dumps({k: row.get(k) for k in ("result", "error", "message", "code")}).lower()
+        if any(word in detail for word in ("usage limit", "usage_limit", "rate limit", "rate_limit",
+                                           "quota exceeded", "quota_exceeded", "insufficient credits",
+                                           "session limit", "insufficient_quota")):
+            return True
+    return False
 
 
 def private_root(prefix: str) -> tempfile.TemporaryDirectory[str]:
