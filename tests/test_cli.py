@@ -71,6 +71,7 @@ def test_resolve_output_never_contains_credential(tmp_path: Path, monkeypatch, c
     monkeypatch.delenv("ZAI_API_KEY", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
     monkeypatch.delenv("OPENROUTER_API_KEY", raising=False)
+    monkeypatch.setenv("SUBLLM_PROVIDER_ORDER", "openrouter")
     assert main(["resolve", "repair-agent", "repair-plan"]) == 0
     output = capsys.readouterr().out
     payload = json.loads(output)
