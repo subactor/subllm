@@ -3,7 +3,7 @@
 - **ID**: ticket-109
 - **Owner**: codex
 - **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Workflow state**: PUBLICATION
 - **Created**: 2026-10-01
 
 ## Goal and scope
@@ -21,7 +21,8 @@ Keep it disabled by default; do not change deployed protected review policy.
 - [x] CLI login executes without Cursor SDK or API credentials.
 - [x] Reject malformed/error output, bound prompts/output/time, restrict tools.
 - [x] Policy preserves SDK routes and defaults the CLI provider to disabled.
-- [ ] Tests and governance pass; publish through independent controller.
+- [x] Tests and governance pass.
+- [ ] Independent review and protected publication.
 
 ## Validation
 

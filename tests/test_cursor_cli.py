@@ -127,3 +127,17 @@ def test_policy_opt_in_and_complete_dispatch(fake_cursor, monkeypatch, tmp_path)
                         environ={"SUBLLM_PROVIDER_ORDER": "cursor-cli"})
     assert response.content == "ok"
     assert response.provider == "cursor-cli" and response.model == "auto"
+
+
+@pytest.mark.skipif(sys.platform != "linux", reason="process group state is observed via procfs")
+def test_timeout_reaps_cursor_descendants(fake_cursor, tmp_path):
+    pid_file = tmp_path / "child.pid"
+    fake_cursor('import subprocess, sys, time\nfrom pathlib import Path\n'
+                'child = subprocess.Popen([sys.executable, "-c", "import time; time.sleep(60)"])\n'
+                f'Path({str(pid_file)!r}).write_text(str(child.pid))\n'
+                'time.sleep(60)\n')
+    with pytest.raises(CompletionError, match="timed out"):
+        invoke("auto", MESSAGES, 1, None)
+    status = Path(f"/proc/{int(pid_file.read_text())}/stat")
+    # An orphan may briefly remain as a zombie awaiting the host init reaper.
+    assert not status.exists() or status.read_text().split()[2] == "Z"
