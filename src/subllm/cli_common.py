@@ -10,7 +10,7 @@ import os
 import subprocess
 import tempfile
 import time
-from collections.abc import Mapping, Sequence
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
@@ -87,6 +87,7 @@ def run_cli(
     code_prefix: str,
     label: str,
     max_bytes: int = MAX_BYTES,
+    output_complete: Callable[[bytes], bool] | None = None,
 ) -> bytes:
     """Run one fixed CLI invocation and return bounded stdout.
 
@@ -105,6 +106,7 @@ def run_cli(
             list(argv), stdin=stdin, stdout=stdout, stderr=subprocess.DEVNULL, cwd=root,
             env=child_environment(), start_new_session=True,
         )
+        completed = False
         deadline = time.monotonic() + timeout_seconds
         try:
             while process.poll() is None:
@@ -113,11 +115,14 @@ def run_cli(
                 if stdout_path.stat().st_size > max_bytes:
                     raise CompletionError(f"{label} output exceeds byte budget",
                                           diagnostic_code=f"{code_prefix}-BUDGET")
+                if output_complete is not None and output_complete(stdout_path.read_bytes()):
+                    completed = True
+                    break
                 time.sleep(min(0.05, max(0, deadline - time.monotonic())))
         finally:
             # Reap descendants even if the CLI exited before its children.
             _terminate_worker_process_group(process)
-    if process.returncode != 0:
+    if process.returncode != 0 and not completed:
         raise CompletionError(f"{label} failed; check the local CLI login and model access",
                               diagnostic_code=f"{code_prefix}-FAILED")
     data = stdout_path.read_bytes()

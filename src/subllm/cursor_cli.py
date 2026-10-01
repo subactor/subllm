@@ -26,6 +26,15 @@ _USAGE_KEYS = {
 }
 
 
+def _terminal_result(data: bytes) -> bool:
+    """Cursor can keep running after emitting its terminal JSON result."""
+    try:
+        result = json.loads(data)
+    except (ValueError, UnicodeError):
+        return False
+    return isinstance(result, dict) and result.get("type") == "result"
+
+
 def invoke(
     model: str,
     messages: Sequence[Mapping[str, Any]],
@@ -57,7 +66,7 @@ def invoke(
         argv = [executable, "--print", "--trust", "--mode", "ask", "--model", model,
                 "--output-format", "json", "--workspace", str(root), prompt]
         data = run_cli(argv, stdin_bytes=None, timeout_seconds=timeout_seconds, root=root,
-                       code_prefix=_CODE, label="Cursor CLI")
+                       code_prefix=_CODE, label="Cursor CLI", output_complete=_terminal_result)
     try:
         result = json.loads(data)
         if not isinstance(result, dict):

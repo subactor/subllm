@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
 
 import pytest
@@ -138,8 +139,17 @@ def test_timeout_reaps_cursor_descendants(fake_cursor, tmp_path):
     with pytest.raises(CompletionError, match="timed out"):
         invoke("auto", MESSAGES, 1, None)
     status = Path(f"/proc/{int(pid_file.read_text())}/stat")
-    # An orphan may briefly remain as a zombie awaiting the host init reaper.
-    assert not status.exists() or status.read_text().split()[2] == "Z"
+    # Signal delivery and init reaping are asynchronous; require termination
+    # within a bounded interval rather than relying on scheduler timing.
+    deadline = time.monotonic() + 2
+    while time.monotonic() < deadline:
+        try:
+            if status.read_text().split()[2] == "Z":
+                return
+        except (FileNotFoundError, ProcessLookupError):
+            return
+        time.sleep(0.02)
+    pytest.fail("Cursor descendant survived process-group termination")
 
 
 def test_openai_api_preserves_cursor_json_mode(fake_cursor, monkeypatch, tmp_path):
@@ -172,3 +182,10 @@ def test_openai_api_preserves_cursor_json_mode(fake_cursor, monkeypatch, tmp_pat
         server.shutdown()
         thread.join(timeout=5)
         server.server_close()
+
+
+def test_terminal_result_does_not_wait_for_lingering_cli(fake_cursor):
+    fake_cursor('import json,time\n'
+                'print(json.dumps({"type":"result","subtype":"success","is_error":False,'
+                '"result":"done"}),flush=True)\ntime.sleep(30)\n')
+    assert invoke("auto", MESSAGES, 2, None) == ("done", {})
