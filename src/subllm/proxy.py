@@ -259,7 +259,8 @@ def _complete_model_direct(
         return adaptive.execute(adaptive_policy, model_id, messages,
             build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environ),
             invoke=_complete_route, timeout_seconds=timeout_seconds,
-            response_format=response_format, request_id=request_id, environ=environ)
+            response_format=response_format, request_id=request_id, environ=environ,
+            minimum_class=adaptive_policy.get("routes", {}).get(f"{application}/{function}"))
     routes = _build_model_resolved_routes(model_id, application, function, environ=environ)
     if not routes:
         raise CompletionError(f"no available provider with valid credentials for model '{model_id}'")

@@ -22,3 +22,5 @@ SESSION_EXECUTION_AUTHORIZATION: on quota exhaustion test remaining enabled prov
 - Full suite: 565 passed; the one environment-sensitive default-policy test passed with session timeout overrides removed.
 - Live synthetic HTTP 429 triggered real Cursor, Antigravity and Codex probes. The next request reused availability without repeating the quota request. An unavailable strong-model alias selected Gemini and detected the deliberate arithmetic bug.
 - Lint and governance passed. Protected publication pending.
+
+Service class requirements remain a floor even when a caller pins a weaker model. Added HTTP regression for this boundary before renewed independent review.

@@ -185,6 +185,7 @@ def execute(
     request_id=None,
     cwd=None,
     environ=None,
+    minimum_class=None,
 ):
     """Probe all configured remaining candidates on quota, then retry by class.
 
@@ -195,6 +196,11 @@ def execute(
     tier = requested_class(config, requested)
     if tier is None:
         raise CompletionError("requested model has no declared replacement class")
+    if minimum_class is not None:
+        if minimum_class not in LEVELS:
+            raise CompletionError("unknown required model class")
+        if LEVELS[minimum_class] > LEVELS[tier]:
+            tier = minimum_class
     fmt = (response_format or {}).get("type", "text")
     if not messages or not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise CompletionError("messages and a positive finite timeout are required")

@@ -288,7 +288,8 @@ def test_adaptive_http_alias_exposes_actual_model_and_preserves_strength(proxy_s
     from subllm.types import ResolvedRoute
     config = tmp_path / 'adaptive.json'
     config.write_text(json.dumps({'classes': {'strong': ['gemini-3.1-pro-high'], 'fast': ['gpt-5.6-luna']},
-                                 'aliases': {'vendor/unavailable-pro': 'strong'}}))
+                                 'aliases': {'vendor/unavailable-pro': 'strong'},
+                                 'routes': {'subactor-proxy/chat': 'strong'}}))
     monkeypatch.setenv('SUBLLM_ADAPTIVE_POLICY', str(config))
     def build(model, *args, **kwargs):
         return [ResolvedRoute(application='subactor-proxy', application_name='test', application_url='',
@@ -304,6 +305,10 @@ def test_adaptive_http_alias_exposes_actual_model_and_preserves_strength(proxy_s
     assert status==200
     assert body['model']=='gemini-3.1-pro-high'
     assert headers['X-Subactor-Provider']=='agy-cli'
+    status, body, _ = _request('POST', base_url+'/v1/chat/completions', {
+        'model': 'gpt-5.6-luna', 'messages': [{'role':'user','content':'hello'}]})
+    assert status == 200
+    assert body['model'] == 'gemini-3.1-pro-high'
     monkeypatch.setattr(proxy, '_build_model_resolved_routes',
                         lambda model, *a, **k: build(model) if model == 'gpt-5.6-luna' else [])
     monkeypatch.setattr(proxy, 'is_upstream_ollama_alive', lambda *a,**k:True)
