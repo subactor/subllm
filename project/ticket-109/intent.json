@@ -20,7 +20,8 @@
     "src/subllm/types.py",
     "tests/test_cursor_cli.py",
     "tests/test_provider_order.py",
-    "tests/test_policy.py"
+    "tests/test_policy.py",
+    "tests/test_adopted_catalog.py"
   ],
   "forbiddenPaths": [
     "project/ticket-*/user-*.md"
