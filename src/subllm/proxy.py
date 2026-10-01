@@ -480,7 +480,15 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return
 
         stream = bool(payload.get("stream", False))
-        timeout = float(payload.get("timeout") or 60.0)
+        requested_timeout = payload.get("timeout")
+        try:
+            timeout = (load_policy_config().execution.attempt_timeout_seconds
+                       if requested_timeout is None else float(requested_timeout))
+            if isinstance(requested_timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
+                raise ValueError("invalid timeout")
+        except (TypeError, ValueError):
+            self._error(400, "INVALID_REQUEST", "timeout must be finite and greater than zero")
+            return
         req_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
         created_ts = int(time.time())
 
