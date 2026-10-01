@@ -250,3 +250,35 @@ def test_proxy_rejects_non_local_host(proxy_server):
     status, body, _ = _request("GET", f"{base_url}/health", headers={"Host": "evil.external.com"})
     assert status == 421
     assert body["error"]["code"] == "PROXY-001"
+
+
+@pytest.mark.parametrize("explicit,expected", [(None, 130.0), (8, 8.0)])
+def test_openai_timeout_uses_policy_unless_explicit(proxy_server, monkeypatch, explicit, expected):
+    monkeypatch.setenv("SUBLLM_ATTEMPT_TIMEOUT_SECONDS", "130")
+    seen = []
+
+    def execute(self, clean_model, messages, app, func, timeout, req_id, payload):
+        seen.append(timeout)
+        return CompletionResponse("ok", "cursor-cli", "auto")
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", execute)
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: False)
+    payload = {"model": "cursor-auto", "messages": [{"role": "user", "content": "hello"}]}
+    if explicit is not None:
+        payload["timeout"] = explicit
+    status, _, _ = _request("POST", proxy_server[0] + "/v1/chat/completions", payload)
+    assert status == 200
+    assert seen == [expected]
+
+
+@pytest.mark.parametrize("timeout", [0, -1, True, "nan", "inf", "invalid", {}])
+def test_openai_invalid_timeout_is_rejected_before_dispatch(proxy_server, monkeypatch, timeout):
+    def unexpected(*args, **kwargs):
+        pytest.fail("invalid request must not invoke provider")
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", unexpected)
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/chat/completions", {
+        "model": "cursor-auto", "messages": [{"role": "user", "content": "hello"}], "timeout": timeout,
+    })
+    assert status == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
