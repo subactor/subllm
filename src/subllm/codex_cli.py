@@ -31,7 +31,12 @@ def invoke(
     executable = shutil.which("codex")
     if executable is None:
         raise CompletionError("local Codex executable unavailable", diagnostic_code="SUBLLM-CODEX-UNAVAILABLE")
-    prompt = json.dumps({"messages": list(messages)}, ensure_ascii=False).encode()
+    json_object = response_format is not None and response_format.get("type") == "json_object"
+    rendered = list(messages)
+    if json_object:
+        from .cli_common import JSON_OBJECT_INSTRUCTION
+        rendered = [*rendered, {"role": "system", "content": JSON_OBJECT_INSTRUCTION}]
+    prompt = json.dumps({"messages": rendered}, ensure_ascii=False).encode()
     if len(prompt) > MAX_BYTES:
         raise CompletionError("Codex prompt exceeds byte budget", diagnostic_code="SUBLLM-CODEX-BUDGET")
     with tempfile.TemporaryDirectory(prefix="subllm-codex-") as directory:
@@ -41,7 +46,7 @@ def invoke(
                 "--skip-git-repo-check", "--sandbox", "read-only", "--color", "never",
                 "--json", "--model", model, "--output-last-message", str(output),
                 "-c", "features.shell_tool=false", "-c", "features.multi_agent=false"]
-        if response_format is not None:
+        if response_format is not None and not json_object:
             if response_format.get("type") != "json_schema":
                 raise CompletionError("Codex requires a json_schema response format")
             schema = response_format.get("json_schema", {}).get("schema")
@@ -76,6 +81,9 @@ def invoke(
             finally:
                 # Reap descendants even if the CLI exited before its children.
                 _terminate_worker_process_group(process)
+        from .cli_common import quota_failure
+        if quota_failure(events_path.read_bytes()[:MAX_BYTES]):
+            raise CompletionError("Codex quota exhausted", diagnostic_code="SUBLLM-CODEX-HTTP-429")
         if process.returncode != 0:
             raise CompletionError("Codex failed; check local CLI login and model access",
                                   diagnostic_code="SUBLLM-CODEX-FAILED")
@@ -91,6 +99,8 @@ def invoke(
             content = output.read_text().strip()
             if not content:
                 raise ValueError("empty answer")
+            if json_object and not isinstance(json.loads(content), dict):
+                raise ValueError("expected a JSON object")
             raw_usage = completed[0].get("usage", {})
             if not isinstance(raw_usage, dict):
                 raise ValueError("invalid usage")
