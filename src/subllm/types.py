@@ -8,7 +8,7 @@ from uuid import uuid4
 from .cli_common import CLI_EXECUTABLES, CLI_LOGIN_LABELS
 
 Transport = Literal[
-    "openai-compatible", "cursor-sdk", "anthropic", "gemini-sdk", "codex-cli", "claude-cli", "agy-cli",
+    "openai-compatible", "cursor-sdk", "anthropic", "gemini-sdk", "codex-cli", "claude-cli", "agy-cli", "cursor-cli",
 ]
 Modality = Literal["text", "vision"]
 

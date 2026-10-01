@@ -123,6 +123,7 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
         "claude-cli": "claude-sonnet-5",
         "claude": "claude-opus-5",
         "cursor": "gpt-5.6-sol",
+        "cursor-cli": "cursor-auto",
         "ollama": "qwen3-coder:30b",
         "openrouter": "glm-5.3-flash",
     }

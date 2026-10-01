@@ -68,9 +68,10 @@ def _invoke_route(
     cwd: Path,
 ) -> CompletionResponse:
     if route.transport in CLI_EXECUTABLES:
-        from . import agy_cli, claude_cli, codex_cli
+        from . import agy_cli, claude_cli, codex_cli, cursor_cli
 
-        invoke = {"codex-cli": codex_cli, "claude-cli": claude_cli, "agy-cli": agy_cli}[route.transport].invoke
+        invoke = {"codex-cli": codex_cli, "claude-cli": claude_cli, "agy-cli": agy_cli,
+                  "cursor-cli": cursor_cli}[route.transport].invoke
         content, usage = invoke(route.wire_model, messages, timeout_seconds, response_format)
         return CompletionResponse(content, route.provider, route.wire_model, usage, "stop")
     if route.transport in NATIVE_API_TRANSPORTS:

@@ -16,7 +16,7 @@ def test_adopted_catalog_matches_python_providers() -> None:
     credential_providers = {key: value for key, value in PROVIDERS.items() if value.api_key_env}
     assert set(by_id) == set(credential_providers)
     assert {key for key, value in PROVIDERS.items() if not value.api_key_env} == {
-        "codex-cli", "claude-cli", "agy-cli",
+        "codex-cli", "claude-cli", "agy-cli", "cursor-cli",
     }
     assert PROVIDERS["codex-cli"].transport == "codex-cli"
     for provider_id, provider in credential_providers.items():
