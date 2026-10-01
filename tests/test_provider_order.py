@@ -28,6 +28,7 @@ def test_resolve_prefers_direct_zai_when_all_credentials_are_available() -> None
     assert route.model == "glm-5.3"
     assert ORDERABLE_PROVIDER_IDS == (
         "zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli", "claude-cli", "agy-cli",
+        "cursor-cli",
     )
 
 

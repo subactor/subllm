@@ -1,0 +1,32 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-109",
+  "summary": "Add Cursor CLI Auto transport for local authenticated review",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-109/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/cli_common.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/cursor_cli.py",
+    "src/subllm/policy.py",
+    "src/subllm/policy_config.py",
+    "src/subllm/types.py",
+    "tests/test_cursor_cli.py",
+    "tests/test_provider_order.py",
+    "tests/test_policy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

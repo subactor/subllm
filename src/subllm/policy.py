@@ -34,6 +34,9 @@ _BASE_PROVIDERS = MappingProxyType(
             api_key_env="GEMINI_API_KEY",
             transport="gemini-sdk",
         ),
+        "cursor-cli": ProviderSpec(
+            id="cursor-cli", api_base="", api_key_env="", transport="cursor-cli",
+        ),
         "codex-cli": ProviderSpec(
             id="codex-cli", api_base="", api_key_env="", transport="codex-cli",
         ),
@@ -78,10 +81,18 @@ _BASE_PROVIDERS = MappingProxyType(
 
 _BASE_ORDERABLE_PROVIDER_IDS = (
     "zai", "agy", "codex", "claude", "cursor", "ollama", "openrouter", "codex-cli", "claude-cli", "agy-cli",
+        "cursor-cli",
 )
 
 _BASE_MODELS = MappingProxyType(
     {
+        # Auto identifies Cursor routing; it makes no named-model quality claim.
+        "cursor-auto": ModelSpec(
+            id="cursor-auto",
+            providers=_provider_models(**{
+                "cursor-cli": ProviderModelSpec(litellm_model="", wire_model="auto"),
+            }),
+        ),
         "glm-5.2": ModelSpec(
             id="glm-5.2",
             providers=_provider_models(
@@ -749,6 +760,8 @@ _REPAIR = (
 )
 
 _VALIDATOR = (
+    # Operator opt-in only; disabled by default, including older policy files.
+    RouteCandidate(provider="cursor-cli", model="cursor-auto"),
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),

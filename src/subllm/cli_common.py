@@ -18,8 +18,8 @@ from .errors import CompletionError
 
 MAX_BYTES = 1_000_000
 # CLI-authenticated transports and the local executable each one needs.
-CLI_EXECUTABLES = {"codex-cli": "codex", "claude-cli": "claude", "agy-cli": "agy"}
-CLI_LOGIN_LABELS = {"codex-cli": "Codex", "claude-cli": "Claude Code", "agy-cli": "Antigravity"}
+CLI_EXECUTABLES = {"codex-cli": "codex", "claude-cli": "claude", "agy-cli": "agy", "cursor-cli": "cursor-agent"}
+CLI_LOGIN_LABELS = {"codex-cli": "Codex", "claude-cli": "Claude Code", "agy-cli": "Antigravity", "cursor-cli": "Cursor"}
 # Environment forwarded to the child. Credentials are deliberately absent; the
 # CLI reads its own login through HOME.
 ENVIRONMENT_ALLOWLIST = frozenset({
