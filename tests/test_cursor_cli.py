@@ -129,7 +129,6 @@ def test_policy_opt_in_and_complete_dispatch(fake_cursor, monkeypatch, tmp_path)
     assert response.provider == "cursor-cli" and response.model == "auto"
 
 
-@pytest.mark.skipif(sys.platform != "linux", reason="process group state is observed via procfs")
 def test_timeout_reaps_cursor_descendants(fake_cursor, tmp_path):
     pid_file = tmp_path / "child.pid"
     fake_cursor('import subprocess, sys, time\nfrom pathlib import Path\n'
