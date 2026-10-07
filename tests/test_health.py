@@ -91,6 +91,7 @@ def test_cooling_providers_are_not_retried_by_the_next_process() -> None:
     assert order_by_health(routes, now=101.0) == ()
     assert [route.provider for route in order_by_health(routes, now=161.0)] == [
         "zai",
+        "zai",
         "openrouter",
     ]
 

@@ -71,6 +71,7 @@ def test_explicit_order_reorders_resolve_candidates() -> None:
     assert [item.provider for item in available_routes("doctor-agent", "repair-proposal", environ=environ)] == [
         "openrouter",
         "zai",
+        "zai",
     ]
 
 

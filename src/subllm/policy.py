@@ -722,6 +722,7 @@ APPLICATIONS = MappingProxyType(
 # through this exact list after a bounded retryable attempt failure.
 _DEFAULT = (
     RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
@@ -747,6 +748,7 @@ _SUPERVISOR_ASSESSMENT = tuple(
 # GLM 5.3 for repair structured JSON; GLM 5.3 Flash for validator review.
 _REPAIR = (
     RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
@@ -763,6 +765,7 @@ _VALIDATOR = (
     # Operator opt-in only; disabled by default, including older policy files.
     RouteCandidate(provider="cursor-cli", model="cursor-auto"),
     RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
@@ -781,12 +784,12 @@ _VALIDATOR = (
 # catalogued on the OpenRouter lane; appending them keeps the shared order intact
 # and gives koru-agent routes additional declared models before the executor gives up.
 _KORU = _DEFAULT + (
-    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=30),
 )
 
 _CODING = (
     RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
