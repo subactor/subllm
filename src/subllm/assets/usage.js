@@ -89,7 +89,7 @@ async function refresh() {
   try {
     const params = new URLSearchParams(applied);
     if (before) params.set('before', before);
-    const response = await fetch('/v1/usage?' + params, {cache:'no-store', signal:AbortSignal.timeout(10000)});
+    const response = await fetch('/v1/usage?' + params, {cache:'no-store', signal:AbortSignal.timeout(15000)});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Nie można odczytać historii');
     const s = data.summary;

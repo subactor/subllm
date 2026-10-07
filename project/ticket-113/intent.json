@@ -13,6 +13,7 @@
     "TODO.md",
     "project/TICKETS.md",
     "src/subllm/usage.py",
+    "src/subllm/interaction_store.py",
     "src/subllm/assets/usage.js",
     "tests/test_poa_http.py",
     "tests/test_postgres_interaction_store.py"
