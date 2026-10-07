@@ -99,3 +99,47 @@ def test_http_usage_detail_endpoint(tmp_path) -> None:
         server.server_close()
         set_default_interaction_store(None)
 
+
+def test_http_usage_detail_endpoint_sqlite_fallback(tmp_path, monkeypatch) -> None:
+    from subllm.interaction_store import set_default_interaction_store
+    from subllm.usage import record_attempt
+
+    db_path = tmp_path / "usage.sqlite3"
+    monkeypatch.setenv("SUBLLM_USAGE_DB", str(db_path))
+    set_default_interaction_store(None)
+
+    record_attempt(
+        request_id="req-sqlite-fallback-123",
+        application="test-app",
+        function="chat",
+        provider="test-provider",
+        model="test-model",
+        status="success",
+        diagnostic_code=None,
+        duration_ms=120,
+        usage={"input_tokens": 15, "output_tokens": 25},
+    )
+
+    base, server = _start()
+    try:
+        # Lookup by integer attempt ID 1
+        detail = _json("GET", f"{base}/v1/usage/detail?id=1")
+        assert detail["id"] == 1
+        assert detail["correlation_id"] == "8f5a60a747cf94a0ee93d39c" or len(detail["correlation_id"]) == 24
+        assert detail["caller"] == "test-app"
+        assert detail["target"] == "test-provider/test-model"
+        assert detail["metadata"]["input_tokens"] == 15
+        assert detail["metadata"]["output_tokens"] == 25
+        assert detail["request"] is None
+        assert detail["response"] is None
+
+        # Unknown id returns 404
+        req_unknown = Request(f"{base}/v1/usage/detail?id=99999", method="GET")
+        try:
+            urlopen(req_unknown, timeout=5)
+        except HTTPError as exc:
+            assert exc.code == 404
+    finally:
+        server.shutdown()
+        server.server_close()
+

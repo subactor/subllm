@@ -2,6 +2,7 @@
 const $ = id => document.getElementById(id);
 let next = null, before = null, busy = false, applied = new URLSearchParams();
 let currentVisibleAttempts = [];
+let currentStorage = null;
 const number = value => value == null ? '—' : Number(value).toLocaleString('pl-PL');
 function choices(id, values) {
   const select = $(id), selected = select.value;
@@ -88,7 +89,7 @@ async function refresh() {
   try {
     const params = new URLSearchParams(applied);
     if (before) params.set('before', before);
-    const response = await fetch('/v1/usage?' + params, {cache:'no-store', signal:AbortSignal.timeout(10000)});
+    const response = await fetch('/v1/usage?' + params, {cache:'no-store', signal:AbortSignal.timeout(15000)});
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Nie można odczytać historii');
     const s = data.summary;
@@ -157,6 +158,7 @@ async function refresh() {
     next = data.next_before; $('older').disabled = !next;
     $('empty').hidden = data.attempts.length > 0;
     $('notice').hidden = true; $('dot').className='ready';
+    currentStorage = data.storage;
     $('connection').textContent = data.storage === 'empty' ? 'Oczekiwanie na pierwsze wywołanie' : (data.storage === 'postgres' ? 'Połączono z PostgreSQL' : 'Połączono z historią');
     const searchQ = applied.get('search');
     $('page-info').textContent = `Widoczne: ${data.attempts.length}${searchQ ? ` · Szukaj: "${searchQ}"` : ''} · ${before ? 'starsza strona' : 'najnowsza strona'}`;
@@ -224,7 +226,7 @@ function showDetail(attempt, tr) {
   };
   $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
 
-  if ((!attempt.request || !attempt.response) && attempt.id) {
+  if ((!attempt.request || !attempt.response) && attempt.id && (currentStorage === 'postgres' || typeof attempt.id === 'string' && /^[a-f0-9]{32}$/i.test(attempt.id))) {
     fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id))
       .then(r => r.ok ? r.json() : null)
       .then(d => {
@@ -312,7 +314,7 @@ $('copy-table-all')?.addEventListener('click', async () => {
         response: attempt.response || null
       };
 
-      if ((!item.request || !item.response) && attempt.id) {
+      if ((!item.request || !item.response) && attempt.id && (currentStorage === 'postgres' || typeof attempt.id === 'string' && /^[a-f0-9]{32}$/i.test(attempt.id))) {
         try {
           const res = await fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id));
           if (res.ok) {

@@ -1,0 +1,28 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-113",
+  "summary": "fix usage detail 404 and handle sqlite attempt ids",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-113/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/usage.py",
+    "src/subllm/interaction_store.py",
+    "src/subllm/assets/usage.js",
+    "tests/test_poa_http.py",
+    "tests/test_postgres_interaction_store.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

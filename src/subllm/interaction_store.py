@@ -338,7 +338,7 @@ class InteractionStore:
         if self.dsn:
             import psycopg
 
-            with psycopg.connect(self.dsn, connect_timeout=5) as db:
+            with psycopg.connect(self.dsn, connect_timeout=5, options="-c statement_timeout=5000") as db:
                 db.read_only = True
                 clauses = ["document::jsonb->>'kind' IN ('llm', 'llm_attempt')"]
                 args: list[Any] = []
@@ -385,21 +385,21 @@ class InteractionStore:
                 )
                 sum_row = db.execute(sum_sql, args).fetchone()
 
-                apps = [
-                    r[0]
-                    for r in db.execute(
-                        "SELECT DISTINCT document::jsonb->>'caller' FROM interactions "
-                        "WHERE document::jsonb->>'caller' IS NOT NULL ORDER BY 1 LIMIT 500"
-                    ).fetchall()
-                ]
-                provs = [
-                    r[0]
-                    for r in db.execute(
-                        "SELECT DISTINCT COALESCE(document::jsonb->'metadata'->>'provider', "
-                        "split_part(document::jsonb->>'target', '/', 1)) "
-                        "FROM interactions WHERE document::jsonb->>'target' IS NOT NULL ORDER BY 1 LIMIT 500"
-                    ).fetchall()
-                ]
+                apps_provs_sql = f"""
+                    SELECT DISTINCT
+                        document::jsonb->>'caller',
+                        COALESCE(
+                            document::jsonb->'metadata'->>'provider',
+                            split_part(document::jsonb->>'target', '/', 1)
+                        )
+                    FROM (
+                        SELECT document FROM interactions {where_clause}
+                        ORDER BY (document::jsonb->>'started_at') DESC, id DESC LIMIT 500
+                    ) sub
+                """
+                app_prov_rows = db.execute(apps_provs_sql, args).fetchall()
+                apps = sorted({r[0] for r in app_prov_rows if r[0]})
+                provs = sorted({r[1] for r in app_prov_rows if r[1]})
 
                 proj = "document" if include_payloads else "(document::jsonb - 'request' - 'response')::text"
                 rows_sql = (
