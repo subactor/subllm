@@ -227,7 +227,9 @@ def test_szeptnik_routes_use_only_openai_compatible_transports(function: str) ->
     routes = configured_routes("szeptnik-one", function)
     assert [(route.provider, route.model) for route in routes] == [
         ("zai", "glm-5.3"),
+        ("zai", "glm-5.3-flash"),
         ("openrouter", "glm-5.2"),
+        ("openrouter", "glm-5.3-flash"),
     ]
     assert all(route.transport == "openai-compatible" for route in routes)
 
@@ -312,5 +314,5 @@ def test_context_selection_has_its_own_role_without_changing_edit_routes() -> No
     assert dict(editing[0].model_parameters) == {}
     assert editing[0].wire_model == "z-ai/glm-5.3"
     assert [(r.provider, r.wire_model) for r in context[1:]] == [
-        (r.provider, r.wire_model) for r in editing[1:]
-    ]
+        (r.provider, r.wire_model) for r in editing if r.provider != "openrouter" or r.wire_model != "z-ai/glm-5.3"
+    ][1:]

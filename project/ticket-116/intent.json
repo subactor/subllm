@@ -1,0 +1,27 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-116",
+  "summary": "add openrouter glm-5.3-flash fallback across default, repair and coding routes",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-116/**",
+    "src/subllm/policy.py",
+    "tests/test_client.py",
+    "tests/test_health.py",
+    "tests/test_policy.py",
+    "tests/test_provider_order.py",
+    "tests/test_resolver.py",
+    "TODO.md",
+    "project/TICKETS.md"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
