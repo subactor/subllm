@@ -13,6 +13,7 @@
     "src/subllm/policy.py",
     "tests/test_client.py",
     "tests/test_health.py",
+    "tests/test_provider_order.py",
     "tests/test_resolver.py"
   ],
   "forbiddenPaths": ["project/ticket-*/user-*.md"],
