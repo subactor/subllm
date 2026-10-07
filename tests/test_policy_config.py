@@ -233,7 +233,7 @@ def test_repository_policy_file_is_discovered() -> None:
     path = find_policy_file(cwd=Path(__file__).resolve().parents[1])
     assert path is not None
     assert path.name == "subllm.toml"
-    policy = load_policy_config(cwd=path.parent)
+    policy = load_policy_config(environ={}, cwd=path.parent)
     assert policy.providers["zai"].priority == 0
     assert policy.providers["zai"].default_model == "glm-5.3"
     assert policy.providers["agy"].default_model == "gemini-3.1-pro-high"
@@ -316,12 +316,14 @@ def test_runtime_environment_can_raise_bounded_attempt_deadline() -> None:
         environ={
             "SUBLLM_ATTEMPT_TIMEOUT_SECONDS": "30",
             "SUBLLM_SLOW_RESPONSE_SECONDS": "20",
+            "SUBLLM_UNCREDITED_COOLDOWN_SECONDS": "7200",
         },
         cwd=root,
     )
 
     assert policy.execution.attempt_timeout_seconds == 30.0
     assert policy.execution.slow_response_seconds == 20.0
+    assert policy.execution.uncredited_cooldown_seconds == 7200.0
     assert policy.execution.max_attempts == 6
     assert policy.source == root / "subllm.toml"
 

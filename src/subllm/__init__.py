@@ -39,6 +39,7 @@ from .policy import (
 )
 from .policy_config import (
     SUBLLM_POLICY_FILE,
+    SUBLLM_UNCREDITED_COOLDOWN_SECONDS,
     ApplicationPolicyConfig,
     ExecutionPolicyConfig,
     ProviderPolicyConfig,
@@ -113,6 +114,7 @@ __all__ = [
     "SUBLLM_ENV_FILE",
     "SUBLLM_POLICY_FILE",
     "SUBLLM_PROVIDER_ORDER",
+    "SUBLLM_UNCREDITED_COOLDOWN_SECONDS",
     "UnknownRouteError",
     "allowed_env_names",
     "available_provider_order",

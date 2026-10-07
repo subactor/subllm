@@ -777,10 +777,11 @@ _VALIDATOR = (
 
 # Koru autonomous work lost runs when the three shared lanes all failed in the
 # same window (zai rate-limit, cursor unavailable, OpenRouter GLM timeout).
-# deepseek-v4-pro is catalogued on the OpenRouter lane already; appending it as
-# a strictly-later candidate keeps the shared order intact and gives koru-agent
-# routes one more declared model before the executor gives up.
+# glm-5.3-flash provides a fast Z.AI direct fallback, and deepseek-v4-pro is
+# catalogued on the OpenRouter lane; appending them keeps the shared order intact
+# and gives koru-agent routes additional declared models before the executor gives up.
 _KORU = _DEFAULT + (
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=30),
 )
 

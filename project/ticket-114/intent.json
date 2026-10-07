@@ -1,0 +1,29 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-114",
+  "summary": "cache uncredited and exhausted provider status across attempts",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-114/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/health.py",
+    "src/subllm/policy_config.py",
+    "src/subllm/credential_env.py",
+    "src/subllm/policy.py",
+    "src/subllm/__init__.py",
+    "tests/test_health.py",
+    "tests/test_policy_config.py",
+    "tests/test_client.py"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

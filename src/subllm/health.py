@@ -39,6 +39,7 @@ _STATE_SCHEMA = "subllm.provider-health/v1"
 _STATE_FILE_ENV = "SUBLLM_HEALTH_STATE_FILE"
 _PROVIDER = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
+UNCREDITED_REASONS = frozenset({"http_401", "http_402", "http_403"})
 
 
 def _clock() -> float:
@@ -200,13 +201,16 @@ def record_failure(
 ) -> None:
     observed_at = _clock() if now is None else now
     bounded_reason = reason if _REASON.fullmatch(reason) else "provider_error"
+    is_uncredited = bounded_reason in UNCREDITED_REASONS
     with _LOCK:
         def update(state: dict[str, _ProviderHealth]) -> None:
             entry = state.setdefault(provider, _ProviderHealth())
             entry.consecutive_failures += 1
             entry.last_latency_ms = max(0, min(3_600_000, round(latency_seconds * 1000)))
             entry.reason = bounded_reason
-            if entry.consecutive_failures >= policy.failure_threshold:
+            if is_uncredited:
+                entry.cooldown_until = observed_at + policy.uncredited_cooldown_seconds
+            elif entry.consecutive_failures >= policy.failure_threshold:
                 entry.cooldown_until = observed_at + policy.cooldown_seconds
 
         _replace_memory(_with_persisted_state(update))

@@ -22,6 +22,7 @@ from subllm import (
     client_cli,
     client_code_edit,
     client_routes,
+    client_types,
     client_workers,
     complete,
     execute_code_edit,
@@ -184,6 +185,32 @@ def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path, enabled_cu
     assert result.model == "gpt-5.6-sol"
     assert observed["cwd"] == tmp_path
     assert observed["messages"] == [{"role": "user", "content": "x"}]
+
+
+def test_complete_koru_route_includes_zai_glm53_flash_fallback(monkeypatch) -> None:
+    calls = []
+
+    def run_worker(request, **kwargs):
+        calls.append((request["provider"], request["wire_model"]))
+        if request["wire_model"] == "glm-5.3":
+            # Model-specific failure: glm-5.3 fails, allowing fallback to glm-5.3-flash on same provider
+            raise client_types._RetryableAttemptError(
+                "model unavailable", outcome="model_unavailable", provider_level=False
+            )
+        return _worker_success("flash answer")
+
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
+    result = complete(
+        "koru-agent",
+        "queue-executor",
+        [{"role": "user", "content": "process queue"}],
+        environ={"ZAI_API_KEY": "id.secret"},
+    )
+
+    assert result.content == "flash answer"
+    assert result.provider == "zai"
+    assert result.model == "glm-5.3-flash"
+    assert calls == [("zai", "glm-5.3"), ("zai", "glm-5.3-flash")]
 
 
 def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, tmp_path, enabled_cursor_policy) -> None:
@@ -433,6 +460,61 @@ def test_complete_codes_rate_limit_before_successful_failover(monkeypatch) -> No
         None,
     ]
     assert len(providers) == 2
+
+
+def test_complete_caches_uncredited_account_and_skips_on_next_request(monkeypatch) -> None:
+    providers: list[str] = []
+
+    def run_worker(request, **_kwargs):
+        providers.append(request["provider"])
+        if request["provider"] == "zai":
+            return {
+                "schema": "subllm.openai-worker-result/v1",
+                "status": "ERROR",
+                "outcome": "http_402",
+                "provider_level": True,
+                "retryable": True,
+            }
+        return _worker_success("success from fallback")
+
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
+    env = {
+        "ZAI_API_KEY": "id.secret",
+        "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+    }
+
+    # First request: zai returns 402 (payment required / insufficient credits)
+    # Failover kicks in to openrouter, and zai is recorded as uncredited (extended cooldown).
+    result1 = complete(
+        "todo2code",
+        "semantic",
+        [{"role": "user", "content": "first attempt"}],
+        timeout_seconds=20,
+        environ=env,
+    )
+    assert result1.provider == "openrouter"
+    assert [attempt.outcome for attempt in result1.attempts] == ["http_402", "success"]
+    assert providers == ["zai", "openrouter"]
+
+    # Health record verifies zai is in degraded cooldown with reason http_402
+    zai_health = next(receipt for receipt in provider_health() if receipt.provider == "zai")
+    assert zai_health.status == "degraded"
+    assert zai_health.reason == "http_402"
+    assert zai_health.cooldown_remaining_seconds > 1000
+
+    # Second request: zai is cooling down, so SubLLM skips trying zai entirely
+    # and routes directly to the next healthy provider (openrouter) without wasting time.
+    providers.clear()
+    result2 = complete(
+        "todo2code",
+        "semantic",
+        [{"role": "user", "content": "second attempt"}],
+        timeout_seconds=20,
+        environ=env,
+    )
+    assert result2.provider == "openrouter"
+    assert [attempt.outcome for attempt in result2.attempts] == ["success"]
+    assert providers == ["openrouter"]
 
 
 def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
