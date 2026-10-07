@@ -263,13 +263,64 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
 
 
-def query_interaction_detail(record_id: str) -> dict[str, Any] | None:
+def query_interaction_detail(record_id: str, database: str | Path | None = None) -> dict[str, Any] | None:
     from .interaction_store import get_default_interaction_store
 
     store = get_default_interaction_store()
-    if store is None:
+    if store is not None:
+        try:
+            detail = store.get_interaction(record_id)
+            if detail is not None:
+                return detail
+        except Exception:
+            pass
+
+    # Fallback to local SQLite attempt journal for numeric attempt IDs or correlation IDs
+    path = journal_path(database)
+    if not path.exists():
         return None
     try:
-        return store.get_interaction(record_id)
+        with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=0.5)) as db:
+            db.row_factory = sqlite3.Row
+            row = None
+            if record_id.isdigit():
+                row = db.execute(
+                    "SELECT id,timestamp,request_id,application,function,provider,model,status,"
+                    "diagnostic_code,duration_ms,input_tokens,output_tokens FROM attempts WHERE id = ?",
+                    (int(record_id),),
+                ).fetchone()
+            if row is None:
+                row = db.execute(
+                    "SELECT id,timestamp,request_id,application,function,provider,model,status,"
+                    "diagnostic_code,duration_ms,input_tokens,output_tokens FROM attempts WHERE request_id = ?",
+                    (record_id,),
+                ).fetchone()
+            if row is None:
+                return None
+            data = dict(row)
+            return {
+                "id": data["id"],
+                "day": data["timestamp"][:10],
+                "started_at": data["timestamp"],
+                "finished_at": data["timestamp"],
+                "duration_ms": data["duration_ms"],
+                "kind": "llm_attempt",
+                "caller": data["application"],
+                "target": f"{data['provider']}/{data['model']}",
+                "direction": "outbound",
+                "correlation_id": data["request_id"],
+                "status": data["status"],
+                "request": None,
+                "response": None,
+                "diagnostic": {"code": data["diagnostic_code"]} if data["diagnostic_code"] else None,
+                "metadata": {
+                    "application": data["application"],
+                    "function": data["function"],
+                    "provider": data["provider"],
+                    "model": data["model"],
+                    "input_tokens": data["input_tokens"],
+                    "output_tokens": data["output_tokens"],
+                },
+            }
     except Exception:
         return None
