@@ -51,7 +51,7 @@ def _process_is_running(pid: int) -> bool:
     """Distinguish an executing process from a dead zombie on minimal containers."""
     try:
         state = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8").split()[2]
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError, OSError):
         return False
     return state not in {"X", "Z"}
 

@@ -732,6 +732,7 @@ _DEFAULT = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter"),
 )
 
@@ -758,6 +759,7 @@ _REPAIR = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
@@ -799,6 +801,7 @@ _CODING = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
 
@@ -822,6 +825,8 @@ _VISION = (
 # until that transport is implemented by the consumer.
 _SZEPTNIK = (
     RouteCandidate(provider="zai", model="glm-5.3"),
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="glm-5.2"),
 )
 
