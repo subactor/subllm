@@ -213,6 +213,36 @@ def test_complete_koru_route_includes_zai_glm53_flash_fallback(monkeypatch) -> N
     assert calls == [("zai", "glm-5.3"), ("zai", "glm-5.3-flash")]
 
 
+def test_complete_default_and_coding_routes_include_zai_glm53_flash_fallback(monkeypatch) -> None:
+    routes_to_check = [
+        ("skills-agent", "developer"),
+        ("repair-agent", "repair-plan"),
+        ("onedev-agent", "code-edit"),
+        ("doctor-agent", "repair-proposal"),
+    ]
+    for app, func in routes_to_check:
+        calls = []
+
+        def run_worker(request, **kwargs):
+            calls.append((request["provider"], request["wire_model"]))
+            if request["wire_model"] == "glm-5.3":
+                raise client_types._RetryableAttemptError(
+                    "model unavailable", outcome="model_unavailable", provider_level=False
+                )
+            return _worker_success("flash answer")
+
+        monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
+        result = complete(
+            app,
+            func,
+            [{"role": "user", "content": "task"}],
+            environ={"ZAI_API_KEY": "id.secret"},
+        )
+        assert result.provider == "zai"
+        assert result.model == "glm-5.3-flash"
+        assert calls == [("zai", "glm-5.3"), ("zai", "glm-5.3-flash")]
+
+
 def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, tmp_path, enabled_cursor_policy) -> None:
     observed: dict[str, object] = {}
 

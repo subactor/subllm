@@ -1,0 +1,22 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-115",
+  "summary": "add zai glm-5.3-flash fallback across default, repair and coding policies",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-115/**",
+    "src/subllm/policy.py",
+    "tests/test_client.py",
+    "tests/test_health.py"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
