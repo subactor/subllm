@@ -220,18 +220,19 @@ def test_complete_default_and_coding_routes_include_zai_glm53_flash_fallback(mon
         ("onedev-agent", "code-edit"),
         ("doctor-agent", "repair-proposal"),
     ]
-    for app, func in routes_to_check:
-        calls = []
-
+    def make_worker(calls_list):
         def run_worker(request, **kwargs):
-            calls.append((request["provider"], request["wire_model"]))
+            calls_list.append((request["provider"], request["wire_model"]))
             if request["wire_model"] == "glm-5.3":
                 raise client_types._RetryableAttemptError(
                     "model unavailable", outcome="model_unavailable", provider_level=False
                 )
             return _worker_success("flash answer")
+        return run_worker
 
-        monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
+    for app, func in routes_to_check:
+        calls: list[tuple[str, str]] = []
+        monkeypatch.setattr(client_workers, "_run_openai_worker", make_worker(calls))
         result = complete(
             app,
             func,
