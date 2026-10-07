@@ -388,7 +388,10 @@ class InteractionStore:
                 apps_provs_sql = f"""
                     SELECT DISTINCT
                         document::jsonb->>'caller',
-                        COALESCE(document::jsonb->'metadata'->>'provider', split_part(document::jsonb->>'target', '/', 1))
+                        COALESCE(
+                            document::jsonb->'metadata'->>'provider',
+                            split_part(document::jsonb->>'target', '/', 1)
+                        )
                     FROM (
                         SELECT document FROM interactions {where_clause}
                         ORDER BY (document::jsonb->>'started_at') DESC, id DESC LIMIT 500
