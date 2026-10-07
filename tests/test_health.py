@@ -49,6 +49,28 @@ def test_provider_recovers_to_policy_order_after_cooldown() -> None:
     assert order_by_health(routes, now=161.0)[0].provider == "zai"
 
 
+def test_uncredited_failure_applies_extended_cooldown_immediately() -> None:
+    routes = _routes()
+    assert routes[0].provider == "zai"
+    record_failure(
+        "zai",
+        reason="http_402",
+        latency_seconds=0.5,
+        policy=_POLICY,
+        now=100.0,
+    )
+
+    # Cooldown should be 3600s (uncredited_cooldown_seconds) immediately on first failure
+    assert order_by_health(routes, now=101.0)[0].provider == "openrouter"
+    assert order_by_health(routes, now=3699.0)[0].provider == "openrouter"
+    assert order_by_health(routes, now=3701.0)[0].provider == "zai"
+
+    receipt = next(item for item in provider_health(now=101.0) if item.provider == "zai")
+    assert receipt.status == "degraded"
+    assert receipt.reason == "http_402"
+    assert round(receipt.cooldown_remaining_seconds) == 3599
+
+
 def test_cooling_providers_are_not_retried_by_the_next_process() -> None:
     routes = _routes()
     record_failure(

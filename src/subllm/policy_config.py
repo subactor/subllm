@@ -22,6 +22,7 @@ SUBLLM_POLICY_FILE = "SUBLLM_POLICY_FILE"
 SUBLLM_ATTEMPT_TIMEOUT_SECONDS = "SUBLLM_ATTEMPT_TIMEOUT_SECONDS"
 SUBLLM_SLOW_RESPONSE_SECONDS = "SUBLLM_SLOW_RESPONSE_SECONDS"
 SUBLLM_FAILURE_THRESHOLD = "SUBLLM_FAILURE_THRESHOLD"
+SUBLLM_UNCREDITED_COOLDOWN_SECONDS = "SUBLLM_UNCREDITED_COOLDOWN_SECONDS"
 _CUSTOM_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_\.-]{0,63}$")
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -59,6 +60,7 @@ class ExecutionPolicyConfig:
     cooldown_seconds: float
     failure_threshold: int
     max_attempts: int
+    uncredited_cooldown_seconds: float = 3600.0
 
 
 @dataclass(frozen=True)
@@ -101,6 +103,7 @@ _EXECUTION_DEFAULTS = ExecutionPolicyConfig(
     cooldown_seconds=60.0,
     failure_threshold=1,
     max_attempts=6,
+    uncredited_cooldown_seconds=3600.0,
 )
 
 
@@ -220,6 +223,16 @@ def _execution_with_environment(
         if not 1 <= failure_threshold <= 100:
             raise InvalidPolicyError('runtime SUBLLM_FAILURE_THRESHOLD must be from 1 to 100')
 
+    uncredited_cooldown = execution.uncredited_cooldown_seconds
+    if SUBLLM_UNCREDITED_COOLDOWN_SECONDS in environment:
+        raw_uncredited = environment[SUBLLM_UNCREDITED_COOLDOWN_SECONDS]
+        try:
+            uncredited_cooldown = float(raw_uncredited)
+        except (ValueError, TypeError) as exc:
+            raise InvalidPolicyError(f"runtime {SUBLLM_UNCREDITED_COOLDOWN_SECONDS} must be a number") from exc
+        if not 0.0 <= uncredited_cooldown <= 604_800.0:
+            raise InvalidPolicyError(f"runtime {SUBLLM_UNCREDITED_COOLDOWN_SECONDS} must be from 0 to 604800")
+
     return ExecutionPolicyConfig(
         failover_enabled=execution.failover_enabled,
         attempt_timeout_seconds=attempt_timeout,
@@ -227,6 +240,7 @@ def _execution_with_environment(
         cooldown_seconds=execution.cooldown_seconds,
         failure_threshold=failure_threshold,
         max_attempts=execution.max_attempts,
+        uncredited_cooldown_seconds=uncredited_cooldown,
     )
 
 
@@ -332,7 +346,7 @@ def _bounded_number(
 
 
 def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
-    expected = {
+    required = {
         "failover_enabled",
         "attempt_timeout_seconds",
         "slow_response_seconds",
@@ -340,7 +354,8 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         "failure_threshold",
         "max_attempts",
     }
-    if not isinstance(raw, dict) or set(raw) != expected:
+    allowed = required | {"uncredited_cooldown_seconds"}
+    if not isinstance(raw, dict) or not (required <= set(raw) <= allowed):
         raise InvalidPolicyError(f"invalid execution settings in {source}")
     enabled = raw["failover_enabled"]
     if not isinstance(enabled, bool):
@@ -373,6 +388,15 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         raise InvalidPolicyError(
             f"execution slow_response_seconds must not exceed attempt_timeout_seconds in {source}"
         )
+    uncredited_cooldown = 3600.0
+    if "uncredited_cooldown_seconds" in raw:
+        uncredited_cooldown = _bounded_number(
+            raw["uncredited_cooldown_seconds"],
+            name="uncredited_cooldown_seconds",
+            minimum=0.0,
+            maximum=604_800.0,
+            source=source,
+        )
     return ExecutionPolicyConfig(
         failover_enabled=enabled,
         attempt_timeout_seconds=attempt_timeout,
@@ -386,6 +410,7 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         ),
         failure_threshold=failure_threshold,
         max_attempts=max_attempts,
+        uncredited_cooldown_seconds=uncredited_cooldown,
     )
 
 
