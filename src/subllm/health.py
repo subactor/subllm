@@ -7,6 +7,7 @@ import os
 import re
 import threading
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -35,6 +36,8 @@ class _ProviderHealth:
 
 _LOCK = threading.Lock()
 _HEALTH: dict[str, _ProviderHealth] = {}
+_FALLBACK_HEALTH: dict[Path, dict[str, _ProviderHealth]] = {}
+_FALLBACK_LIMIT = 64
 _STATE_SCHEMA = "subllm.provider-health/v1"
 _STATE_FILE_ENV = "SUBLLM_HEALTH_STATE_FILE"
 _PROVIDER = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
@@ -48,13 +51,14 @@ def _clock() -> float:
     return time.time()
 
 
-def _state_path() -> Path:
-    configured = os.environ.get(_STATE_FILE_ENV, "").strip()
+def _state_path(environ: Mapping[str, str] | None = None) -> Path:
+    environment = os.environ if environ is None else {**os.environ, **environ}
+    configured = environment.get(_STATE_FILE_ENV, "").strip()
     if configured:
         candidate = Path(configured).expanduser()
         if candidate.is_absolute():
             return candidate
-    state_home = os.environ.get("XDG_STATE_HOME", "").strip()
+    state_home = environment.get("XDG_STATE_HOME", "").strip()
     root = Path(state_home).expanduser() if state_home else Path.home() / ".local" / "state"
     return root / "subllm" / "provider-health.json"
 
@@ -137,8 +141,8 @@ def _write_state(path: Path, state: dict[str, _ProviderHealth]) -> None:
             temporary.unlink()
 
 
-def _with_persisted_state(mutator=None) -> dict[str, _ProviderHealth]:
-    path = _state_path()
+def _with_persisted_state(mutator=None, *, environ=None) -> dict[str, _ProviderHealth]:
+    path = _state_path(environ)
     try:
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         lock_path = path.with_name(f"{path.name}.lock")
@@ -150,6 +154,7 @@ def _with_persisted_state(mutator=None) -> dict[str, _ProviderHealth]:
                 if mutator is not None:
                     mutator(state)
                     _write_state(path, state)
+                _FALLBACK_HEALTH.pop(path, None)
                 return state
         finally:
             # fdopen owns and closes the descriptor on the normal path.  This
@@ -160,9 +165,18 @@ def _with_persisted_state(mutator=None) -> dict[str, _ProviderHealth]:
         # Provider health is a routing optimization, not an authority source.
         # A read-only or temporarily unavailable state directory must not make
         # every model route unusable.
-        state = {provider: _ProviderHealth(**vars(entry)) for provider, entry in _HEALTH.items()}
+        # Separate unavailable stores too: the last client's observed state
+        # must not become another client's in-memory circuit breaker.
+        state = {provider: _ProviderHealth(**vars(entry))
+                 for provider, entry in _FALLBACK_HEALTH.get(path, {}).items()}
         if mutator is not None:
             mutator(state)
+        _FALLBACK_HEALTH.pop(path, None)
+        # Empty observation probes must not evict a real cooldown.
+        if state:
+            _FALLBACK_HEALTH[path] = state
+        if len(_FALLBACK_HEALTH) > _FALLBACK_LIMIT:
+            _FALLBACK_HEALTH.pop(next(iter(_FALLBACK_HEALTH)))
         return state
 
 
@@ -175,10 +189,11 @@ def order_by_health(
     routes: tuple[ResolvedRoute, ...],
     *,
     now: float | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> tuple[ResolvedRoute, ...]:
     observed_at = _clock() if now is None else now
     with _LOCK:
-        _replace_memory(_with_persisted_state())
+        _replace_memory(_with_persisted_state(environ=environ))
         cooling = {
             provider: state.cooldown_until > observed_at
             for provider, state in _HEALTH.items()
@@ -198,6 +213,7 @@ def record_failure(
     latency_seconds: float,
     policy: ExecutionPolicyConfig,
     now: float | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> None:
     observed_at = _clock() if now is None else now
     bounded_reason = reason if _REASON.fullmatch(reason) else "provider_error"
@@ -213,7 +229,7 @@ def record_failure(
             elif entry.consecutive_failures >= policy.failure_threshold:
                 entry.cooldown_until = observed_at + policy.cooldown_seconds
 
-        _replace_memory(_with_persisted_state(update))
+        _replace_memory(_with_persisted_state(update, environ=environ))
 
 
 def record_success(
@@ -222,6 +238,7 @@ def record_success(
     latency_seconds: float,
     policy: ExecutionPolicyConfig,
     now: float | None = None,
+    environ: Mapping[str, str] | None = None,
 ) -> None:
     observed_at = _clock() if now is None else now
     with _LOCK:
@@ -236,13 +253,15 @@ def record_success(
                 entry.cooldown_until = 0.0
                 entry.reason = ""
 
-        _replace_memory(_with_persisted_state(update))
+        _replace_memory(_with_persisted_state(update, environ=environ))
 
 
-def provider_health(*, now: float | None = None) -> tuple[ProviderHealthReceipt, ...]:
+def provider_health(*, now: float | None = None,
+                    environ: Mapping[str, str] | None = None) -> tuple[ProviderHealthReceipt, ...]:
+    """Observe the caller's health store, defaulting to the process environment."""
     observed_at = _clock() if now is None else now
     with _LOCK:
-        _replace_memory(_with_persisted_state())
+        _replace_memory(_with_persisted_state(environ=environ))
         return tuple(
             ProviderHealthReceipt(
                 provider=provider,
@@ -256,10 +275,11 @@ def provider_health(*, now: float | None = None) -> tuple[ProviderHealthReceipt,
         )
 
 
-def reset_provider_health() -> None:
+def reset_provider_health(*, environ: Mapping[str, str] | None = None) -> None:
     with _LOCK:
         _HEALTH.clear()
-        path = _state_path()
+        path = _state_path(environ)
+        _FALLBACK_HEALTH.pop(path, None)
         with contextlib.suppress(OSError):
             path.unlink(missing_ok=True)
 
