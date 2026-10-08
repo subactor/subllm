@@ -1,0 +1,86 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-117",
+  "summary": "Register bounded Wellman standard selection advice route",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-117/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy.py",
+    "tests/test_policy.py",
+    "src/subllm/policy_config.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "67d494e803c052dc6b3856f8d26f748caa781eb0",
+    "targetBranch": "main",
+    "outcome": "Wellman standard-selection advice resolves through its own SubLLM application and the existing default provider policy; protected publication.",
+    "nonGoals": [
+      "No fleet-wide implicit writes or package installation",
+      "No LLM-granted authority or automatic new standard creation",
+      "No overwrite of immutable adoption pins or protected policy"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Register Wellman advice route with the existing default candidates. No provider tuning, credentials or authority changes.",
+      "components": [
+        {
+          "name": "route-policy",
+          "paths": [
+            "src/subllm/policy.py",
+            "tests/test_policy.py",
+            "src/subllm/policy_config.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Read-only Wellman standard-selection route catalog entry"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Governed revert of the Wellman catalog route."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "PYTHONPATH=src python3 -m pytest -q tests/test_policy.py tests/test_resolver.py"
+        ],
+        "evidence": "Policy validity and configured provider chain for the actual Wellman identity."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Governance and independent protected publication."
+      }
+    ]
+  }
+}
