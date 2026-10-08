@@ -1,0 +1,119 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-120",
+  "summary": "Local Ollama development profiles with isolated OpenCode and bounded inference",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-120/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/local_runtime.py",
+    "tests/test_local_runtime.py",
+    "src/subllm/resolver.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_workers.py",
+    "tests/test_client.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "f7bb8c374dc076a3663f68d4b4938e761c31d7cb",
+    "targetBranch": "main",
+    "outcome": "Isolated local development profiles select one declared model and consistently bind caller routing, execution budgets and the independently validated child worker policy.",
+    "nonGoals": [
+      "Fleet ticket ownership, shared routing changes and protected publication policy remain controller responsibilities."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 6,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Render opt-in TOML/JSON profiles, pass caller policy locator to the existing worker and pin worker source before inherited PYTHONPATH. Preserve process policy fallback for credential-only callers and real descendant cleanup.",
+      "components": [
+        {
+          "name": "local-routing",
+          "paths": [
+            "src/subllm/local_runtime.py",
+            "src/subllm/resolver.py",
+            "src/subllm/client_routes.py",
+            "tests/test_local_runtime.py"
+          ]
+        },
+        {
+          "name": "isolated-worker",
+          "paths": [
+            "src/subllm/client_workers.py",
+            "tests/test_client.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "python -m subllm.local_runtime opt-in renderer"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Select the previous caller runtime/profile; keep shared gateway and fleet services intact."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Offline profile/routing/worker regression checks plus external minis SDK and tool-use pilot receipts."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Offline profile/routing/worker regression checks plus external minis SDK and tool-use pilot receipts."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Offline profile/routing/worker regression checks plus external minis SDK and tool-use pilot receipts."
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Offline profile/routing/worker regression checks plus external minis SDK and tool-use pilot receipts."
+      }
+    ]
+  }
+}

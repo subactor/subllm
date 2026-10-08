@@ -390,8 +390,16 @@ def test_openai_worker_deadline_reaps_real_descendant(monkeypatch, tmp_path) -> 
     assert os.name == "posix", "the governed completion runtime requires POSIX process groups"
     child_pid_file = tmp_path / "openai-child.pid"
     fixture_root = Path(__file__).resolve().parent / "fixtures" / "hanging_openai_worker"
-    monkeypatch.setenv("PYTHONPATH", str(fixture_root))
     monkeypatch.setenv("SUBLLM_TEST_CHILD_PID_FILE", str(child_pid_file))
+    real_popen = client_workers.subprocess.Popen
+
+    def hanging_worker(argv, *args, **kwargs):
+        # Explicitly launch the real timeout fixture. Production workers now
+        # pin their own source ahead of inherited PYTHONPATH entries.
+        return real_popen([argv[0], str(fixture_root / "subllm" / "openai_worker.py")],
+                          *args, **kwargs)
+
+    monkeypatch.setattr(client_workers.subprocess, "Popen", hanging_worker)
 
     with pytest.raises(CompletionError, match="worker timed out"):
         client_workers._run_openai_worker(

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import math
+import os
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
@@ -66,6 +67,7 @@ def _invoke_route(
     request_id: str | None,
     response_format: Mapping[str, Any] | None,
     cwd: Path,
+    policy_file: Path | None = None,
 ) -> CompletionResponse:
     if route.transport in CLI_EXECUTABLES:
         from . import agy_cli, claude_cli, codex_cli, cursor_cli
@@ -93,6 +95,7 @@ def _invoke_route(
             timeout_seconds=timeout_seconds,
             request_id=request_id,
             response_format=response_format,
+            policy_file=policy_file,
         )
     raise CompletionError(f"provider {route.provider} uses unsupported transport {route.transport}")
 
@@ -106,6 +109,7 @@ def _complete_route(
     request_id: str | None,
     response_format: Mapping[str, Any] | None,
     cwd: Path,
+    policy_file: Path | None = None,
 ) -> CompletionResponse:
     started = time.monotonic()
     response = None
@@ -114,7 +118,8 @@ def _complete_route(
     archive = begin_attempt(route, messages, response_format, request_id=request_id, timeout_seconds=timeout_seconds)
     try:
         response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
-                                 request_id=request_id, response_format=response_format, cwd=cwd)
+                                 request_id=request_id, response_format=response_format, cwd=cwd,
+                                 policy_file=policy_file)
         return response
     except Exception as exc:
         attempt_error = exc
@@ -172,7 +177,7 @@ def complete(
         configured = configured_routes(application, function, environ=environ)
         required = ", ".join(sorted({route.api_key_env for route in configured}))
         raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
-    runtime_policy = load_policy_config(environ=environ)
+    runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
     execution = runtime_policy.execution
     timeout_environment = merged_environment(environ=environ)
     routes = order_by_health(routes, environ=timeout_environment) if execution.failover_enabled else routes[:1]
@@ -213,6 +218,7 @@ def complete(
                 request_id=request_id,
                 response_format=response_format,
                 cwd=Path(cwd) if cwd is not None else Path.cwd(),
+                policy_file=runtime_policy.source,
             )
         except _RetryableAttemptError as exc:
             duration = time.monotonic() - attempt_started
