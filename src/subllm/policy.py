@@ -559,6 +559,10 @@ def clear_custom_providers() -> None:
 
 APPLICATIONS = MappingProxyType(
     {
+        "wellman": ApplicationSpec(
+            id="wellman", title="Wellman standard selection",
+            url="https://github.com/wellmanifest/wellman",
+        ),
         "organism-guard": ApplicationSpec(
             id="organism-guard", title="Organism Guard",
             url="https://github.com/subactor/organism-guard",
@@ -831,6 +835,7 @@ _SZEPTNIK = (
 )
 
 _ROUTE_VALUES = (
+    RoutePolicy("wellman", "standard-selection", _DEFAULT),
     RoutePolicy("organism-guard", "refactor", (RouteCandidate(provider="codex-cli"),)),
     RoutePolicy("doctor-agent", "repair-proposal", _DEFAULT),
     RoutePolicy("repair-agent", "repair-plan", _REPAIR),

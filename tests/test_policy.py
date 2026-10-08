@@ -316,3 +316,13 @@ def test_context_selection_has_its_own_role_without_changing_edit_routes() -> No
     assert [(r.provider, r.wire_model) for r in context[1:]] == [
         (r.provider, r.wire_model) for r in editing if r.provider != "openrouter" or r.wire_model != "z-ai/glm-5.3"
     ][1:]
+
+
+def test_wellman_standard_selection_has_own_identity_and_default_candidates() -> None:
+    from subllm.policy import APPLICATIONS
+    assert APPLICATIONS['wellman'].url == 'https://github.com/wellmanifest/wellman'
+    advice = configured_routes('wellman', 'standard-selection')
+    defaults = configured_routes('doctor-agent', 'repair-proposal')
+    assert [(item.provider, item.model) for item in advice] == [(item.provider, item.model) for item in defaults]
+    assert all(item.application == 'wellman' and item.function == 'standard-selection' for item in advice)
+    validate_policy()
