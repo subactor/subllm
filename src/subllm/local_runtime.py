@@ -79,7 +79,9 @@ def render_profiles(*, base_url: str, model: str, routes: tuple[str, ...] = DEFA
     for route in routes:
         if not isinstance(route, str) or tuple(route.split("/")) not in ROUTES:
             raise ValueError(f"unknown application/function route: {route}")
-    quote = lambda value: json.dumps(value, ensure_ascii=False)
+    def quote(value):
+        return json.dumps(value, ensure_ascii=False)
+
     lines = ["# Isolated local profile; load in a dedicated process.", "schema_version = 3", "",
              "[execution]", "failover_enabled = true",
              f"attempt_timeout_seconds = {timeout_seconds}.0",
