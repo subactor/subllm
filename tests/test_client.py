@@ -37,6 +37,48 @@ from subllm.client import (
 )
 
 
+def test_completion_ignores_another_clients_cooldown(monkeypatch, tmp_path):
+    from subllm.health import record_failure
+    from subllm.policy_config import load_policy_config
+
+    record_failure("zai", reason="http_402", latency_seconds=0.5,
+                   policy=load_policy_config().execution)
+    global_path = Path(os.environ["SUBLLM_HEALTH_STATE_FILE"])
+    before = global_path.read_bytes()
+    isolated = tmp_path / "willman-health.json"
+    monkeypatch.setattr(client_routes, "_complete_route", lambda route, messages, **kwargs:
+                        CompletionResponse("ok", route.provider, route.wire_model))
+    response = complete("todo2code", "semantic", [{"role": "user", "content": "canary"}],
+                        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                                 "SUBLLM_HEALTH_STATE_FILE": str(isolated)})
+    assert response.provider == "zai"
+    assert global_path.read_bytes() == before
+    assert json.loads(isolated.read_text())["providers"]["zai"]["reason"] == ""
+
+
+def test_completion_failover_updates_only_the_callers_health(monkeypatch, tmp_path):
+    from subllm.client_types import _RetryableAttemptError
+
+    isolated = tmp_path / "willman-health.json"
+    global_path = Path(os.environ["SUBLLM_HEALTH_STATE_FILE"])
+    calls = []
+
+    def invoke(route, messages, **kwargs):
+        calls.append(route.provider)
+        if route.provider == "zai":
+            raise _RetryableAttemptError("payment required", outcome="http_402")
+        return CompletionResponse("ok", route.provider, route.wire_model)
+
+    monkeypatch.setattr(client_routes, "_complete_route", invoke)
+    response = complete("todo2code", "semantic", [{"role": "user", "content": "canary"}],
+                        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                                 "SUBLLM_HEALTH_STATE_FILE": str(isolated)})
+    assert response.provider == "openrouter" and calls == ["zai", "openrouter"]
+    assert not global_path.exists()
+    state = json.loads(isolated.read_text())["providers"]
+    assert state["zai"]["reason"] == "http_402" and state["openrouter"]["reason"] == ""
+
+
 def _worker_success(content: str, *, usage: dict[str, object] | None = None) -> dict[str, object]:
     return {
         "schema": "subllm.openai-worker-result/v1",

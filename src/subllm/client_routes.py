@@ -174,7 +174,8 @@ def complete(
         raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
     runtime_policy = load_policy_config(environ=environ)
     execution = runtime_policy.execution
-    routes = order_by_health(routes) if execution.failover_enabled else routes[:1]
+    timeout_environment = merged_environment(environ=environ)
+    routes = order_by_health(routes, environ=timeout_environment) if execution.failover_enabled else routes[:1]
     if not routes:
         raise CompletionError(
             f"all providers cooling down for {application}/{function}",
@@ -185,7 +186,6 @@ def complete(
     if first_route.modality == "vision" and first_route.transport != "openai-compatible":
         raise CompletionError("vision routes require an OpenAI-compatible transport")
     started_at = time.monotonic()
-    timeout_environment = merged_environment(environ=environ)
     attempt_budgets = tuple(resolve_attempt_timeout(
         route.provider, route.wire_model, environ=timeout_environment,
         default=execution.attempt_timeout_seconds,
@@ -232,6 +232,7 @@ def complete(
                     reason=exc.outcome,
                     latency_seconds=duration,
                     policy=execution,
+                    environ=timeout_environment,
                 )
                 failed_providers.add(route.provider)
             last_error = exc
@@ -243,7 +244,8 @@ def complete(
             continue
         duration = time.monotonic() - attempt_started
         attempts.append(CompletionAttempt(route.provider, route.wire_model, "success", round(duration * 1000)))
-        record_success(route.provider, latency_seconds=duration, policy=execution)
+        record_success(route.provider, latency_seconds=duration, policy=execution,
+                       environ=timeout_environment)
         return replace(response, attempts=tuple(attempts))
 
     summary = ", ".join(

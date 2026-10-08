@@ -1,0 +1,92 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-118",
+  "summary": "Honor explicit caller environment for provider health reads, failure/success updates and resets; isolate fallback memory by state path and preserve default behavior.",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-118/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "src/subllm/health.py",
+    "tests/test_client.py",
+    "tests/test_health.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "67d494e803c052dc6b3856f8d26f748caa781eb0",
+    "targetBranch": "main",
+    "outcome": "Honor explicit caller environment for provider health reads, failure/success updates and resets; isolate fallback memory by state path and preserve default behavior.",
+    "nonGoals": [
+      "No provider selection policy changes",
+      "No credentials, fleet admission, worker activation or deployment",
+      "No changes to other callers outside completion and backward-compatible health environment helpers"
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 50,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Propagate effective completion environment into provider health helpers; use resolved state path as memory fallback identity. Preserve process defaults and lock/atomic persistence semantics.",
+      "components": [
+        {
+          "name": "provider-health",
+          "paths": [
+            "src/subllm/health.py",
+            "src/subllm/client_routes.py",
+            "tests/test_health.py",
+            "tests/test_client.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional keyword environ on provider_health/reset_provider_health; legacy calls unchanged."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert this material source ticket; no live activation."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_health.py tests/test_client.py",
+          "python -m pytest -q",
+          "bash project/governance-check.sh"
+        ],
+        "evidence": "Hermetic two-store/fallback/completion/cross-process regressions, full suite and governance."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Native CI and trusted approval/merge receipts; no source-authored approval."
+      }
+    ]
+  }
+}

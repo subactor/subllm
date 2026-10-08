@@ -10,6 +10,7 @@ from subllm import (
     ExecutionPolicyConfig,
     available_routes,
     provider_health,
+    reset_provider_health,
 )
 from subllm.health import order_by_health, record_failure, record_success
 
@@ -32,6 +33,81 @@ def _routes():
             "OPENROUTER_API_KEY": "sk-or-v1-testkey",
         },
     )
+
+
+def test_explicit_environment_isolates_persisted_health_and_reset(tmp_path):
+    first = {"SUBLLM_HEALTH_STATE_FILE": str(tmp_path / "first.json")}
+    second = {"SUBLLM_HEALTH_STATE_FILE": str(tmp_path / "second.json")}
+    record_failure("zai", reason="http_402", latency_seconds=0.5,
+                   policy=_POLICY, now=100.0, environ=first)
+
+    assert order_by_health(_routes(), now=101.0, environ=first)[0].provider == "openrouter"
+    assert order_by_health(_routes(), now=101.0, environ=second)[0].provider == "zai"
+    assert provider_health(now=101.0, environ=second) == ()
+    record_success("openrouter", latency_seconds=0.1, policy=_POLICY,
+                   now=102.0, environ=second)
+    reset_provider_health(environ=second)
+    assert not (tmp_path / "second.json").exists()
+    receipt = provider_health(now=103.0, environ=first)[0]
+    assert receipt.provider == "zai" and receipt.reason == "http_402"
+
+
+def test_unavailable_stores_keep_separate_in_memory_cooldowns(tmp_path):
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("unavailable store")
+    first = {"SUBLLM_HEALTH_STATE_FILE": str(blocker / "first.json")}
+    second = {"SUBLLM_HEALTH_STATE_FILE": str(blocker / "second.json")}
+    record_failure("zai", reason="timeout", latency_seconds=12,
+                   policy=_POLICY, now=100.0, environ=first)
+    assert provider_health(now=101.0, environ=second) == ()
+    record_failure("openrouter", reason="http_402", latency_seconds=0.5,
+                   policy=_POLICY, now=101.0, environ=second)
+    assert [r.provider for r in provider_health(now=102.0, environ=first)] == ["zai"]
+    assert [r.provider for r in provider_health(now=102.0, environ=second)] == ["openrouter"]
+    assert order_by_health(_routes(), now=161.0, environ=first)[0].provider == "zai"
+    reset_provider_health(environ=first)
+    assert provider_health(now=102.0, environ=first) == ()
+    assert provider_health(now=102.0, environ=second)[0].reason == "http_402"
+
+
+def test_explicit_health_store_survives_a_fresh_process(tmp_path):
+    isolated = tmp_path / "caller-health.json"
+    script = """
+import sys
+from subllm import ExecutionPolicyConfig
+from subllm.health import record_failure
+record_failure('zai', reason='timeout', latency_seconds=12.0,
+    policy=ExecutionPolicyConfig(True, 12.0, 10.0, 60.0, 1, 6), now=100.0,
+    environ={'SUBLLM_HEALTH_STATE_FILE': sys.argv[1]})
+"""
+    environment = {**os.environ, "PYTHONPATH": str(Path(__file__).parents[1] / "src")}
+    subprocess.run([sys.executable, "-c", script, str(isolated)],
+                   check=True, env=environment, timeout=10)
+    assert provider_health(now=101.0) == ()
+    caller = {"SUBLLM_HEALTH_STATE_FILE": str(isolated)}
+    assert order_by_health(_routes(), now=101.0, environ=caller)[0].provider == "openrouter"
+    assert order_by_health(_routes(), now=161.0, environ=caller)[0].provider == "zai"
+
+
+def test_empty_unavailable_store_probes_do_not_forget_a_cooldown(tmp_path):
+    blocker = tmp_path / "not-a-directory"
+    blocker.write_text("unavailable store")
+    caller = {"SUBLLM_HEALTH_STATE_FILE": str(blocker / "caller.json")}
+    record_failure("zai", reason="timeout", latency_seconds=12,
+                   policy=_POLICY, now=100.0, environ=caller)
+    for index in range(100):
+        empty = {"SUBLLM_HEALTH_STATE_FILE": str(blocker / f"probe-{index}.json")}
+        assert provider_health(now=101.0, environ=empty) == ()
+    assert provider_health(now=102.0, environ=caller)[0].reason == "timeout"
+
+
+def test_explicit_state_home_overrides_the_process_health_path(tmp_path):
+    caller = {"SUBLLM_HEALTH_STATE_FILE": "", "XDG_STATE_HOME": str(tmp_path / "caller")}
+    record_failure("zai", reason="timeout", latency_seconds=12,
+                   policy=_POLICY, now=100.0, environ=caller)
+    assert (tmp_path / "caller/subllm/provider-health.json").exists()
+    assert provider_health(now=101.0) == ()
+    assert provider_health(now=101.0, environ=caller)[0].reason == "timeout"
 
 
 def test_provider_recovers_to_policy_order_after_cooldown() -> None:
