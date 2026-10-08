@@ -140,6 +140,7 @@ def _complete_openai_compatible(
     timeout_seconds: float,
     request_id: str | None,
     response_format: Mapping[str, Any] | None,
+    policy_file: Path | None = None,
 ) -> CompletionResponse:
     result = _run_openai_worker(
         {
@@ -156,6 +157,7 @@ def _complete_openai_compatible(
             "response_format": dict(response_format) if response_format is not None else None,
         },
         timeout_seconds=timeout_seconds,
+        **({"policy_file": policy_file} if policy_file is not None else {}),
     )
     if result["status"] == "ERROR":
         outcome = str(result["outcome"])
@@ -184,13 +186,20 @@ def _run_openai_worker(
     request: Mapping[str, Any],
     *,
     timeout_seconds: float,
+    policy_file: Path | None = None,
 ) -> Mapping[str, Any]:
     encoded = json.dumps(request, ensure_ascii=False, separators=(",", ":")).encode("utf-8")
     env = dict(os.environ)
+    if policy_file is not None:
+        # The subprocess independently validates the same policy selected by
+        # the caller, without changing the parent's global environment.
+        env["SUBLLM_POLICY_FILE"] = str(policy_file)
     subllm_src = str(Path(__file__).resolve().parents[1])
     cur_pypath = env.get("PYTHONPATH", "")
-    if subllm_src not in cur_pypath.split(os.pathsep):
-        env["PYTHONPATH"] = f"{cur_pypath}{os.pathsep}{subllm_src}" if cur_pypath else subllm_src
+    # A stale checkout earlier on PYTHONPATH must not replace this worker with
+    # another SubLLM release that sees a different policy or request contract.
+    other_paths = [path for path in cur_pypath.split(os.pathsep) if path and path != subllm_src]
+    env["PYTHONPATH"] = os.pathsep.join([subllm_src, *other_paths])
 
     process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
         [sys.executable, "-m", "subllm.openai_worker"],

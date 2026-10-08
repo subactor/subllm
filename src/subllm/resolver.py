@@ -129,7 +129,9 @@ def configured_routes(
     environ: Mapping[str, str] | None = None,
 ) -> tuple[ConfiguredRoute, ...]:
     policy = route_policy(application, function)
-    runtime_policy = load_policy_config()
+    # Explicit routing environments may select a dedicated policy. Preserve the
+    # process policy for callers that supply only credential/order overrides.
+    runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
     order_environ = environ if environ is not None else os.environ
     order = routing_provider_order(environ=order_environ)
     candidates_list = list(policy.candidates)
