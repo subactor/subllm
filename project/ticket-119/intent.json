@@ -1,0 +1,108 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-119",
+  "summary": "Prompt MCP stdio upstream failure propagation",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-119/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/gateway_stdio.py",
+    "tests/test_gateway_stdio.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "fbcd12c9cd768f5cadbb6ef530f966b49759e024",
+    "targetBranch": "main",
+    "outcome": "On configured Unix stdio clients, upstream denial or transport failure exits promptly while stdin stays open, using cancelable native pipe input and closed nonsecret diagnostics.",
+    "nonGoals": [
+      "No gateway policy, credentials, providers, Platform, broker or shared service restart."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Use asyncio native cancelable Unix pipe input with the existing MCP stdio parser/writer. Preserve non-Unix fallback and emit closed diagnostic categories at the CLI boundary.",
+      "components": [
+        {
+          "name": "mcp-stdio-bridge",
+          "paths": [
+            "src/subllm/gateway_stdio.py",
+            "tests/test_gateway_stdio.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Restore the prior isolated client runtime/config binding; do not change shared gateway."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_gateway_stdio.py",
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Reproduce CLI denial/refusal/hang with stdin kept open; real positive initialize/tools/list and EOF stay compatible."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_gateway_stdio.py",
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Use native cancelable stdin on Unix without abandoned blocking reader threads; preserve existing non-Unix transport fallback."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_gateway_stdio.py",
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Propagate a closed stable stderr error and nonzero exit for upstream denial/refusal/malformed transport; no fake initialization or raw token/body/credential locators."
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_gateway_stdio.py",
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "Protected local OneDev and independent Validator exact-head publication"
+        ],
+        "evidence": "Full required test/governance checks, exact-head protected OneDev and independent Validator merge; deploy only merged client module in isolated pinnedMCP runtime, then25real configured handshakes and403negativepromptcanary."
+      }
+    ]
+  }
+}
