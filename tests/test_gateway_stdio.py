@@ -1,4 +1,4 @@
-"""Real CLI stdio handshakes keep stdin open during transport failure."""
+"""Configured Unix CLI handshakes keep stdin open during transport failure."""
 import json
 import os
 import selectors
@@ -100,7 +100,6 @@ def receive(process):
         return json.loads(process.stdout.readline())
 
 
-@pytest.mark.skipif(os.name != "posix", reason="configured Unix native-pipe recovery")
 @pytest.mark.parametrize("status", [401, 403, 500])
 def test_upstream_failure_exits_while_client_stdin_stays_open(tmp_path, status):
     with upstream(status=status) as url, client(tmp_path, url) as (process, token):
@@ -117,7 +116,6 @@ def test_upstream_failure_exits_while_client_stdin_stays_open(tmp_path, status):
         assert str(token) not in error
 
 
-@pytest.mark.skipif(os.name != "posix", reason="configured Unix native-pipe recovery")
 def test_unavailable_upstream_exits_without_waiting_for_stdin_eof(tmp_path):
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
@@ -132,7 +130,6 @@ def test_unavailable_upstream_exits_without_waiting_for_stdin_eof(tmp_path):
         assert str(token) not in error
 
 
-@pytest.mark.skipif(os.name != "posix", reason="configured Unix native-pipe recovery")
 def test_malformed_upstream_stays_private_and_exits_promptly(tmp_path):
     with upstream(malformed=True) as url, client(tmp_path, url) as (process, token):
         send(process, "initialize", 1)
@@ -169,7 +166,6 @@ def test_large_utf8_messages_and_protocol_errors_keep_forwarding(tmp_path):
         assert process.poll() is None
 
 
-@pytest.mark.skipif(os.name != "posix", reason="configured Unix native-pipe recovery")
 def test_client_eof_closes_bridge_cleanly(tmp_path):
     with upstream() as url, client(tmp_path, url) as (process, _):
         send(process, "initialize", 1)
