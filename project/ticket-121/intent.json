@@ -1,0 +1,27 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-121",
+  "summary": "OpenAI-compatible client timeouts reasoning responses and max tokens",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-121/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/openai_worker.py",
+    "src/subllm/client_workers.py",
+    "tests/test_openai_worker.py",
+    "tests/test_client.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": ["python"],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

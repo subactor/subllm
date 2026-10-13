@@ -92,10 +92,103 @@ def test_request_rejects_non_policy_provider_base() -> None:
 
 @pytest.mark.parametrize("status", [400, 422])
 def test_invalid_request_remains_terminal(monkeypatch, status) -> None:
-    def open_request(request):
+    def open_request(request, **_kwargs):
         raise HTTPError(request.full_url, status, "invalid request", {}, None)
 
     monkeypatch.setattr(openai_worker, "urlopen", open_request)
     result = openai_worker._execute(_source())
     assert result["retryable"] is False
     assert result["outcome"] == f"http_{status}"
+
+
+def test_execute_applies_timeout_to_urlopen(monkeypatch) -> None:
+    observed: dict[str, object] = {}
+
+    def open_request(request, **kwargs):
+        observed["timeout"] = kwargs.get("timeout")
+        return _Response()
+
+    monkeypatch.setattr(openai_worker, "urlopen", open_request)
+    source = _source()
+    source["timeout_seconds"] = 15.5
+    result = openai_worker._execute(source)
+
+    assert result["status"] == "SUCCESS"
+    assert observed["timeout"] == 15.5
+
+
+def test_execute_handles_socket_timeout(monkeypatch) -> None:
+    def open_request(request, **_kwargs):
+        raise TimeoutError("timed out")
+
+    monkeypatch.setattr(openai_worker, "urlopen", open_request)
+    source = _source()
+    source["timeout_seconds"] = 5.0
+    result = openai_worker._execute(source)
+
+    assert result == {
+        "schema": "subllm.openai-worker-result/v1",
+        "status": "ERROR",
+        "outcome": "timeout",
+        "provider_level": True,
+        "retryable": True,
+    }
+
+
+def test_execute_handles_max_tokens_in_source_and_model_params(monkeypatch) -> None:
+    observed_bodies: list[dict[str, object]] = []
+
+    def open_request(request, **_kwargs):
+        observed_bodies.append(json.loads(request.data.decode("utf-8")))
+        return _Response()
+
+    monkeypatch.setattr(openai_worker, "urlopen", open_request)
+
+    # 1. Via top-level max_tokens
+    s1 = _source()
+    s1["max_tokens"] = 2048
+    openai_worker._execute(s1)
+    assert observed_bodies[-1]["max_tokens"] == 2048
+
+    # 2. Via string in model_parameters
+    s2 = _source()
+    s2["model_parameters"] = {"max_tokens": "4096"}
+    openai_worker._execute(s2)
+    assert observed_bodies[-1]["max_tokens"] == 4096
+
+
+def test_execute_handles_reasoning_truncation(monkeypatch) -> None:
+    class _ReasoningResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({
+                "choices": [{
+                    "message": {
+                        "content": "",
+                        "reasoning_content": "Deep thought process that took too many tokens...",
+                    },
+                    "finish_reason": "length",
+                }],
+                "usage": {
+                    "total_tokens": 128,
+                    "completion_tokens_details": {"reasoning_tokens": 120},
+                },
+            }).encode("utf-8")
+
+    def open_request(request, **_kwargs):
+        return _ReasoningResponse()
+
+    monkeypatch.setattr(openai_worker, "urlopen", open_request)
+    result = openai_worker._execute(_source())
+
+    assert result["status"] == "ERROR"
+    assert result["outcome"] == "truncated"
+    assert result["provider_level"] is True
+    assert result["retryable"] is True
+    assert "120 tokens" in result["message"]
+    assert result["usage"]["total_tokens"] == 128

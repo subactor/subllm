@@ -948,4 +948,52 @@ def test_payment_required_uses_worker_classification_and_next_allowed_provider(m
     assert [attempt.outcome for attempt in result.attempts] == ["http_402", "success"]
     receipt = next(row for row in provider_health() if row.provider == "openrouter")
     assert receipt.reason == "http_402"
+
+
+def test_truncated_reasoning_fails_over_to_next_provider(monkeypatch) -> None:
+    from subllm import openai_worker
+
+    providers = []
+
+    class _TruncatedResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return None
+
+        def read(self) -> bytes:
+            return json.dumps({
+                "choices": [{
+                    "message": {
+                        "content": "",
+                        "reasoning_content": "Long reasoning...",
+                    },
+                    "finish_reason": "length",
+                }],
+                "usage": {
+                    "total_tokens": 64,
+                    "completion_tokens_details": {"reasoning_tokens": 50},
+                },
+            }).encode("utf-8")
+
+    def run_worker(request, **_kwargs):
+        providers.append(request["provider"])
+        if request["provider"] == "openrouter":
+            return openai_worker._execute(request)
+        return _worker_success("fallback")
+
+    monkeypatch.setattr(openai_worker, "urlopen", lambda req, **_kw: _TruncatedResponse())
+    monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
+    result = complete(
+        "onedev-agent", "code-edit", [{"role": "user", "content": "repair"}],
+        timeout_seconds=20,
+        environ={"SUBLLM_PROVIDER_ORDER": "openrouter,zai",
+                 "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+    )
+    assert result.provider == "zai"
+    assert providers == ["openrouter", "zai"]
+    assert [attempt.outcome for attempt in result.attempts] == ["truncated", "success"]
+    receipt = next(row for row in provider_health() if row.provider == "openrouter")
+    assert receipt.reason == "truncated"
     assert receipt.status == "degraded"
