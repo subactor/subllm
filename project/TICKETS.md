@@ -106,4 +106,5 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | **ticket-118** | [`README.md`](./ticket-118/README.md) | - | - |  [`ai-codex.md`](./ticket-118/ai-codex.md) | - | - |
 | **ticket-119** | [`README.md`](./ticket-119/README.md) | - | - | - | - | - |
 | **ticket-120** | [`README.md`](./ticket-120/README.md) | - | - | - | - | - |
+| **ticket-121** | [`README.md`](./ticket-121/README.md) | - | - | - | - | - |
 <!-- AUTO:TICKET_INDEX:END -->

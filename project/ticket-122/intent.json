@@ -1,0 +1,28 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-122",
+  "summary": "Use ticket-096 to persist the gateway token for the current browser session and expose one authenticated interaction history for MCP, gateway LLM, and metadata-only direct LLM attempts.",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-122/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/assets/gateway.html",
+    "src/subllm/assets/gateway.js",
+    "src/subllm/gateway.py",
+    "src/subllm/usage.py",
+    "tests/test_gateway_history.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
