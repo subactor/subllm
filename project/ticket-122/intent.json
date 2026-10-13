@@ -16,6 +16,8 @@
     "src/subllm/assets/gateway.js",
     "src/subllm/gateway.py",
     "src/subllm/usage.py",
+    "src/subllm/client_workers.py",
+    "src/subllm/openai_worker.py",
     "tests/test_gateway_history.py"
   ],
   "forbiddenPaths": [

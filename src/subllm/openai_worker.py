@@ -116,10 +116,8 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
     if "max_tokens" in source:
         body["max_tokens"] = source["max_tokens"]
     elif "max_tokens" in body:
-        try:
+        with suppress(ValueError, TypeError):
             body["max_tokens"] = int(body["max_tokens"])
-        except (ValueError, TypeError):
-            pass
     if source["response_format"] is not None:
         body["response_format"] = dict(source["response_format"])
     def finish(result, response=None):
@@ -200,10 +198,16 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             reasoning_tokens = (
                 details.get("reasoning_tokens") if isinstance(details, Mapping) else None
             )
-            if reasoning_tokens is None and isinstance(usage, Mapping):
-                reasoning_tokens = usage.get("reasoning_tokens")
-            token_info = f" (reasoning consumed {reasoning_tokens} tokens)" if reasoning_tokens is not None else f" (reasoning consumed {len(reasoning)} chars)"
-            err = _error("truncated", provider_level=True, retryable=True, message=f"Reasoning output truncated{token_info}")
+            if reasoning_tokens is not None:
+                token_info = f" (reasoning consumed {reasoning_tokens} tokens)"
+            else:
+                token_info = f" (reasoning consumed {len(reasoning)} chars)"
+            err = _error(
+                "truncated",
+                provider_level=True,
+                retryable=True,
+                message=f"Reasoning output truncated{token_info}",
+            )
             if isinstance(usage, Mapping) and usage:
                 err = {**err, "usage": dict(usage)}
             return finish(err, raw)

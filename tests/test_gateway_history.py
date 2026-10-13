@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 from datetime import UTC, datetime
 from importlib.resources import files
-from pathlib import Path
 
 import pytest
 from starlette.testclient import TestClient
@@ -65,7 +64,11 @@ def test_history_merges_metadata_only_llm_attempts(setup, monkeypatch, tmp_path)
 
 def test_gateway_js_assets_session_persistence_contract():
     js_text = files("subllm").joinpath("assets", "gateway.js").read_text(encoding="utf-8")
-    assert 'sessionStorage.getItem("subllm.gateway.credential")' in js_text or 'sessionStorage.getItem(SESSION_KEY)' in js_text
+    has_session_read = (
+        'sessionStorage.getItem("subllm.gateway.credential")' in js_text
+        or 'sessionStorage.getItem(SESSION_KEY)' in js_text
+    )
+    assert has_session_read
     assert 'sessionStorage.setItem(SESSION_KEY' in js_text
     assert 'sessionStorage.removeItem(SESSION_KEY)' in js_text
     # Verify logout clears session
