@@ -142,31 +142,41 @@ def _complete_openai_compatible(
     response_format: Mapping[str, Any] | None,
     policy_file: Path | None = None,
 ) -> CompletionResponse:
+    worker_request: dict[str, Any] = {
+        "schema": "subllm.openai-worker-request/v1",
+        **({"capture_exchange": True} if ACTIVE_ARCHIVE.get() is not None else {}),
+        "provider": route.provider,
+        "api_base": route.api_base,
+        "wire_model": route.wire_model,
+        "api_key": route.api_key,
+        "messages": [dict(message) for message in messages],
+        "model_parameters": dict(route.model_parameters),
+        "request_fields": dict(route.provider_request_fields(request_id=request_id)),
+        "extra_headers": dict(route.extra_headers),
+        "response_format": dict(response_format) if response_format is not None else None,
+        "timeout_seconds": timeout_seconds,
+    }
+    if "max_tokens" in route.model_parameters:
+        try:
+            worker_request["max_tokens"] = int(route.model_parameters["max_tokens"])
+        except (ValueError, TypeError):
+            pass
     result = _run_openai_worker(
-        {
-            "schema": "subllm.openai-worker-request/v1",
-            **({"capture_exchange": True} if ACTIVE_ARCHIVE.get() is not None else {}),
-            "provider": route.provider,
-            "api_base": route.api_base,
-            "wire_model": route.wire_model,
-            "api_key": route.api_key,
-            "messages": [dict(message) for message in messages],
-            "model_parameters": dict(route.model_parameters),
-            "request_fields": dict(route.provider_request_fields(request_id=request_id)),
-            "extra_headers": dict(route.extra_headers),
-            "response_format": dict(response_format) if response_format is not None else None,
-        },
+        worker_request,
         timeout_seconds=timeout_seconds,
         **({"policy_file": policy_file} if policy_file is not None else {}),
     )
     if result["status"] == "ERROR":
         outcome = str(result["outcome"])
         status = outcome.removeprefix("http_") if outcome.startswith("http_") else ""
-        message = (
-            f"{route.provider}/{route.wire_model} request failed with HTTP {status}"
-            if status
-            else f"{route.provider}/{route.wire_model} request failed: {outcome}"
-        )
+        if result.get("message"):
+            message = f"{route.provider}/{route.wire_model} request failed: {result['message']}"
+        elif status:
+            message = (
+                f"{route.provider}/{route.wire_model} request failed with HTTP {status}"
+            )
+        else:
+            message = f"{route.provider}/{route.wire_model} request failed: {outcome}"
         error = (_RetryableAttemptError(message, outcome=outcome, provider_level=bool(result["provider_level"]))
                  if result["retryable"] else CompletionError(message))
         error.outcome = outcome

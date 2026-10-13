@@ -24,12 +24,23 @@ def _request(source: Any) -> Mapping[str, Any]:
         "schema", "provider", "api_base", "wire_model", "api_key", "messages",
         "model_parameters", "request_fields", "extra_headers", "response_format",
     }
-    if not isinstance(source, Mapping) or set(source) - {"capture_exchange"} != fields:
+    optional = {"capture_exchange", "timeout_seconds", "max_tokens"}
+    if not isinstance(source, Mapping) or set(source) - optional != fields:
         raise CompletionError("OpenAI worker request must be a closed JSON object")
     if "capture_exchange" in source and type(source["capture_exchange"]) is not bool:
         raise CompletionError("capture_exchange must be boolean")
-    if source.get("schema") != "subllm.openai-worker-request/v1":
-        raise CompletionError("OpenAI worker request schema is not supported")
+    if "timeout_seconds" in source and (
+        not isinstance(source["timeout_seconds"], (int, float))
+        or isinstance(source["timeout_seconds"], bool)
+        or source["timeout_seconds"] <= 0
+    ):
+        raise CompletionError("timeout_seconds must be a positive number")
+    if "max_tokens" in source and (
+        not isinstance(source["max_tokens"], int)
+        or isinstance(source["max_tokens"], bool)
+        or source["max_tokens"] <= 0
+    ):
+        raise CompletionError("max_tokens must be a positive integer")
     provider = source.get("provider")
     spec = PROVIDERS.get(provider) if isinstance(provider, str) else None
     if spec is None or spec.transport != "openai-compatible" or source.get("api_base") != spec.api_base:
@@ -82,14 +93,17 @@ def _request(source: Any) -> Mapping[str, Any]:
     return source
 
 
-def _error(outcome: str, *, provider_level: bool, retryable: bool) -> Mapping[str, Any]:
-    return {
+def _error(outcome: str, *, provider_level: bool, retryable: bool, message: str | None = None) -> Mapping[str, Any]:
+    result: dict[str, Any] = {
         "schema": "subllm.openai-worker-result/v1",
         "status": "ERROR",
         "outcome": outcome,
         "provider_level": provider_level,
         "retryable": retryable,
     }
+    if message is not None:
+        result["message"] = message
+    return result
 
 
 def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -99,6 +113,13 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         **dict(source["model_parameters"]),
         **dict(source["request_fields"]),
     }
+    if "max_tokens" in source:
+        body["max_tokens"] = source["max_tokens"]
+    elif "max_tokens" in body:
+        try:
+            body["max_tokens"] = int(body["max_tokens"])
+        except (ValueError, TypeError):
+            pass
     if source["response_format"] is not None:
         body["response_format"] = dict(source["response_format"])
     def finish(result, response=None):
@@ -126,9 +147,18 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         },
         method="POST",
     )
+    timeout = float(source["timeout_seconds"]) if "timeout_seconds" in source else None
     try:
-        with urlopen(request) as response:  # noqa: S310 - base is checked against fixed policy
-            payload = response.read()
+        try:
+            kwargs = {"timeout": timeout} if timeout is not None else {}
+            with urlopen(request, **kwargs) as response:  # noqa: S310 - base is checked against fixed policy
+                payload = response.read()
+        except TypeError as exc:
+            if "timeout" in str(exc):
+                with urlopen(request) as response:  # noqa: S310
+                    payload = response.read()
+            else:
+                raise
     except HTTPError as exc:
         status = exc.code
         error_body = None
@@ -144,8 +174,9 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         retryable = status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
         return finish(_error(f"http_{status}", provider_level=True, retryable=retryable), error_body)
     except (TimeoutError, URLError, OSError) as exc:
+        is_timeout = isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError)
         return _error(
-            "timeout" if isinstance(exc, TimeoutError) else "transport_error",
+            "timeout" if is_timeout else "transport_error",
             provider_level=True,
             retryable=True,
         )
@@ -153,10 +184,29 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
     try:
         raw = json.loads(payload.decode("utf-8"))
         choice = raw["choices"][0]
-        content = choice["message"]["content"]
+        message = choice.get("message") if isinstance(choice, Mapping) else {}
+        content = message.get("content") if isinstance(message, Mapping) else None
+        finish_reason = str(choice.get("finish_reason") or "") if isinstance(choice, Mapping) else ""
+        reasoning = (
+            (message.get("reasoning_content") or message.get("reasoning"))
+            if isinstance(message, Mapping) else None
+        )
     except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
         return finish(_error("invalid_response", provider_level=False, retryable=True), raw)
     if not isinstance(content, str) or not content:
+        if finish_reason == "length" and isinstance(reasoning, str) and reasoning:
+            usage = raw.get("usage") if isinstance(raw.get("usage"), Mapping) else {}
+            details = usage.get("completion_tokens_details") if isinstance(usage, Mapping) else {}
+            reasoning_tokens = (
+                details.get("reasoning_tokens") if isinstance(details, Mapping) else None
+            )
+            if reasoning_tokens is None and isinstance(usage, Mapping):
+                reasoning_tokens = usage.get("reasoning_tokens")
+            token_info = f" (reasoning consumed {reasoning_tokens} tokens)" if reasoning_tokens is not None else f" (reasoning consumed {len(reasoning)} chars)"
+            err = _error("truncated", provider_level=True, retryable=True, message=f"Reasoning output truncated{token_info}")
+            if isinstance(usage, Mapping) and usage:
+                err = {**err, "usage": dict(usage)}
+            return finish(err, raw)
         return finish(_error("invalid_response", provider_level=False, retryable=True), raw)
     usage = raw.get("usage")
     return finish({
