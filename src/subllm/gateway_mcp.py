@@ -11,7 +11,7 @@ import anyio
 from mcp.client.stdio import StdioServerParameters, stdio_client
 from mcp.client.streamable_http import streamablehttp_client
 from mcp.shared.message import SessionMessage
-from mcp.types import JSONRPCMessage
+from mcp.types import JSONRPCError, JSONRPCMessage
 
 from .gateway_diagnostics import diagnostic, rpc_diagnostic, transport_diagnostic
 
@@ -93,10 +93,15 @@ class MCPBridge:
 
         async def reject(record, info):
             if record["direction"] == "client_to_server":
-                reply = JSONRPCMessage.model_validate(
-                    {"jsonrpc": "2.0", "id": record["request"]["id"],
-                     "error": {"code": -32603, "message": info["code"]}}
-                )
+                payload = {
+                    "jsonrpc": "2.0",
+                    "id": record["request"]["id"],
+                    "error": {"code": -32603, "message": info["code"]},
+                }
+                if hasattr(JSONRPCMessage, "model_validate"):
+                    reply = JSONRPCMessage.model_validate(payload)
+                else:
+                    reply = JSONRPCError.model_validate(payload)
                 with contextlib.suppress(Exception):
                     await downstream_write.send(SessionMessage(reply))
                 return reply.model_dump(mode="json", by_alias=True, exclude_none=True)
