@@ -138,6 +138,18 @@ def _complete_route(
                        diagnostic_code=diagnostic, duration_ms=round((time.monotonic() - started) * 1000),
                        usage=response.usage if response is not None else {})
 
+def _requested_model_routes(routes, model):
+    if model is None:
+        return routes
+    selected = [route for route in routes if model in {
+        route.model, route.wire_model, route.litellm_model,
+        f"{route.provider}/{route.model}", f"{route.provider}/{route.wire_model}",
+    }]
+    if not selected:
+        raise CompletionError("requested model is not available in the configured route")
+    return selected
+
+
 def complete(
     application: str,
     function: str,
@@ -149,18 +161,31 @@ def complete(
     environ: Mapping[str, str] | None = None,
     credentials: Mapping[str, str] | None = None,
     cwd: str | Path | None = None,
+    model: str | None = None,
 ) -> CompletionResponse:
-    """Execute a policy-resolved chat completion with bounded runtime failover."""
+    """Execute configured routes; an explicit model restricts, never expands, them.
+
+    Failover remains within matching routes. The application/function alias
+    retains automatic selection. Explicit models on adaptive routes currently
+    fail closed instead of silently ignoring the caller's choice.
+    """
     if not messages:
         raise CompletionError("chat completion requires at least one message")
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
         raise CompletionError("timeout_seconds must be greater than zero")
+    if model is not None:
+        if not isinstance(model, str) or not model.strip() or len(model) > 200:
+            raise CompletionError("model must be a nonempty string of at most 200 characters")
+        if model == f"{application}/{function}":
+            model = None
 
     request_id = request_id or uuid4().hex
     from . import adaptive
     adaptive_policy = adaptive.policy(environ)
     requirement = adaptive_policy and adaptive_policy.get("routes", {}).get(f"{application}/{function}")
     if requirement:
+        if model is not None:
+            raise CompletionError("explicit model selection is not supported by this adaptive route")
         from .proxy import _build_model_resolved_routes
         config = {**adaptive_policy, "aliases": {**adaptive_policy.get("aliases", {}), "__route__": requirement}}
         environment = dict(merged_environment(environ=environ))
@@ -177,6 +202,7 @@ def complete(
         configured = configured_routes(application, function, environ=environ)
         required = ", ".join(sorted({route.api_key_env for route in configured}))
         raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
+    routes = _requested_model_routes(routes, model)
     runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
     execution = runtime_policy.execution
     timeout_environment = merged_environment(environ=environ)
