@@ -138,7 +138,7 @@ def _complete_route(
                        diagnostic_code=diagnostic, duration_ms=round((time.monotonic() - started) * 1000),
                        usage=response.usage if response is not None else {})
 
-def _requested_model_routes(routes, model):
+def _requested_model_routes(routes: list[ResolvedRoute], model: str | None) -> list[ResolvedRoute]:
     if model is None:
         return routes
     selected = [route for route in routes if model in {
