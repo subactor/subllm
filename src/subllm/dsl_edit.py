@@ -12,6 +12,8 @@ from pathlib import Path
 from typing import Any
 
 from .code_context import CodeContext, digest, encode, extract_context, safe_path, select_code_context
+from .code_context_scope import CodeEditScope, parse_scope
+from .code_edit_progress import CodeEditProgress
 from .edit_contract import SCHEMA, apply_plan, enrich_records, response_format
 from .errors import CompletionError
 
@@ -114,10 +116,32 @@ def apply_edits(root: Path, context: CodeContext, selected: list[dict], answer: 
 def execute_dsl_edit(
     root: Path, prompt: str, *, provider: str | None, environ: Mapping[str, str],
     timeout_seconds: float, complete: Callable[..., Any],
+    context_scope: dict | None = None, max_context_queries: int = 32,
+    progress_sink: Callable[[dict], None] | None = None,
 ) -> tuple[str, str, str]:
-    started = time.monotonic()
-    context = extract_context(root, environ)
-    attempts: list[dict] = []
+    progress = CodeEditProgress(max_context_queries, timeout_seconds, progress_sink)
+    try:
+        scope = parse_scope(root, context_scope)
+        return _execute_dsl_edit(root, prompt, provider=provider, environ=environ,
+                                 timeout_seconds=timeout_seconds, complete=complete, scope=scope, progress=progress)
+    except (CompletionError, OSError, ValueError, TypeError) as error:
+        progress.emit('run', 'failed')
+        failure = error if isinstance(error, CompletionError) else CompletionError('code edit execution failed')
+        failure.code_edit_receipt = progress.receipt()
+        if failure is error:
+            raise
+        raise failure from error
+
+
+def _execute_dsl_edit(
+    root: Path, prompt: str, *, provider: str | None, environ: Mapping[str, str],
+    timeout_seconds: float, complete: Callable[..., Any], scope: CodeEditScope | None, progress: CodeEditProgress,
+) -> tuple[str, str, str]:
+    started = progress.started
+    progress.emit('extraction', 'started')
+    context = extract_context(root, environ, scope=scope) if scope is not None else extract_context(root, environ)
+    progress.emit('extraction', 'done')
+    attempts = progress.attempts
     last = None
     query_environment = dict(environ)
     if provider:
@@ -137,16 +161,21 @@ def execute_dsl_edit(
                           'Return exactly one JSON object with '
                           'the requested keys, no markdown fences, duplicate keys or non-finite numbers.'
                           if response_attempt else '')
-            last = complete('onedev-agent', function, [
-                {'role': 'system', 'content': instruction + correction},
-                {'role': 'user', 'content': encode(payload)},
-            ], timeout_seconds=remaining, response_format=response_format(function, payload.get('records', [])),
-                environ=query_environment, cwd=root)
-            attempt = {'function': function, 'provider': last.provider, 'model': last.model,
-                       'input_bytes': len(encode(payload).encode()),
-                       'input_sha256': digest(encode(payload).encode()),
-                       'record_count': len(payload.get('records', [])), 'response_attempt': response_attempt + 1}
-            attempts.append(attempt)
+            attempt = progress.begin(function, payload, response_attempt + 1)
+            try:
+                remaining = timeout_seconds - (time.monotonic() - started)
+                if remaining <= 0:
+                    raise CompletionError('code2dsl editing deadline exceeded')
+                last = complete('onedev-agent', function, [
+                    {'role': 'system', 'content': instruction + correction},
+                    {'role': 'user', 'content': encode(payload)},
+                ], timeout_seconds=remaining, response_format=response_format(function, payload.get('records', [])),
+                    environ=query_environment, cwd=root)
+            except Exception:
+                attempt['status'] = 'failed'
+                progress.emit('query', 'failed', attempt)
+                raise
+            attempt.update(provider=last.provider, model=last.model, status='received')
             try:
                 if len(last.content.encode()) > 524_288:
                     raise ValueError('oversized')
@@ -168,12 +197,25 @@ def execute_dsl_edit(
                     except CompletionError as failure:
                         failure_code = str(failure)[:160]
                         raise ValueError('invalid edit plan') from None
+                attempt['status'] = 'validated' if validate is not None else 'parsed'
+                progress.emit('query', 'done', attempt)
                 return result
             except (ValueError, TypeError):
                 attempt['validation_error'] = failure_code
+                attempt['status'] = 'rejected'
+                progress.emit('query', 'rejected', attempt)
         raise CompletionError(f'code2dsl LLM response rejected after 2 bounded attempts: {failure_code}')
 
+    progress.emit('selection', 'started')
     selected = enrich_records(context, editing_records(context, select_code_context(context, prompt, query)))
+    progress.emit('selection', 'done')
+
+    def validate_plan(result):
+        if scope is not None:
+            scope.check_plan(selected, result)
+        if set(result) != {'edits', 'summary'}:
+            apply_plan(root, context, selected, result, dict(environ), dry_run=True)
+
     answer = query('code-edit', (
         'You have no filesystem tools. Return executable edit operations, not a receipt or a description of work. '
         'A local interpreter applies your returned operations. Use only the supplied canonical DSL evidence. '
@@ -199,15 +241,19 @@ def execute_dsl_edit(
         'If evidence is insufficient, return empty operations and explain the missing evidence.'
     ), {'task': prompt, 'records': selected, 'extraction_warnings': context.warnings,
         'selected_paths': sorted({r['source']['path'] for r in selected})},
-        validate=lambda result: apply_plan(root, context, selected, result, dict(environ), dry_run=True)
-        if set(result) != {'edits', 'summary'} else None)
+        validate=validate_plan)
+    if scope is not None:
+        scope.check_plan(selected, answer)
+    progress.emit('apply', 'started')
     if answer.get('schema') == SCHEMA:
         receipts = apply_plan(root, context, selected, answer, dict(environ))
     else:
         receipts = apply_edits(root, context, selected, answer)  # v1 response compatibility.
+    progress.emit('apply', 'done')
 
     assert last is not None
+    progress.emit('run', 'done')
     response = encode({'schema': 'subllm.dsl-edit-receipt/v1', 'summary': answer['summary'],
                        'runtime': context.runtime_receipt, 'selected_ids': [r['id'] for r in selected],
-                       'queries': attempts, 'edits': receipts})
+                       'queries': attempts, 'edits': receipts, 'progress': progress.summary()})
     return last.provider, last.model, response

@@ -15,6 +15,7 @@ from .code_context_limits import MAX_DSL_BYTES, MAX_EXPANDED_DSL_BYTES, MAX_FILE
 from .code_context_primitives import digest, encode
 from .code_context_records import restore_excerpt, unique_records
 from .code_context_safety import safe_path
+from .code_context_scope import CodeEditScope
 from .code_context_types import CodeContext
 from .errors import CompletionError
 
@@ -50,14 +51,14 @@ def read_extraction(output: Path) -> dict:
     return json.loads(payload)
 
 
-def extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
+def extract_context(root: Path, environ: Mapping[str, str], *, scope: CodeEditScope | None = None) -> CodeContext:
     try:
-        return _extract_context(root, environ)
+        return _extract_context(root, environ, scope=scope)
     except (OSError, subprocess.SubprocessError, ValueError, KeyError, TypeError) as exc:
         raise CompletionError('code2dsl extraction or runtime observation failed') from exc
 
 
-def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
+def _extract_context(root: Path, environ: Mapping[str, str], *, scope: CodeEditScope | None = None) -> CodeContext:
     """Run the pinned public code2dsl API against an isolated nonignored source snapshot."""
     location = environ.get('SUBLLM_CODE2DSL_RUNTIME', '')
     revision = environ.get('SUBLLM_CODE2DSL_SHA', '')
@@ -73,6 +74,9 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
         raise CompletionError('code2dsl runtime pin mismatch')
     names = subprocess.run(['git', 'ls-files', '--cached', '--others', '--exclude-standard', '-z'], cwd=root,
                            capture_output=True, check=True, timeout=10).stdout.decode().split('\0')
+    if scope is not None:
+        scope.verify()
+        names = scope.source_names(names)
     sources: dict[str, bytes] = {}
     total = 0
     for name in sorted(set(names) - {''}):
@@ -119,6 +123,9 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
             file.parent.mkdir(parents=True, exist_ok=True)
             file.write_bytes(data)
         child_env = {k: v for k, v in os.environ.items() if k in {'PATH', 'SYSTEMROOT', 'LANG'}}
+        # Auxiliary extractor processes share this private scratch filesystem;
+        # stripping ambient variables must not send them back to a full /tmp.
+        child_env.update(TMPDIR=temporary, TMP=temporary, TEMP=temporary)
         output = Path(temporary) / 'records.json.gz'
         configuration_paths = Path(temporary) / 'configuration-paths.json'
         configuration_paths.write_text(encode([name for name in sources
@@ -146,4 +153,7 @@ def _extract_context(root: Path, environ: Mapping[str, str]) -> CodeContext:
                 or not 1 <= lines['start'] <= lines['end'] <= len(file_lines)):
             raise CompletionError('code2dsl returned invalid source range')
         restore_excerpt(source, file_lines)
-    return CodeContext(records, sources, {'source_sha': revision, 'build_sha256': build}, envelope['warnings'])
+    receipt = {'source_sha': revision, 'build_sha256': build}
+    if scope is not None:
+        receipt.update(context_scope_sha256=scope.sha256, snapshot_files=str(len(sources)))
+    return CodeContext(records, sources, receipt, envelope['warnings'])

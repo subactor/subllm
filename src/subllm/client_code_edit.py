@@ -2,7 +2,9 @@ from __future__ import annotations
 
 import argparse
 import json
-from collections.abc import Mapping, Sequence
+import re
+import sys
+from collections.abc import Callable, Mapping, Sequence
 from pathlib import Path
 
 from .client_routes import complete
@@ -20,11 +22,19 @@ def execute_code_edit(
     aider_bin: str = "aider",
     timeout_seconds: float = 2700.0,
     environ: Mapping[str, str] | None = None,
+    context_scope: dict | None = None,
+    max_context_queries: int = 32,
+    progress_sink: Callable[[dict], None] | None = None,
 ) -> CodeEditResponse:
     """Execute model-selected code2dsl edits through the canonical completion routes.
 
     ``aider_bin`` remains a validated compatibility input for deployed workers;
     no Aider process receives source files or executes in this implementation.
+    context_scope narrows files using subllm.code-edit-scope/v1; it grants no
+    writer authority. max_context_queries caps logical completion calls across
+    all selection and response retries, excluding router-internal HTTP retries.
+    Progress callbacks receive metadata only; callback failure disables the sink.
+    CompletionError.code_edit_receipt retains the bounded attempt journal on failure.
     """
     from .credential_env import merged_environment
     from .dsl_edit import execute_dsl_edit
@@ -41,6 +51,7 @@ def execute_code_edit(
     selected_provider, model, response = execute_dsl_edit(
         root, prompt, provider=provider, environ=merged_environment(environ=environ),
         timeout_seconds=timeout_seconds, complete=complete,
+        context_scope=context_scope, max_context_queries=max_context_queries, progress_sink=progress_sink,
     )
     return CodeEditResponse(selected_provider, model, response)
 
@@ -55,8 +66,16 @@ def code_edit_main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--provider")
     parser.add_argument("--aider-bin", default="aider")
     parser.add_argument("--timeout", type=float, default=2700.0)
+    parser.add_argument("--context-scope", type=Path)
+    parser.add_argument("--context-scope-sha256")
+    parser.add_argument("--max-context-queries", type=int, default=32)
     args = parser.parse_args(argv)
     try:
+        if bool(args.context_scope) != bool(args.context_scope_sha256):
+            raise CompletionError('context scope file and its expected SHA256 must be supplied together')
+        from .code_context_scope import load_scope
+
+        scope = load_scope(args.context_scope, args.context_scope_sha256) if args.context_scope else None
         prompt = args.prompt_file.read_text(encoding="utf-8")
         result = execute_code_edit(
             args.application,
@@ -66,9 +85,18 @@ def code_edit_main(argv: Sequence[str] | None = None) -> int:
             provider=args.provider,
             aider_bin=args.aider_bin,
             timeout_seconds=args.timeout,
+            context_scope=scope,
+            max_context_queries=args.max_context_queries,
+            progress_sink=lambda event: print(json.dumps(event, sort_keys=True), file=sys.stderr, flush=True),
         )
     except (OSError, UnicodeError, CompletionError) as exc:
-        print(f"subllm-code-edit: {exc}")
+        if isinstance(exc, CompletionError) and hasattr(exc, 'code_edit_receipt'):
+            print(json.dumps(exc.code_edit_receipt, sort_keys=True), file=sys.stderr, flush=True)
+        code = getattr(exc, 'diagnostic_code', None)
+        if not isinstance(code, str) or not re.fullmatch('[A-Z0-9-]{1,128}', code):
+            code = 'SUBLLM-CODE-EDIT-FAILED'
+        print(json.dumps({'schema': 'subllm.code-edit-result/v1', 'status': 'FAILED',
+                          'diagnostic_code': code}, sort_keys=True), file=sys.stderr)
         return 2
     print(json.dumps({
         "schema": "subllm.code-edit-result/v1",
