@@ -21,5 +21,58 @@
   "stacks": [],
   "dependsOn": [],
   "conflictsWith": [],
-  "integrationTicket": null
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "a1d7811120c6431720f344d9f70b2b9bb3da2325",
+    "targetBranch": "main",
+    "outcome": "Preserve caller-selected models within credential-qualified application policy routes.",
+    "nonGoals": [
+      "No additional model/provider authority or altered budgets.",
+      "No unreviewed runtime deployment."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add an optional selector that narrows existing resolved routes and fails before inference when no candidate matches.",
+      "components": [
+        {
+          "name": "completion-routing",
+          "paths": [
+            "src/subllm/client_routes.py",
+            "tests/test_model_selection.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional model argument to complete()"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert ticket-126 implementation; no persistent data migration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest tests/ -q",
+          "ruff check src/subllm/client_routes.py tests/test_model_selection.py",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "project/ticket-126/README.md"
+      }
+    ]
+  }
 }

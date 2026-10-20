@@ -48,6 +48,13 @@ def test_selected_model_failure_never_calls_another_model(monkeypatch, routes):
     assert calls == ["agy"]
 
 
+def test_missing_selected_credentials_cannot_use_another_available_model(monkeypatch, routes):
+    monkeypatch.setattr(client_routes, "available_routes", lambda *a, **kw: routes[:1])
+    monkeypatch.setattr(client_routes, "_complete_route", lambda *a, **kw: pytest.fail("provider invoked"))
+    with pytest.raises(CompletionError, match="not available"):
+        complete("todo2code", "semantic", MESSAGES, model="gemini-3.8-flash")
+
+
 def test_failover_can_use_another_allowed_provider_of_the_same_model(monkeypatch, routes):
     routes.append(replace(routes[1], provider="openrouter", priority=30))
     calls = []
