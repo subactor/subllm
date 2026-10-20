@@ -1,0 +1,98 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-125",
+  "summary": "Bound code-edit context and expose completion budgets (subllm issue 124)",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-125/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_code_edit.py",
+    "src/subllm/code_context_extraction.py",
+    "src/subllm/code_context_scope.py",
+    "src/subllm/code_edit_progress.py",
+    "src/subllm/dsl_edit.py",
+    "tests/test_code_edit_progress.py",
+    "tests/test_code_edit_scope.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "2ab0a2d6c09157dc6949d77783664f147fbbb9c9",
+    "targetBranch": "main",
+    "outcome": "Bound source context and logical selection calls in code editing, preserve safe progress and reject changes outside the supplied write scope.",
+    "nonGoals": [
+      "No writer or merge authority is granted by context metadata.",
+      "No deployment of coding-agent adapters or changes to protected provider policy."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 7,
+      "maxAffectedComponents": 3,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Accept an optional host-bound context scope in SDK/CLI, snapshot its explicit read/write files using existing ignore and runtime pins, and share one call budget and progress journal across selection and schema retries. Recheck the scope before apply.",
+      "components": [
+        {
+          "name": "source-context",
+          "paths": [
+            "src/subllm/code_context_scope.py",
+            "src/subllm/code_context_extraction.py"
+          ]
+        },
+        {
+          "name": "code-edit",
+          "paths": [
+            "src/subllm/client_code_edit.py",
+            "src/subllm/dsl_edit.py",
+            "src/subllm/code_edit_progress.py"
+          ]
+        },
+        {
+          "name": "verification",
+          "paths": [
+            "tests/test_code_edit_progress.py",
+            "tests/test_code_edit_scope.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional SDK context_scope/max_context_queries/progress_sink inputs",
+        "CLI context-scope file and digest plus call budget; progress JSONL on stderr"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the material ticket-125 commit; no persistent data migration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest tests/test_code_edit_scope.py tests/test_code_edit_progress.py tests/test_code_context.py tests/test_client.py -q",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "project/ticket-125/README.md"
+      }
+    ]
+  }
+}
