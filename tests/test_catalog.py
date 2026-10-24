@@ -192,9 +192,10 @@ def test_effective_digest_binds_runtime_and_concrete_route(monkeypatch):
     assert all(len(r.public_dict()['policy_sha256']) == 64 for r in first)
     from subllm.catalog import effective_digest
     from subllm.policy_config import load_policy_config
-    runtime = load_policy_config(environ={})
+    runtime = load_policy_config(environ=dict(os.environ))
     from dataclasses import replace
     changed = replace(runtime, execution=replace(runtime.execution, max_attempts=runtime.execution.max_attempts + 1))
+    assert effective_digest(runtime, first[0]) == first[0].policy_sha256
     plain = replace(first[0], policy_sha256='')
     assert effective_digest(runtime, plain) != effective_digest(changed, plain)
     assert effective_digest(runtime, plain) != effective_digest(runtime, replace(plain, model='other'))

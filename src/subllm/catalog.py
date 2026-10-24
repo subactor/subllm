@@ -294,8 +294,10 @@ def catalog_digest():
 
 def effective_digest(runtime, route):
     """Semantic evidence contains no credential values and grants no authority."""
+    concrete = route.public_dict()
+    concrete.pop("policy_sha256", None)
     return digest({"catalog": catalog_digest(),
                    "providers": {k: asdict(v) for k, v in runtime.providers.items()},
                    "applications": {k: asdict(v) for k, v in runtime.applications.items()},
                    "custom_providers": {k: asdict(v) for k, v in runtime.custom_providers.items()},
-                   "execution": asdict(runtime.execution), "route": route.public_dict()})
+                   "execution": asdict(runtime.execution), "route": concrete})
