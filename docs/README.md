@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 6,
+  "version": 7,
   "status": "current",
-  "updated": "2026-09-19"
+  "updated": "2026-10-24"
 }
 ---
 
@@ -29,3 +29,5 @@ Existing documentation retains its historical format.
 - [Versioned routing contract](information/routing-contract.md)
 
 - [Unified LLM and MCP proxy](information/unified-proxy.md)
+
+- [DeepSeek V4.1 cost, latency and backlog audit](analysis/deepseek-v41-routing.md)

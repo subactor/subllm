@@ -1,0 +1,78 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-129",
+  "summary": "Publish primary-source DeepSeek cost/latency research, bounded runtime configuration and an evidence-based backlog audit.",
+  "workstream": "integration",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-129/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/README.md",
+    "docs/analysis/deepseek-v41-routing.md",
+    "docs/analysis/deepseek-v41-routing.report.json"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "a367cf701de4b7aa758f47029a9cdfe94ca7ed88",
+    "targetBranch": "main",
+    "outcome": "Publish primary-source DeepSeek cost/latency research, bounded runtime configuration and an evidence-based backlog audit. Publish through protected OneDev and independent Validator.",
+    "nonGoals": [
+      "No shared credentials, billing purchases, runtime deployment, historical cleanup or review-policy changes."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 120,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Publish primary-source DeepSeek cost/latency research, bounded runtime configuration and an evidence-based backlog audit.",
+      "components": [
+        {
+          "name": "research",
+          "paths": [
+            "docs/README.md",
+            "docs/analysis/deepseek-v41-routing.md",
+            "docs/analysis/deepseek-v41-routing.report.json"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of this bounded change; retain shared operator configuration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python scripts/check-docs-report.py",
+          "python -m pytest -q tests scripts/tests",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "Native Wellman local gates, then exact-head OneDev and independent protected Validator."
+      }
+    ]
+  }
+}
