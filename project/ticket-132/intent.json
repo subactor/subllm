@@ -1,0 +1,97 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-132",
+  "summary": "Bounded DeepSeek streaming endpoint calibration",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-132/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/calibration.py",
+    "src/subllm/calibration_worker.py",
+    "tests/test_calibration.py",
+    "tests/test_native_transports.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "8303ce21108590c518658f50c698ecd5fb9a0078",
+    "targetBranch": "main",
+    "outcome": "Deliver issue134 bounded opt-in streaming calibration and fresh workload-bound quote ranking through protected OneDev and independent Validator.",
+    "nonGoals": [
+      "No ordinary completion changes, provider/account configuration, cooldown reset, new credentials, package release, service restart or automatic paid sweeps.",
+      "No production p90 claim from tiny samples; no raw prompt, generated text, keys or provider error bodies in receipts."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 120,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Use the existing approved OpenAI worker request validator and native catalog/health/usage boundaries. Isolate streaming measurement in an opt-in subprocess with wall-clock cancellation; reserve advertised worst-case probe cost before each dispatch and stop on missing accounting or any failed probe. Isolate existing mocked native-transport unit tests from host archive/telemetry I/O so caller deadline tests do not depend on PostgreSQL latency; separate integration tests retain persistence coverage.",
+      "components": [
+        {
+          "name": "calibration",
+          "paths": [
+            "src/subllm/calibration.py",
+            "src/subllm/calibration_worker.py"
+          ]
+        },
+        {
+          "name": "regressions",
+          "paths": [
+            "tests/test_calibration.py",
+            "tests/test_native_transports.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Opt-in calibration SDK/module CLI",
+        "Fresh fixed-workload quote ranking"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "calibration",
+          "description": "Private fixed-workload operator probe reports owned by calibration. Existing cross-component usage schema and storage are unchanged."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of the added modules; existing completion and journal formats remain unchanged."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_calibration.py",
+          "python -m pytest -q tests scripts/tests",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "Offline SSE, budget, health, cancellation, no-network dry-run and metric freshness/profile tests; full stack then independent exact-head publication."
+      }
+    ]
+  }
+}

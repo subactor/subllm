@@ -130,6 +130,16 @@ def test_plain_http_and_oversized_or_non_json_responses_are_refused(monkeypatch)
         native_http.post_json("https://api.example.com/x", {}, {}, 3)
 
 
+@pytest.fixture(autouse=True)
+def _isolate_transport_telemetry(monkeypatch):
+    """Mocked transport deadlines must not include host archive/database I/O.
+
+    Persistence is exercised by the interaction-store and gateway integrations.
+    """
+    monkeypatch.setattr("subllm.client_routes.begin_attempt", lambda *args, **kwargs: None)
+    monkeypatch.setattr("subllm.client_routes.record_attempt", lambda **kwargs: None)
+
+
 def _environ(order, **keys):
     return {"PATH": "/nonexistent", "SUBLLM_PROVIDER_ORDER": order, **keys}
 
