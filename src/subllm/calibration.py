@@ -224,25 +224,100 @@ def calibrate(snapshot, *, model, observed_at, endpoints, max_cost_usd, samples=
     return report
 
 
+def _report_samples(report):
+    """Validate caller-owned observations as bounded data, never trusted provenance."""
+    fields = {"schema", "profile", "model", "snapshot_sha256", "observed_at", "snapshot_observed_at",
+              "input_token_bound", "output_token_cap", "budget_usd", "reserved_cost_usd", "samples",
+              "live", "stop_reason", "planned_endpoints"}
+    if not isinstance(report, dict) or set(report) != fields:
+        _fail("invalid calibration report fields")
+    samples, planned = report["samples"], report["planned_endpoints"]
+    if (type(report["live"]) is not bool or not isinstance(samples, list) or len(samples) > 20
+            or not isinstance(planned, list) or len(planned) > 20
+            or any(not isinstance(t, str) or not re.fullmatch(r"[a-z0-9][a-z0-9._/-]{0,127}", t) for t in planned)
+            or len(set(planned)) > 8 or (report["live"] and len(planned) != len(samples))
+            or (not report["live"] and samples) or not isinstance(report["model"], str)
+            or not isinstance(report["stop_reason"], str) or len(report["stop_reason"]) > 64):
+        _fail("invalid calibration workload or samples")
+
+    def number(value):
+        value = _number(value)
+        if not math.isfinite(float(value)):
+            _fail("calibration number exceeds the supported range")
+        return value
+
+    for key in ("observed_at", "snapshot_observed_at"):
+        number(report[key])
+    budget, reserved = number(report["budget_usd"]), number(report["reserved_cost_usd"])
+    if not 0 < budget <= 1 or reserved > budget:
+        _fail("invalid calibration budget accounting")
+    result_fields = set(result("success", 0, clock=lambda: 0))
+    outcomes = {"success", "truncated", "stream_error", "incomplete_stream", "stream_limit", "billing_unknown",
+                "invalid_stream", "transport_error", "timeout", "worker_error", "invalid_worker_result",
+                "cancelled", "accounting_limit"}
+    total = Decimal(0)
+    ids = set()
+    for index, row in enumerate(samples):
+        if (not isinstance(row, dict) or set(row) != {"endpoint", "at", "reservation_usd", "attempt_id", "result"}
+                or row["endpoint"] != planned[index] or not isinstance(row["attempt_id"], str)
+                or not re.fullmatch("[0-9a-f]{24}", row["attempt_id"]) or row["attempt_id"] in ids):
+            _fail("invalid calibration attempt binding")
+        ids.add(row["attempt_id"])
+        number(row["at"])
+        reservation = number(row["reservation_usd"])
+        total += reservation
+        sample = row["result"]
+        if not isinstance(sample, dict) or set(sample) != result_fields or sample["schema"] != RESULT_SCHEMA:
+            _fail("invalid calibration sample fields")
+        outcome = sample["outcome"]
+        if (not isinstance(outcome, str) or (outcome not in outcomes and not (
+                re.fullmatch(r"http_[0-9]{3}", outcome) and 100 <= int(outcome[5:]) <= 599))):
+            _fail("invalid calibration sample outcome")
+        for key in ("ttft_seconds", "first_reasoning_seconds", "total_seconds", "tokens_per_second"):
+            value = sample[key]
+            if value is not None and (type(value) not in (int, float) or not math.isfinite(value) or value < 0):
+                _fail("invalid calibration timing")
+        if sample["total_seconds"] is None or any(
+                sample[k] is not None and sample[k] > sample["total_seconds"]
+                for k in ("ttft_seconds", "first_reasoning_seconds")):
+            _fail("inconsistent calibration timing")
+        for key in ("input_tokens", "output_tokens", "cached_input_tokens"):
+            if sample[key] is not None and (type(sample[key]) is not int or not 0 <= sample[key] <= 10**12):
+                _fail("invalid calibration token counts")
+        if (sample["cached_input_tokens"] is not None and sample["input_tokens"] is not None
+                and sample["cached_input_tokens"] > sample["input_tokens"]):
+            _fail("cached input exceeds calibration input")
+        cost = None if sample["cost_usd"] is None else number(sample["cost_usd"])
+        if outcome == "success" and (any(sample[k] is None for k in (
+                "ttft_seconds", "input_tokens", "output_tokens")) or cost is None or cost > reservation
+                or sample["input_tokens"] > INPUT_BOUND or sample["output_tokens"] > report["output_token_cap"]):
+            _fail("successful calibration requires bounded timing and accounting")
+    if report["live"] and total != reserved:
+        _fail("calibration reservations do not match attempts")
+    return samples
+
+
 def rank_calibrated(snapshot, report, *, now=None, quantile="p50", latency_penalty_usd_per_second="0"):
     """Rank the fixed probe workload, not arbitrary task sizes or production SLOs."""
     now = time.time() if now is None else now
+    if not isinstance(report, dict):
+        _fail("calibration report must be an object")
     if (report.get("schema") != SCHEMA or report.get("profile") != PROFILE
             or report.get("snapshot_sha256") != _digest(snapshot) or report.get("input_token_bound") != INPUT_BOUND
             or type(report.get("output_token_cap")) is not int or not 1 <= report["output_token_cap"] <= 256
             or quantile not in {"p50", "p90"} or not isinstance(report.get("samples"), list)
             or len(report["samples"]) > 20):
         _fail("calibration profile, snapshot or sample binding is invalid")
+    samples = _report_samples(report)
     age = _number(now) - _number(report["observed_at"])
     if not 0 <= age <= 900:
         _fail("calibration observation is stale or from the future")
     penalty = _number(latency_penalty_usd_per_second)
-    ids = [s.get("attempt_id") for s in report["samples"]]
-    if any(not isinstance(i, str) or not re.fullmatch("[0-9a-f]{24}", i) for i in ids) or len(set(ids)) != len(ids):
-        _fail("calibration attempts must be distinct")
     quotes = rank_endpoints(snapshot, model=report["model"], observed_at=report["snapshot_observed_at"], now=now,
                             input_tokens=INPUT_BOUND, output_tokens=report["output_token_cap"])
-    failed = {row["endpoint"] for row in report["samples"]
+    if any(row["endpoint"] not in {q["tag"] for q in quotes} for row in samples):
+        _fail("calibration attempt is outside the eligible snapshot workload")
+    failed = {row["endpoint"] for row in samples
               if row["result"]["outcome"] != "success" and 0 <= _number(now) - _number(row["at"]) <= 900}
     quotes = [q for q in quotes if q["tag"] not in failed]
     for quote in quotes:

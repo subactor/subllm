@@ -259,3 +259,67 @@ def test_only_fresh_distinct_same_profile_samples_affect_fixed_workload_quotes(l
         bad = {**report, key: value}
         with pytest.raises(CompletionError):
             c.rank_calibrated(snapshot(), bad, now=1000 if key == "snapshot_observed_at" else 102)
+
+
+@pytest.mark.parametrize("path,value", [
+    (("samples", 0), None),
+    (("samples", 0, "result"), []),
+    (("samples", 0, "result"), {}),
+    (("samples", 0, "result", "outcome"), "unknown"),
+    (("samples", 0, "result", "ttft_seconds"), float("nan")),
+    (("samples", 0, "result", "ttft_seconds"), 2),
+    (("samples", 0, "result", "total_seconds"), None),
+    (("samples", 0, "result", "tokens_per_second"), float("inf")),
+    (("samples", 0, "result", "input_tokens"), True),
+    (("samples", 0, "result", "cached_input_tokens"), 35),
+    (("samples", 0, "result", "cost_usd"), None),
+    (("samples", 0, "endpoint"), "off-plan/fp8"),
+    (("samples", 0, "at"), "nan"),
+    (("planned_endpoints",), []),
+    (("live",), False),
+    (("reserved_cost_usd",), "0"),
+    (("budget_usd",), "1e9999"),
+    (("observed_at",), "1e9999"),
+    (("extra",), True),
+])
+def test_malformed_reports_fail_with_typed_errors_before_ranking(live, path, value):
+    report = run(live=True, samples=1)
+    target = report
+    for part in path[:-1]:
+        target = target[part]
+    target[path[-1]] = value
+    with pytest.raises(CompletionError):
+        c.rank_calibrated(snapshot(), report, now=102)
+
+
+def test_missing_sample_fields_and_nonobject_reports_are_typed(live):
+    report = run(live=True, samples=1)
+    del report["samples"][0]["result"]
+    for bad in (report, None, [], {}):
+        with pytest.raises(CompletionError):
+            c.rank_calibrated(snapshot(), bad, now=102)
+
+
+def test_sample_must_belong_to_the_planned_eligible_snapshot(live):
+    report = run(live=True, samples=1)
+    report["planned_endpoints"] = ["off-plan/fp8"]
+    report["samples"][0]["endpoint"] = "off-plan/fp8"
+    with pytest.raises(CompletionError):
+        c.rank_calibrated(snapshot(), report, now=102)
+
+
+def test_existing_negative_penalty_and_model_binding_guards_remain(live):
+    report = run(live=True, samples=1)
+    with pytest.raises(CompletionError):
+        c.rank_calibrated(snapshot(), report, now=102, latency_penalty_usd_per_second="-1")
+    report["model"] = "deepseek/deepseek-v4.1-flash"
+    with pytest.raises(CompletionError):
+        c.rank_calibrated(snapshot(), report, now=102)
+
+
+def test_valid_dry_run_and_failed_accounting_reports_still_rank(live, monkeypatch):
+    dry = run()
+    assert all(q["local_samples"] == 0 for q in c.rank_calibrated(snapshot(), dry, now=102))
+    monkeypatch.setattr(c, "_invoke", lambda *_, **__: w.result("http_403", 0, clock=lambda: 1))
+    report = run(live=True, samples=1)
+    assert [q["tag"] for q in c.rank_calibrated(snapshot(), report, now=102)] == ["b/fp8"]

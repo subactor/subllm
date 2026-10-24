@@ -1,0 +1,84 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-134",
+  "summary": "Validate calibration reports before ranking endpoint observations",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-134/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/calibration.py",
+    "tests/test_calibration.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "97bf8045da44724e69b2489fed11d8f40d7bbc2b",
+    "targetBranch": "main",
+    "outcome": "Resolve issue138: validate bounded calibration reports before ranking and return typed errors for malformed or inconsistent sample data, through independent protected delivery.",
+    "nonGoals": [
+      "No paid probes, new models, provenance/authority claims, runtime policy, credentials, deployment or release changes."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Validate the existing report and sample metadata before dereferencing it. Preserve the fixed workload, snapshot/model freshness, distinct attempts, compatible endpoints, failed-provider exclusion and existing nonnegative numeric parser. Caller reports remain advisory, not authenticated execution evidence.",
+      "components": [
+        {
+          "name": "calibration",
+          "paths": [
+            "src/subllm/calibration.py"
+          ]
+        },
+        {
+          "name": "regressions",
+          "paths": [
+            "tests/test_calibration.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Invalid rank-calibration inputs consistently use the existing CompletionError contract."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of report validation changes."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_calibration.py tests/test_openrouter_routing.py",
+          "python -m ruff check src/subllm/calibration.py tests/test_calibration.py",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Reproduced malformed reports, off-plan samples, invalid metrics/accounting, legitimate success/failure/dry-run reports and disproved negative-penalty/model claims; independent exact-head publication."
+      }
+    ]
+  }
+}
