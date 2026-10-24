@@ -14,6 +14,8 @@ from urllib.parse import urlsplit
 from .errors import InvalidPolicyError
 from .policy import (
     APPLICATIONS,
+    CATALOG_PROVIDER_DEFAULTS,
+    LEGACY_APPLICATION_IDS,
     MODELS,
     ProviderSpec,
     clear_custom_providers,
@@ -92,6 +94,11 @@ _DEFAULTS = MappingProxyType(
         "openrouter": ProviderPolicyConfig(enabled=True, priority=30, default_model="glm-5.3-flash"),
     }
 )
+
+if CATALOG_PROVIDER_DEFAULTS is not None:
+    _DEFAULTS = MappingProxyType({name: ProviderPolicyConfig(**dict(value))
+                                 for name, value in CATALOG_PROVIDER_DEFAULTS.items()})
+
 
 _APPLICATION_DEFAULTS = MappingProxyType(
     {
@@ -565,6 +572,11 @@ def load_policy_config(
         for name in _DEFAULTS
     }
     application_rows = raw.get("applications")
+    if CATALOG_PROVIDER_DEFAULTS is not None and isinstance(application_rows, dict):
+        # New catalog applications inherit declared metadata without rewriting
+        # every existing operator TOML file during the compatibility release.
+        application_rows = {**{name: asdict(value) for name, value in _APPLICATION_DEFAULTS.items()
+                               if name not in LEGACY_APPLICATION_IDS}, **application_rows}
     if isinstance(application_rows, dict):
         for app_name in ("organism-guard", "subactor-proxy", "premesh", "autogrammar-gillm", "wellman"):
             if app_name not in application_rows and app_name in _APPLICATION_DEFAULTS:

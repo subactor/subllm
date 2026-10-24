@@ -77,8 +77,10 @@ class ConfiguredRoute:
     model_parameters: Mapping[str, str] = field(default_factory=dict, kw_only=True)
     modality: Modality = field(default="text", kw_only=True)
 
+    policy_sha256: str = field(default="", kw_only=True)
+
     def public_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "application": self.application,
             "application_name": self.application_name,
             "application_url": self.application_url,
@@ -95,6 +97,9 @@ class ConfiguredRoute:
             "modality": self.modality,
             "model_parameters": dict(self.model_parameters),
         }
+        if self.policy_sha256:
+            result["policy_sha256"] = self.policy_sha256
+        return result
 
     def provider_request_fields(self, *, request_id: str | None = None) -> dict[str, str]:
         """Return non-secret application identity fields for one provider request."""

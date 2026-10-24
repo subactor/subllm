@@ -1,0 +1,117 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-135",
+  "summary": "Compile pinned JSON and TOML catalogs with validated policy proposals",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-135/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/catalog.py",
+    "src/subllm/catalog_cli.py",
+    "src/subllm/catalog_schema.py",
+    "src/subllm/policy.py",
+    "src/subllm/policy_config.py",
+    "src/subllm/resolver.py",
+    "src/subllm/types.py",
+    "tests/test_catalog.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "09282b0e952994ab853aa73c310b141298df6247",
+    "targetBranch": "main",
+    "outcome": "Deliver issue24 versioned pinned JSON/TOML route catalogs, immutable compilation, schema-aware proposal editor and effective-policy digest evidence through protected OneDev/Validator.",
+    "nonGoals": [
+      "No deployment, active operator file replacement, credentials, transport implementation, provider account reset, paid inference, dependency or package-release change.",
+      "Retain legacy Python defaults and runtime TOML configuration for the one-release migration window; catalog activation is explicit and content-pinned, never inferred from a proposal."
+    ],
+    "complexity": "L",
+    "estimatedMinutes": 100,
+    "budgets": {
+      "maxImplementationFiles": 8,
+      "maxAffectedComponents": 4,
+      "maxPublicInterfaceChanges": 3,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "A bounded deterministic compiler builds existing frozen dataclasses and immutable mappings from JSON/TOML. Code retains adapter endpoint/credential bindings, forbidden-model rules and execution bounds. Process-start opt-in requires a raw-file digest; the editor produces a new validated proposal without activating it. Route evidence hashes semantic catalog, effective runtime settings and concrete non-secret route data.",
+      "components": [
+        {
+          "name": "catalog",
+          "paths": [
+            "src/subllm/catalog.py",
+            "src/subllm/catalog_schema.py",
+            "src/subllm/catalog_cli.py"
+          ]
+        },
+        {
+          "name": "policy-bootstrap",
+          "paths": [
+            "src/subllm/policy.py",
+            "src/subllm/policy_config.py"
+          ]
+        },
+        {
+          "name": "route-evidence",
+          "paths": [
+            "src/subllm/types.py",
+            "src/subllm/resolver.py"
+          ]
+        },
+        {
+          "name": "regressions",
+          "paths": [
+            "tests/test_catalog.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Versioned catalog compiler/activation protocol",
+        "Schema-aware proposal module CLI",
+        "Additive policy_sha256 route evidence"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "catalog",
+          "description": "Operator-owned catalog/proposal documents remain private component configuration. No cross-component data ownership or execution authority moves."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert restores compatibility defaults; no active operator or deployment configuration is changed."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_catalog.py",
+          "python -m pytest -q",
+          "python -m ruff check src tests",
+          "python -m build",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Catalog parity, typed malformed input, schema consistency, pinned startup, forbidden adapters/aliases, immutable values, proposal CAS/no-overwrite, unknown routes, effective digest, full stack and independent exact-head delivery."
+      }
+    ]
+  }
+}
