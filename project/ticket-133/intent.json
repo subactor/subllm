@@ -1,0 +1,75 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-133",
+  "summary": "Isolate proxy test client waiting from application deadlines",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-133/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "tests/test_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "902cafc72c53c4301c957cf0c6036f26bab3af46",
+    "targetBranch": "main",
+    "outcome": "Resolve GitHub issue137: separate bounded test-client socket waiting from the production request deadline and demonstrate both with controlled loopback transport. Publish only through independent OneDev/Validator.",
+    "nonGoals": [
+      "No production deadline, archive, adaptive selector, provider, credential or release changes."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Give the internal test HTTP helper a configurable finite socket timeout with30s default. A controlled mock backend blocks on an event so a short client wait deterministically expires; a longer wait succeeds while the payload request timeout remains unchanged. Existing adaptive/model/structured-output assertions and separate persistence integrations remain.",
+      "components": [
+        {
+          "name": "test-harness",
+          "paths": [
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of test harness changes."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_proxy.py",
+          "python -m ruff check tests/test_proxy.py",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Controlled delayed loopback response, payload timeout preservation, existing proxy regressions and exact-head independent delivery."
+      }
+    ]
+  }
+}
