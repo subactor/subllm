@@ -26,14 +26,16 @@ def proxy_server(monkeypatch):
         server.server_close()
 
 
-def _request(method: str, url: str, payload: dict | None = None, headers: dict | None = None) -> tuple[int, dict, dict]:
+def _request(method: str, url: str, payload: dict | None = None, headers: dict | None = None,
+             *, timeout_seconds: float = 30) -> tuple[int, dict, dict]:
+    """Bound client transport waiting separately from the application's payload timeout."""
     req_headers = {"Content-Type": "application/json"}
     if headers:
         req_headers.update(headers)
     data = json.dumps(payload).encode() if payload is not None else None
     req = Request(url, data=data, headers=req_headers, method=method)
     try:
-        with urlopen(req, timeout=5) as resp:
+        with urlopen(req, timeout=timeout_seconds) as resp:
             body = resp.read().decode()
             resp_headers = dict(resp.headers)
             try:
@@ -339,3 +341,42 @@ routes = ["subactor-proxy"]
     assert len(routes) == 1 and routes[0].api_key == ''
     policy.write_text(base + custom.replace('enabled = true', 'enabled = false'))
     assert proxy._build_model_resolved_routes('quota-test-model') == ()
+
+
+def test_client_wait_is_independent_of_application_timeout(proxy_server, monkeypatch):
+    """A slow local backend exposes socket waiting without any provider or database."""
+    started, release = threading.Event(), threading.Event()
+    seen, delayed_request = [], []
+    json_response = proxy.SubLLMProxyHandler._json
+
+    def respond(self, *args, **kwargs):
+        try:
+            return json_response(self, *args, **kwargs)
+        except (BrokenPipeError, ConnectionResetError):
+            # Only the intentionally timed-out first client may disconnect.
+            if delayed_request and self is delayed_request[0]:
+                return None
+            raise
+
+    def delayed(self, model, messages, app, func, timeout, request_id, payload):
+        seen.append(timeout)
+        if not delayed_request:
+            delayed_request.append(self)
+        started.set()
+        assert release.wait(10), "test must release the delayed backend"
+        return CompletionResponse("controlled reply", "agy", "gemini-3.8-flash")
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", delayed)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_json", respond)
+    base_url, server = proxy_server
+    payload = {"model": "glm-5.3", "messages": [{"role": "user", "content": "fixture"}], "timeout": .5}
+    try:
+        with pytest.raises(TimeoutError):
+            _request("POST", base_url + "/v1/chat/completions", payload, timeout_seconds=.05)
+        assert started.wait(5)
+    finally:
+        release.set()
+    status, body, headers = _request("POST", base_url + "/v1/chat/completions", payload, timeout_seconds=5)
+    assert status == 200 and body["choices"][0]["message"]["content"] == "controlled reply"
+    assert headers["X-Subactor-Model"] == "gemini-3.8-flash"
+    assert seen == [.5, .5]
