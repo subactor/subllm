@@ -607,7 +607,10 @@ def load_policy_config(
         execution=_execution_with_environment(execution, environ),
         custom_providers=MappingProxyType(custom_providers),
         source=source,
-        source_role=("explicit-operator" if (os.environ if environ is None else environ).get(SUBLLM_POLICY_FILE)
-                     else "declared-shared-scope" if scope_root is not None else "project"),
+        source_role=(
+            "explicit-operator"
+            if (os.environ if environ is None else environ).get(SUBLLM_POLICY_FILE, "").strip()
+            else "declared-shared-scope" if scope_root is not None else "project"
+        ),
         source_sha256=hashlib.sha256(source_bytes).hexdigest(),
     )

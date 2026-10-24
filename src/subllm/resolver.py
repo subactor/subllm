@@ -3,6 +3,7 @@ from __future__ import annotations
 import os
 import shutil
 from collections.abc import Mapping
+from dataclasses import replace
 
 from .cli_common import CLI_EXECUTABLES
 from .credential_env import credential_is_valid, merged_environment
@@ -11,6 +12,7 @@ from .errors import (
     MissingCredentialError,
     UnknownRouteError,
 )
+from .openrouter_routing import apply_parameters
 from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
 from .policy_config import RuntimePolicyConfig, load_policy_config
 from .provider_order import routing_provider_order
@@ -161,6 +163,8 @@ def configured_routes(
         and _candidate_fits_modality(item, runtime_policy, policy.modality)
     )
     ordered = sorted(candidates, key=lambda item: item.priority)
+    ordered = [replace(item, model_parameters=apply_parameters(
+        item.provider, item.wire_model, item.model_parameters, environ=environ)) for item in ordered]
     if not ordered:
         raise InvalidPolicyError(f"no enabled candidate for route: {application}/{function}")
     priorities = [route.priority for route in ordered]

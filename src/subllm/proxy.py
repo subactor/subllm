@@ -22,6 +22,7 @@ from .client_types import CompletionResponse, _RetryableAttemptError
 from .credential_env import credential_is_valid, merged_environment
 from .errors import CompletionError, SubLLMError
 from .health import order_by_health, record_failure, record_success
+from .openrouter_routing import apply_parameters
 from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .provider_order import routing_provider_order
@@ -231,7 +232,7 @@ def _build_model_resolved_routes(
                 extra_headers=headers,
                 transport=provider_spec.transport,
                 modality="text",
-                model_parameters={},
+                model_parameters=apply_parameters(provider_id, provider_model.wire_model, {}, environ=environment),
                 api_key=api_key,
             )
         )

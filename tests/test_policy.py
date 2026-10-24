@@ -255,6 +255,11 @@ def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
 @pytest.mark.parametrize(("application", "function"), sorted(ROUTES))
 def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, function: str) -> None:
     policy = ROUTES[(application, function)]
+    if (application, function) == ("subactor-proxy", "deepseek-flash"):
+        route = configured_routes(application, function)[0]
+        assert route.provider == "openrouter"
+        assert route.wire_model == "deepseek/deepseek-v4.1-flash"
+        return
     if (application, function) == ("organism-guard", "refactor"):
         route = configured_routes(application, function)[0]
         assert route.provider == route.transport == "codex-cli"

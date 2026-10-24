@@ -595,6 +595,21 @@ def test_explicit_shared_root_and_operator_binding_have_bounded_provenance(tmp_p
     assert len(defaults.source_sha256) == 64
 
 
+@pytest.mark.parametrize("selector", [" ", "\t \n"])
+def test_policy_provenance_normalizes_explicit_operator_selector(tmp_path, selector):
+    policy = tmp_path / "subllm.toml"
+    policy.write_text((Path(__file__).resolve().parents[1] / "subllm.toml").read_text())
+    implicit = load_policy_config(environ={"SUBLLM_POLICY_FILE": selector}, cwd=tmp_path)
+    assert implicit.source == policy
+    assert implicit.source_role == "project"
+    shared = load_policy_config(environ={"SUBLLM_POLICY_FILE": selector}, cwd=tmp_path, scope_root=tmp_path)
+    assert shared.source_role == "declared-shared-scope"
+    explicit = load_policy_config(environ={"SUBLLM_POLICY_FILE": f" {policy}\n"}, cwd=tmp_path)
+    assert explicit.source == policy
+    assert explicit.source_role == "explicit-operator"
+    assert explicit.source_sha256 == implicit.source_sha256
+
+
 def test_discovery_rejects_scope_escape_symlinks_and_invalid_operator_policy(tmp_path):
     project = tmp_path / "repo"
     (project / ".git").mkdir(parents=True)
