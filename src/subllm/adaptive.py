@@ -9,9 +9,10 @@ SUBLLM_ADAPTIVE_POLICY points to operator-owned JSON, for example::
 
 Classes are operator requirements, not measured benchmark equivalence. A lower
 class never satisfies a higher one; unknown/Auto models only satisfy ``any``.
-Only declared models with enabled, credential-ready transports are probed.
-Small synthetic probes do not receive user content. Availability is stored per
-provider/model/format in SQLite; successful probes are not approval evidence.
+Only declared models with enabled, credential-ready transports are attempted.
+Ordinary requests use the first working compatible route by policy priority,
+without speculative probes. Per-model observations and shared provider health
+skip known failures until their bounded cooldown expires.
 """
 
 from __future__ import annotations
@@ -26,7 +27,8 @@ from dataclasses import replace
 from pathlib import Path
 
 from .client_types import CompletionAttempt, _RetryableAttemptError
-from .errors import CompletionError
+from .errors import PROVIDER_CHAIN_EXHAUSTED_CODE, CompletionError
+from .health import order_by_health, record_failure, record_success
 
 LEVELS = {"any": 0, "fast": 1, "balanced": 2, "strong": 3}
 
@@ -74,7 +76,9 @@ def failure_kind(exc):
     if isinstance(exc, _RetryableAttemptError):
         return exc.outcome
     code = getattr(exc, "diagnostic_code", "") or ""
-    if code.endswith(("HTTP-429", "HTTP-402", "QUOTA")):
+    if code.endswith("HTTP-402"):
+        return "http_402"
+    if code.endswith(("HTTP-429", "QUOTA")):
         return "http_429"
     if code.endswith(("TIMEOUT", "FAILED", "UNAVAILABLE")):
         return "provider_unavailable"
@@ -187,11 +191,11 @@ def execute(
     environ=None,
     minimum_class=None,
 ):
-    """Probe all configured remaining candidates on quota, then retry by class.
+    """Use actual requests in compatible-class priority order, sharing cooldowns.
 
-    Each call retains its wall-clock budget. A sweep consumes at most half the
-    remaining budget, divided between every remaining candidate. Truncated
-    sweeps are observations, never assertions that untested candidates work.
+    Budget failures are cached across models and processes through the existing
+    provider health store. No balance query or availability sweep is required.
+    Each call retains its attempt and wall-clock limits.
     """
     tier = requested_class(config, requested)
     if tier is None:
@@ -221,7 +225,6 @@ def execute(
         )
     attempts = []
     attempted = set()
-    swept = False
     while len(attempts) < (execution.max_attempts if execution.failover_enabled else 1):
         observed = _observations(config, fmt)
         candidates = [
@@ -229,15 +232,15 @@ def execute(
             for r in eligible
             if (r.provider, r.model) not in attempted and observed.get((r.provider, r.model), ("ok", 0))[0] == "ok"
         ]
+        candidates = list(order_by_health(tuple(candidates), environ=environ))
 
         def rank(r, observed=observed):
             status = observed.get((r.provider, r.model))
             return (
                 catalog[r.model] - LEVELS[tier] if tier != "any" else 0,
-                0 if status else 1,
+                r.priority,
                 0 if r.model == requested else 1,
                 status[1] if status else float("inf"),
-                r.priority,
             )
 
         candidates.sort(key=rank)
@@ -269,17 +272,19 @@ def execute(
             duration = time.monotonic() - started
             _save(config, route, fmt, kind, duration)
             attempts.append(CompletionAttempt(route.provider, route.wire_model, kind, round(duration * 1000)))
-            if execution.failover_enabled and kind in {"http_402", "http_429"} and not swept:
-                swept = True
-                if _claim_sweep(config, fmt):
-                    _sweep(config, pool, attempted, fmt, response_format, invoke, deadline, cwd)
+            if getattr(exc, "provider_level", kind in {"http_401", "http_402", "http_403"}):
+                record_failure(route.provider, reason=kind, latency_seconds=duration,
+                               policy=execution, environ=environ)
             continue
         duration = time.monotonic() - started
         _save(config, route, fmt, "ok", duration)
+        record_success(route.provider, latency_seconds=duration, policy=execution, environ=environ)
         attempts.append(CompletionAttempt(route.provider, route.wire_model, "success", round(duration * 1000)))
         return replace(response, attempts=tuple(attempts))
+    summary = ", ".join(f"{a.provider}/{a.model}:{a.outcome}" for a in attempts) or "cached cooldown or elapsed budget"
     raise CompletionError(
-        "no available class-compatible model within the request budget", diagnostic_code="SUBLLM-NO-EQUIVALENT-MODEL"
+        f"no available class-compatible working API/model within the request budget: {summary}",
+        diagnostic_code=PROVIDER_CHAIN_EXHAUSTED_CODE,
     )
 
 
