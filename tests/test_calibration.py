@@ -40,7 +40,7 @@ def success(**changes):
 def live(monkeypatch):
     calls, records, health = [], [], []
     route = SimpleNamespace(provider="openrouter", wire_model=WIRE, api_base="https://openrouter.ai/api/v1",
-                            api_key="test-openrouter-credential-value", extra_headers={}, model_parameters={},
+                            api_key="redacted", extra_headers={}, model_parameters={},
                             provider_request_fields=lambda **_: {"user": "subactor-proxy"})
     monkeypatch.setattr(c, "merged_environment", lambda **_: {})
     monkeypatch.setattr(c, "load_policy_config", lambda **_: SimpleNamespace(
@@ -100,7 +100,7 @@ def test_reservations_stop_before_the_next_paid_call(live):
     assert request["messages"] == w.MESSAGES
     assert request["model_parameters"]["provider"]["only"] == ["a/fp8"]
     assert request["model_parameters"]["provider"]["max_price"]["request"] == 0
-    assert "test-openrouter-credential-value" not in json.dumps(report)
+    assert "redacted" not in json.dumps(report)
     assert "Reply exactly OK" not in json.dumps(report)
 
 
@@ -228,7 +228,7 @@ def test_probe_worker_reuses_approved_provider_model_and_never_captures_exchange
     envelope = {"schema": "subllm.calibration-worker-request/v1", "request": source, "endpoint": "a/fp8"}
     assert w.execute(envelope)["outcome"] == "success"
     assert captured[0]["stream"] and captured[0]["stream_options"]["include_usage"]
-    assert "test-openrouter-credential-value" not in repr(captured)
+    assert "redacted" not in repr(captured)
     source["api_base"] = "https://unapproved.invalid"
     with pytest.raises(CompletionError):
         w.execute(envelope)
@@ -237,7 +237,7 @@ def test_probe_worker_reuses_approved_provider_model_and_never_captures_exchange
 
 def test_provider_http_error_is_secret_free_and_redirects_are_disabled(live, monkeypatch):
     def fail(request, **_):
-        raise HTTPError(request.full_url, 403, "test-openrouter-credential-value", {}, None)
+        raise HTTPError(request.full_url, 403, "redacted", {}, None)
 
     monkeypatch.setattr(w, "urlopen", fail)
     source = c._request_for(live[0], "a/fp8", snapshot()["data"]["endpoints"][0], 32, 15)
