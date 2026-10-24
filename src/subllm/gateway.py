@@ -24,6 +24,7 @@ from starlette.requests import Request
 from starlette.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from starlette.routing import Mount, Route
 
+from . import adaptive
 from .client_routes import complete
 from .errors import SubLLMError
 from .gateway_bus import GatewayPolicyBus
@@ -43,6 +44,17 @@ class ArchiveAdmissionError(RuntimeError):
 
 
 NAME = re.compile(r"[a-z][a-z0-9_-]{0,63}\Z")
+
+
+def _adaptive_model_aliases():
+    config = adaptive.policy()
+    return tuple(name for name in config.get("aliases", {}) if name) if config else ()
+
+
+def _adaptive_policy_error(error):
+    return JSONResponse(
+        {"error": {"code": error.diagnostic_code, "message": "Invalid adaptive model policy"}}, 503
+    )
 
 
 def _legacy_usage_id(attempt_id: int) -> str:
@@ -318,12 +330,20 @@ def create_app(config, store=None):
             return JSONResponse({"error": "Archive unavailable"}, 503)
 
     async def models(request):
+        try:
+            names = dict.fromkeys([
+                *(m for m in MODELS if not MODELS[m].forbidden),
+                *(f"{a}/{f}" for a, f in ROUTES),
+                *_adaptive_model_aliases(),
+            ])
+        except SubLLMError as error:
+            return _adaptive_policy_error(error)
         return JSONResponse(
             {
                 "object": "list",
                 "data": [
                     {"id": name, "object": "model", "owned_by": "subllm"}
-                    for name in [*(m for m in MODELS if not MODELS[m].forbidden), *(f"{a}/{f}" for a, f in ROUTES)]
+                    for name in names
                 ],
             }
         )
@@ -344,10 +364,14 @@ def create_app(config, store=None):
             ):
                 raise ValueError("Expected model, messages, optional stream and response_format")
             model = payload["model"]
-            if model not in MODELS and model not in {f"{a}/{f}" for a, f in ROUTES}:
+            named_route = model in {f"{a}/{f}" for a, f in ROUTES}
+            adaptive_alias = model not in MODELS and not named_route and model in _adaptive_model_aliases()
+            if model not in MODELS and not named_route and not adaptive_alias:
                 raise ValueError("Model or route is not registered")
-            if "response_format" in payload and model in MODELS:
+            if "response_format" in payload and (model in MODELS or adaptive_alias):
                 raise ValueError("response_format requires a named application/function route")
+        except SubLLMError as error:
+            return _adaptive_policy_error(error)
         except (ValueError, UnicodeDecodeError):
             return JSONResponse({"error": "Invalid request or unsupported generation parameter"}, 400)
 
@@ -360,7 +384,7 @@ def create_app(config, store=None):
             started = time.monotonic()
             capture = ACTIVE_ARCHIVE.set((store, record))
             try:
-                if model in MODELS:
+                if model in MODELS or adaptive_alias:
                     response = _complete_model_direct(
                         model,
                         payload["messages"],
