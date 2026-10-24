@@ -57,7 +57,7 @@ def run(config, requested, invoke, routes, **kwargs):
     )
 
 
-def test_quota_probes_all_remaining_classes_and_prioritizes_success(config):
+def test_quota_fails_over_without_probing_other_classes(config):
     routes = [route("a", "pro-a"), route("b", "pro-b", 2), route("c", "small"), route("d", "auto")]
     calls = []
 
@@ -69,7 +69,7 @@ def test_quota_probes_all_remaining_classes_and_prioritizes_success(config):
 
     result = run(config, "pro-a", invoke, routes)
     assert result.provider == "b"
-    assert [m for m, prompt, _ in calls if "Availability test" in prompt] == ["pro-b", "small", "auto"]
+    assert not [m for m, prompt, _ in calls if "Availability test" in prompt]
     assert [m for m, prompt, _ in calls if prompt == "private task"] == ["pro-a", "pro-b"]
     assert all(0 < limit <= 30 for _, _, limit in calls)
     calls.clear()
@@ -225,9 +225,9 @@ def test_successful_answer_mentioning_limits_is_not_quota():
     assert quota_failure(b'{"type":"result","is_error":true,"api_error_status":429}')
 
 
-def test_measured_latency_updates_alternative_priority(config):
+def test_measured_latency_does_not_override_declared_priority(config):
     a, b = route("a", "pro-a", 1), route("b", "pro-b", 99)
     adaptive._save(config, a, "text", "ok", 80)
     adaptive._save(config, b, "text", "ok", 6)
     result = run(config, "external/pro", lambda r, *a, **k: CompletionResponse("ok", r.provider, r.model), [a, b])
-    assert result.provider == "b"
+    assert result.provider == "a"

@@ -1,0 +1,79 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-127",
+  "summary": "Use cached API availability and priority-first bounded failover",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-127/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/adaptive.py",
+    "tests/test_adaptive.py",
+    "tests/test_adaptive_priority_cache.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "1063f23071c7d1a7467f961e40e852e6c2bfee31",
+    "targetBranch": "main",
+    "outcome": "Use first successful class-compatible API in declared priority order; share cached account failure cooldowns, avoid request-time availability sweeps and return one explicit exhausted-chain error.",
+    "nonGoals": [
+      "No credentials, global provider policy, new API spending/model downloads, billing calls, class/format downgrade, unrelated primary patch or independent review changes.",
+      "No active availability sweeps on normal completion; preserve declared time/attempt bounds and opt-in helper compatibility."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse health.py provider state and policy_config execution thresholds in adaptive execution; keep compatible-class requirements, promote configured priority ahead of observed latency, and fail over on the actual request without speculative probe calls.",
+      "components": [
+        {
+          "name": "adaptive provider selection",
+          "paths": [
+            "src/subllm/adaptive.py",
+            "tests/test_adaptive.py",
+            "tests/test_adaptive_priority_cache.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of adaptive execution only; existing shared health/SQLite layouts remain unchanged."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_adaptive.py tests/test_adaptive_priority_cache.py tests/test_health.py",
+          "python -m pytest -q tests scripts/tests",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "Reproduce sweep/priority defects before fix; demonstrate cached no-credit skip, different-model same-account skip, cross-process reuse/expiry, class and format boundaries, bounded all-exhausted error; native protected OneDev and independent exact-head review."
+      }
+    ]
+  }
+}
