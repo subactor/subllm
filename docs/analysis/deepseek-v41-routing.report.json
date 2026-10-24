@@ -1,0 +1,139 @@
+{
+  "schema": "wellmanifest.report/manifest/v1",
+  "id": "deepseek-v41-routing",
+  "version": 1,
+  "title": "DeepSeek V4.1 routing and backlog audit",
+  "owner": "subactor/subllm",
+  "kind": "analysis",
+  "created": "2026-10-24",
+  "updated": "2026-10-24",
+  "review_after": "2026-10-25",
+  "status": "final",
+  "authority": "none",
+  "document": {
+    "path": "docs/analysis/deepseek-v41-routing.md",
+    "index_path": "docs/README.md",
+    "sha256": "02eceb43b9f0db31b04cdd586e892db325bcc2cac5571a5ba20f353a0fd724aa"
+  },
+  "scope": {
+    "repositories": [
+      "subactor/subllm"
+    ],
+    "subjects": [
+      {
+        "id": "subllm-source",
+        "repository": "subactor/subllm",
+        "revision": "a367cf701de4b7aa758f47029a9cdfe94ca7ed88"
+      }
+    ],
+    "exclusions": [
+      "No authenticated DeepSeek latency benchmark, fleet deployment or independent review claim."
+    ]
+  },
+  "coverage": {
+    "state": "complete",
+    "unit": "previously open GitHub issues inspected",
+    "expected": 9,
+    "observed": 9
+  },
+  "assessment": "incomplete",
+  "findings": [
+    {
+      "id": "task-dependent-cost",
+      "kind": "fact",
+      "text": "Cheapest endpoint depends on model snapshot and input/output/cache token mix.",
+      "evidence_ids": [
+        "alias",
+        "snapshot",
+        "quotes"
+      ]
+    },
+    {
+      "id": "unknown-latency",
+      "kind": "fact",
+      "text": "All recent latency and throughput fields in these observations were null.",
+      "evidence_ids": [
+        "alias",
+        "snapshot"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "alias",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:d6afe09e18bed3896e41eff1c60d59bf62612547c38a3128cea1d98aa2fa96f3",
+      "sha256": "d6afe09e18bed3896e41eff1c60d59bf62612547c38a3128cea1d98aa2fa96f3"
+    },
+    {
+      "id": "snapshot",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:4e7c1a4f39fd1cb59302d75565b590fd74fc4d64844bfcfb308a24a7513f31a6",
+      "sha256": "4e7c1a4f39fd1cb59302d75565b590fd74fc4d64844bfcfb308a24a7513f31a6"
+    },
+    {
+      "id": "quotes",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:178a14cfd9f9475ead295aaa2e49687783104c4055b67dad3b4fc1510c5e631c",
+      "sha256": "178a14cfd9f9475ead295aaa2e49687783104c4055b67dad3b4fc1510c5e631c"
+    },
+    {
+      "id": "quote-assertions",
+      "kind": "test",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:4eec6312eaefd207543278bda73a4a80ac9383d64e5430983af1689f28e75d7a",
+      "sha256": "4eec6312eaefd207543278bda73a4a80ac9383d64e5430983af1689f28e75d7a"
+    },
+    {
+      "id": "redaction",
+      "kind": "redaction",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:c3726b1ca143fde2f17cfc03c513ee1ce2adcc40aae1c29db426d7f53f6b8b1a",
+      "sha256": "c3726b1ca143fde2f17cfc03c513ee1ce2adcc40aae1c29db426d7f53f6b8b1a"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Public endpoint comparison",
+      "subject_id": "subllm-source",
+      "result": "PASS",
+      "reason": "Observed exact-model public metadata and computed task-dependent text quotes.",
+      "evidence_ids": [
+        "quote-assertions"
+      ]
+    },
+    {
+      "name": "Authenticated DeepSeek TTFT",
+      "subject_id": "subllm-source",
+      "result": "NOT_RUN",
+      "reason": "Prior OpenRouter account attempt returned HTTP402; no paid endpoint sweep or cooldown reset.",
+      "evidence_ids": []
+    }
+  ],
+  "limitations": [
+    "Public inventory is distinct from account access and successful inference.",
+    "Remaining consumer adoption criteria keep the backlog assessment incomplete."
+  ],
+  "next_actions": [
+    {
+      "description": "Measure same-snapshot streaming TTFT, throughput, errors and billed tokens with a capped benchmark.",
+      "owner": "subactor/subllm",
+      "resume_when": "Existing account access is healthy and normal cached cooldown permits requests."
+    }
+  ],
+  "redaction": {
+    "state": "checked",
+    "evidence_ids": [
+      "redaction"
+    ]
+  },
+  "publication": {
+    "state": "local",
+    "revision": null,
+    "pull_request": null,
+    "evidence_ids": []
+  }
+}
