@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import hashlib
+import json
 import os
 import re
 import tomllib
@@ -70,6 +72,8 @@ class RuntimePolicyConfig:
     execution: ExecutionPolicyConfig
     custom_providers: Mapping[str, CustomProviderConfig] = field(default_factory=lambda: MappingProxyType({}))
     source: Path | None = None
+    source_role: str = "packaged-defaults"
+    source_sha256: str | None = None
 
 
 _DEFAULTS = MappingProxyType(
@@ -248,34 +252,45 @@ def find_policy_file(
     *,
     environ: Mapping[str, str] | None = None,
     cwd: Path | None = None,
+    scope_root: Path | None = None,
+    defaults_only: bool = False,
 ) -> Path | None:
     environment = os.environ if environ is None else environ
-    try:
-        working_directory = (cwd or Path.cwd()).resolve()
-    except Exception:
-        working_directory = (cwd or Path.home()).resolve()
+    if type(defaults_only) is not bool:
+        raise InvalidPolicyError("defaults_only must be boolean")
+    if defaults_only:
+        return None
+    working_directory = (cwd or Path.cwd()).absolute()
+    _no_policy_symlinks(working_directory)
+    if scope_root is not None:
+        scope_root = Path(scope_root).absolute()
+        _no_policy_symlinks(scope_root)
+        if not working_directory.is_relative_to(scope_root):
+            raise InvalidPolicyError("policy discovery scope must contain cwd")
     configured = environment.get(SUBLLM_POLICY_FILE, "").strip()
     if configured:
         path = Path(configured).expanduser()
         if not path.is_absolute():
             path = working_directory / path
-        return path.absolute()
-
-    repository_policy = working_directory / "subllm.toml"
-    if repository_policy.is_file():
-        return repository_policy
-
+        _no_policy_symlinks(path, allow_parent=True)
+        return Path(os.path.abspath(path))
+    if scope_root is None:
+        scope_root = next((p for p in (working_directory, *working_directory.parents)
+                           if (p / ".git").exists() or (p / "pyproject.toml").is_file()
+                           or (p / "package.json").is_file()), working_directory)
     for root in (working_directory, *working_directory.parents):
-        candidates = [
-            root / "subllm" / "subllm.toml",
-            root / "subactor" / "subllm" / "subllm.toml",
-        ]
-        if root.name == "subllm":
-            candidates.insert(0, root / "subllm.toml")
-        for candidate in candidates:
-            if candidate.is_file():
-                return candidate
+        candidate = root / "subllm.toml"
+        if candidate.is_symlink() or candidate.is_file():
+            _no_policy_symlinks(candidate)
+            return candidate
+        if root == scope_root:
+            break
     return None
+
+
+def _no_policy_symlinks(path: Path, *, allow_parent: bool = False) -> None:
+    if (not allow_parent and ".." in path.parts) or any(p.is_symlink() for p in (path, *path.parents)):
+        raise InvalidPolicyError("policy discovery rejects symlink redirection and parent escapes")
 
 
 def _validate_provider(name: str, raw: object, *, source: Path) -> ProviderPolicyConfig:
@@ -507,8 +522,10 @@ def load_policy_config(
     *,
     environ: Mapping[str, str] | None = None,
     cwd: Path | None = None,
+    scope_root: Path | None = None,
+    defaults_only: bool = False,
 ) -> RuntimePolicyConfig:
-    source = find_policy_file(environ=environ, cwd=cwd)
+    source = find_policy_file(environ=environ, cwd=cwd, scope_root=scope_root, defaults_only=defaults_only)
     if source is None:
         clear_custom_providers()
         return RuntimePolicyConfig(
@@ -516,13 +533,18 @@ def load_policy_config(
             applications=_APPLICATION_DEFAULTS,
             execution=_execution_with_environment(_EXECUTION_DEFAULTS, environ),
             custom_providers=MappingProxyType({}),
+            source_sha256=hashlib.sha256(json.dumps({
+                "providers": {k: asdict(v) for k, v in _DEFAULTS.items()},
+                "applications": {k: asdict(v) for k, v in _APPLICATION_DEFAULTS.items()},
+                "execution": asdict(_EXECUTION_DEFAULTS),
+            }, sort_keys=True).encode()).hexdigest(),
         )
     try:
-        with source.open("rb") as handle:
-            raw = tomllib.load(handle)
+        source_bytes = source.read_bytes()
+        raw = tomllib.loads(source_bytes.decode("utf-8"))
     except FileNotFoundError as exc:
         raise InvalidPolicyError(f"SubLLM policy file does not exist: {source}") from exc
-    except (OSError, tomllib.TOMLDecodeError) as exc:
+    except (OSError, UnicodeError, tomllib.TOMLDecodeError) as exc:
         raise InvalidPolicyError(f"cannot read SubLLM policy file: {source}") from exc
     schema_version = raw.get("schema_version")
     expected_keys = {"schema_version", "providers", "applications"}
@@ -585,4 +607,7 @@ def load_policy_config(
         execution=_execution_with_environment(execution, environ),
         custom_providers=MappingProxyType(custom_providers),
         source=source,
+        source_role=("explicit-operator" if (os.environ if environ is None else environ).get(SUBLLM_POLICY_FILE)
+                     else "declared-shared-scope" if scope_root is not None else "project"),
+        source_sha256=hashlib.sha256(source_bytes).hexdigest(),
     )

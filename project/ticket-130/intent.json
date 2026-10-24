@@ -1,0 +1,80 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-130",
+  "summary": "Fix GitHub issue128 with project-bounded policy discovery, explicit shared roots and defaults-only SDK fixtures.",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-130/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy_config.py",
+    "tests/test_policy_config.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "a367cf701de4b7aa758f47029a9cdfe94ca7ed88",
+    "targetBranch": "main",
+    "outcome": "Fix GitHub issue128 with project-bounded policy discovery, explicit shared roots and defaults-only SDK fixtures. Publish through protected OneDev and independent Validator.",
+    "nonGoals": [
+      "No shared credentials, billing purchases, runtime deployment, historical cleanup or review-policy changes."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 120,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Fix GitHub issue128 with project-bounded policy discovery, explicit shared roots and defaults-only SDK fixtures.",
+      "components": [
+        {
+          "name": "discovery",
+          "paths": [
+            "src/subllm/policy_config.py",
+            "tests/test_policy_config.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Explicit optional SDK configuration and provenance"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of this bounded change; retain shared operator configuration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python scripts/check-docs-report.py",
+          "python -m pytest -q tests scripts/tests",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "Native Wellman local gates, then exact-head OneDev and independent protected Validator."
+      }
+    ]
+  }
+}
