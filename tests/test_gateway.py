@@ -223,14 +223,14 @@ def test_attempt_capture_keeps_failover_reason_and_response(setup):
     route = SimpleNamespace(
         wire_model="glm", provider="zai", application="subactor-proxy", function="chat", model_parameters={}
     )
-    token = ACTIVE_ARCHIVE.set((store, parent))
+    capture = ACTIVE_ARCHIVE.set((store, parent))
     try:
         attempt = begin_attempt(route, [{"role": "user", "content": "prompt"}], None)
         error = _RetryableAttemptError("not public", outcome="http_429")
         error.private_exchange = {"response": {"error": {"message": "quota exceeded"}}}
         finish_attempt(attempt, route, None, error, 77)
     finally:
-        ACTIVE_ARCHIVE.reset(token)
+        ACTIVE_ARCHIVE.reset(capture)
     record = store.query(parent["day"], attempt[1]["id"])
     assert record["diagnostic"]["httpStatus"] == 429
     assert record["diagnostic"]["code"] == "SUBLLM-UPSTREAM-LIMIT"
@@ -308,3 +308,110 @@ def test_stream_output_and_unsupported_parameters(setup, monkeypatch):
         assert "data: [DONE]" in r.text and '"content": "done"' in r.text
         assert client.post("/v1/chat/completions", headers=auth(), json={**payload, "tools": []}).status_code == 400
         assert client.post("/v1/chat/completions", headers=auth(OTHER), json=payload).status_code == 403
+
+
+@pytest.fixture
+def adaptive_alias_policy(tmp_path, monkeypatch):
+    path = tmp_path / "adaptive-aliases.json"
+    path.write_text(json.dumps({
+        "classes": {"strong": ["glm-5.3"]},
+        "aliases": {"required-pro": "strong", "vendor/required-pro": "strong"},
+    }))
+    monkeypatch.setenv("SUBLLM_ADAPTIVE_POLICY", str(path))
+    return path
+
+
+@pytest.mark.parametrize("alias", ["required-pro", "vendor/required-pro"])
+def test_configured_adaptive_alias_reaches_direct_dispatcher(setup, adaptive_alias_policy, monkeypatch, alias):
+    calls = []
+
+    def invoke(model, *args, **kwargs):
+        calls.append(model)
+        return CompletionResponse("ok", "zai", "glm-5.3", {}, "stop")
+
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", invoke)
+    with TestClient(create_app(*setup)) as client:
+        response = client.post("/v1/chat/completions", headers=auth(), json={
+            "model": alias, "messages": [{"role": "user", "content": "owned alias test"}],
+        })
+    assert response.status_code == 200
+    assert response.json()["model"] == "glm-5.3"
+    assert calls == [alias]
+
+
+def test_alias_catalog_deduplicates_registered_routes(setup, adaptive_alias_policy):
+    from subllm.gateway import ROUTES
+
+    route = "/".join(next(iter(ROUTES)))
+    policy = json.loads(adaptive_alias_policy.read_text())
+    policy["aliases"][route] = "strong"
+    adaptive_alias_policy.write_text(json.dumps(policy))
+    with TestClient(create_app(*setup)) as client:
+        response = client.get("/v1/models", headers=auth())
+    ids = [item["id"] for item in response.json()["data"]]
+    assert "required-pro" in ids and "vendor/required-pro" in ids
+    assert ids.count(route) == 1
+
+
+def test_registered_route_precedes_colliding_alias(setup, adaptive_alias_policy, monkeypatch):
+    from subllm.gateway import ROUTES
+
+    application, function = next(iter(ROUTES))
+    route = f"{application}/{function}"
+    policy = json.loads(adaptive_alias_policy.read_text())
+    policy["aliases"][route] = "strong"
+    adaptive_alias_policy.write_text(json.dumps(policy))
+    calls = []
+
+    def invoke(app, fn, *args, **kwargs):
+        calls.append((app, fn))
+        return CompletionResponse("ok", "zai", "glm-5.3", {}, "stop")
+
+    monkeypatch.setattr("subllm.gateway.complete", invoke)
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("route overridden"))
+    with TestClient(create_app(*setup)) as client:
+        response = client.post("/v1/chat/completions", headers=auth(), json={
+            "model": route, "messages": [{"role": "user", "content": "owned route test"}],
+        })
+    assert response.status_code == 200
+    assert calls == [(application, function)]
+
+
+@pytest.mark.parametrize("model,extra", [
+    ("unknown-pro", {}),
+    ("required-pro", {"response_format": {"type": "json_object"}}),
+])
+def test_unknown_alias_or_model_only_format_never_dispatches(setup, adaptive_alias_policy, monkeypatch, model, extra):
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("invalid dispatch"))
+    with TestClient(create_app(*setup)) as client:
+        response = client.post("/v1/chat/completions", headers=auth(), json={
+            "model": model, "messages": [{"role": "user", "content": "owned negative test"}], **extra,
+        })
+    assert response.status_code == 400
+
+
+def test_alias_requires_configured_policy(setup, monkeypatch):
+    monkeypatch.delenv("SUBLLM_ADAPTIVE_POLICY", raising=False)
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("unconfigured dispatch"))
+    with TestClient(create_app(*setup)) as client:
+        response = client.post("/v1/chat/completions", headers=auth(), json={
+            "model": "required-pro", "messages": [{"role": "user", "content": "owned missing-policy test"}],
+        })
+    assert response.status_code == 400
+
+
+def test_invalid_alias_policy_returns_structured_error(setup, adaptive_alias_policy, monkeypatch):
+    adaptive_alias_policy.write_text("invalid private configuration")
+    monkeypatch.setattr(
+        "subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("invalid policy dispatch")
+    )
+    with TestClient(create_app(*setup)) as client:
+        for response in [
+            client.get("/v1/models", headers=auth()),
+            client.post("/v1/chat/completions", headers=auth(), json={
+                "model": "required-pro", "messages": [{"role": "user", "content": "owned invalid-policy test"}],
+            }),
+        ]:
+            assert response.status_code == 503
+            assert response.json()["error"]["code"] == "SUBLLM-ADAPTIVE-POLICY"
+            assert "private configuration" not in response.text

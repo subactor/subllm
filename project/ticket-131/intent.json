@@ -1,0 +1,79 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-131",
+  "summary": "Accept explicitly declared adaptive aliases consistently at the authenticated gateway",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-131/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/gateway.py",
+    "tests/test_gateway.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "859b89abab0bae5acd396910165059a47a00c402",
+    "targetBranch": "main",
+    "outcome": "Expose and execute exactly operator-configured adaptive model aliases through existing bounded priority/cache logic, while preserving registered route precedence and format constraints.",
+    "nonGoals": [
+      "No provider/credential changes, paid inference, new dependencies, model-class downgrade, existing runtime140 deployment changes or edits to other writers.",
+      "Do not change direct-model response_format policy or named application/function semantics."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Gateway resolves exact aliases from the existing validated adaptive policy and forwards them through its existing direct model dispatcher; reuse established validation/cache/class logic and structured policy errors.",
+      "components": [
+        {
+          "name": "authenticated gateway alias boundary",
+          "paths": [
+            "src/subllm/gateway.py",
+            "tests/test_gateway.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Existing model catalog and completion endpoint recognize explicitly declared adaptive alias IDs."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of gateway alias recognition; no persistent data migration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_gateway.py tests/test_adaptive.py tests/test_adaptive_priority_cache.py tests/test_health.py",
+          "bash project/governance-check.sh",
+          "sh scripts/verify",
+          "owned loopback real HTTP failover/restart/alias verification"
+        ],
+        "evidence": "Reproduce alias rejection before editing; exercise declared/unknown/invalid aliases, catalog deduplication, named-route precedence, format restrictions, actual HTTP credit failover/cache across a fresh process and zero transport on cached exhaustion. Independent exact-head OneDev/Validator publication."
+      }
+    ]
+  }
+}
