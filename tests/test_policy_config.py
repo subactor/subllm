@@ -261,7 +261,7 @@ def test_repository_policy_file_is_discovered() -> None:
 
 
 def test_builtin_policy_matches_repository_zai_glm53_default(tmp_path: Path) -> None:
-    policy = load_policy_config(environ={}, cwd=tmp_path)
+    policy = load_policy_config(environ={}, cwd=tmp_path, defaults_only=True)
 
     assert policy.source is None
     assert policy.providers["zai"].priority == 0
@@ -555,4 +555,56 @@ def test_resolve_attempt_timeout_hierarchy() -> None:
         "SUBLLM_TIMEOUT_AGY_GEMINI_3_8_FLASH": "75",
     }
     assert resolve_attempt_timeout("agy", "gemini-3.8-flash", environ=env) == 75.0
+
+
+def test_project_scratch_does_not_inherit_a_sibling_policy(tmp_path):
+    workspace = tmp_path / "workspace"
+    sibling = workspace / "subllm"
+    sibling.mkdir(parents=True)
+    (sibling / "subllm.toml").write_text('schema_version = "incompatible"\n')
+    project = workspace / "onedev-agent"
+    (project / ".git").mkdir(parents=True)
+    scratch = project / ".subactor" / "cache" / "fixture"
+    scratch.mkdir(parents=True)
+    assert find_policy_file(environ={}, cwd=scratch) is None
+    assert load_policy_config(environ={}, cwd=scratch).source is None
+
+
+def test_explicit_shared_root_and_operator_binding_have_bounded_provenance(tmp_path):
+    import hashlib
+
+    workspace = tmp_path / "workspace"
+    child = workspace / "child"
+    (child / ".git").mkdir(parents=True)
+    policy = workspace / "subllm.toml"
+    policy.write_text((Path(__file__).resolve().parents[1] / "subllm.toml").read_text())
+    assert find_policy_file(environ={}, cwd=child) is None
+    selected = load_policy_config(environ={}, cwd=child, scope_root=workspace)
+    assert selected.source == policy
+    assert selected.source_role == "declared-shared-scope"
+    assert selected.source_sha256 == hashlib.sha256(policy.read_bytes()).hexdigest()
+    explicit = load_policy_config(environ={"SUBLLM_POLICY_FILE": str(policy)}, cwd=child)
+    assert explicit.source_role == "explicit-operator"
+    assert explicit.source_sha256 == selected.source_sha256
+    relative = load_policy_config(environ={"SUBLLM_POLICY_FILE": "../subllm.toml"}, cwd=child)
+    assert relative.source == policy
+    assert relative.source_role == "explicit-operator"
+    defaults = load_policy_config(environ={"SUBLLM_POLICY_FILE": str(policy)}, cwd=child, defaults_only=True)
+    assert defaults.source is None
+    assert defaults.source_role == "packaged-defaults"
+    assert len(defaults.source_sha256) == 64
+
+
+def test_discovery_rejects_scope_escape_symlinks_and_invalid_operator_policy(tmp_path):
+    project = tmp_path / "repo"
+    (project / ".git").mkdir(parents=True)
+    outside = tmp_path / "outside.toml"
+    outside.write_text('schema_version = "invalid"\n')
+    (project / "subllm.toml").symlink_to(outside)
+    with pytest.raises(InvalidPolicyError, match="symlink"):
+        find_policy_file(environ={}, cwd=project)
+    with pytest.raises(InvalidPolicyError, match="scope"):
+        find_policy_file(environ={}, cwd=project, scope_root=tmp_path / "other")
+    with pytest.raises(InvalidPolicyError):
+        load_policy_config(environ={"SUBLLM_POLICY_FILE": str(outside)}, cwd=project)
 
