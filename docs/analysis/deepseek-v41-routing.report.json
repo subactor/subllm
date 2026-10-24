@@ -13,7 +13,7 @@
   "document": {
     "path": "docs/analysis/deepseek-v41-routing.md",
     "index_path": "docs/README.md",
-    "sha256": "02eceb43b9f0db31b04cdd586e892db325bcc2cac5571a5ba20f353a0fd724aa"
+    "sha256": "7d55bc0fc60eca71e64558c3b9c831ee4a9bbef0d86ef8d92c814f1b4dcf66fb"
   },
   "scope": {
     "repositories": [
@@ -56,6 +56,15 @@
         "alias",
         "snapshot"
       ]
+    },
+    {
+      "id": "native-access",
+      "kind": "fact",
+      "text": "A bounded native DeepSeek request succeeded, while pinned Baidu calibration failed with HTTP403.",
+      "evidence_ids": [
+        "native-smoke",
+        "provider-failure"
+      ]
     }
   ],
   "evidence": [
@@ -91,8 +100,29 @@
       "id": "redaction",
       "kind": "redaction",
       "subject_id": "subllm-source",
-      "reference": "receipt:sha256:c3726b1ca143fde2f17cfc03c513ee1ce2adcc40aae1c29db426d7f53f6b8b1a",
-      "sha256": "c3726b1ca143fde2f17cfc03c513ee1ce2adcc40aae1c29db426d7f53f6b8b1a"
+      "reference": "receipt:sha256:2b508c6b6717aa79b92968e34a9649ee33f08daf2b57c03654f716f991a601f4",
+      "sha256": "2b508c6b6717aa79b92968e34a9649ee33f08daf2b57c03654f716f991a601f4"
+    },
+    {
+      "id": "native-smoke",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:419ec6a76db7c07ef3935e4eb94693388943630d402e8b61852ff268a61e2576",
+      "sha256": "419ec6a76db7c07ef3935e4eb94693388943630d402e8b61852ff268a61e2576"
+    },
+    {
+      "id": "provider-failure",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:35b77240fc37e502a6baac12569251e3e6481c3d2e59a5bd5cfb5308606ed3f2",
+      "sha256": "35b77240fc37e502a6baac12569251e3e6481c3d2e59a5bd5cfb5308606ed3f2"
+    },
+    {
+      "id": "completed-docs-issue",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:cc26098f6edcc94907da8bdb699af043506cc8e2bdc4944faa72eea2528a8ea4",
+      "sha256": "cc26098f6edcc94907da8bdb699af043506cc8e2bdc4944faa72eea2528a8ea4"
     }
   ],
   "checks": [
@@ -109,7 +139,7 @@
       "name": "Authenticated DeepSeek TTFT",
       "subject_id": "subllm-source",
       "result": "NOT_RUN",
-      "reason": "Prior OpenRouter account attempt returned HTTP402; no paid endpoint sweep or cooldown reset.",
+      "reason": "Native non-streaming request succeeded; pinned Baidu failed HTTP403. Streaming TTFT and repeated percentile calibration were not performed.",
       "evidence_ids": []
     }
   ],
@@ -121,7 +151,7 @@
     {
       "description": "Measure same-snapshot streaming TTFT, throughput, errors and billed tokens with a capped benchmark.",
       "owner": "subactor/subllm",
-      "resume_when": "Existing account access is healthy and normal cached cooldown permits requests."
+      "resume_when": "The chosen endpoint is permitted, native health permits requests and issue134 has an accepted bounded streaming measurement plan."
     }
   ],
   "redaction": {

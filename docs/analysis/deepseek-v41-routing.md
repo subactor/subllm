@@ -29,7 +29,8 @@ There is no single cheapest DeepSeek route for every task. Prompt-heavy work,
 generation-heavy work and cache-heavy work have different winners. The public
 OpenRouter inventory observed on 2026-10-24 around 19:01 UTC exposes prices but
 no recent latency or throughput measurements for these models. A price winner
-therefore cannot yet be called the fastest or available to this account.
+therefore cannot yet be called the fastest. A later native request succeeded,
+but a single-provider Baidu request failed with HTTP403.
 
 <!-- docs:section scope -->
 ## Scope and ownership
@@ -138,7 +139,7 @@ and old ticket status are not evidence of every consumer's runtime adoption.
 | [128](https://github.com/subactor/subllm/issues/128) | Reproduced sibling-policy inheritance; native ticket130 fixes it with provenance, explicit scope and defaults-only controls. | Exact-head protected publication of the repair. |
 | [124](https://github.com/subactor/subllm/issues/124) | Code-context/progress source delivered through PR125. | Correlated live consumer execution and host-scoped rollout. |
 | [84](https://github.com/subactor/subllm/issues/84) | Usage, MCP and PolicyBus transport source exists. | Verify remaining consumer adapters and actual telemetry delivery. |
-| [72](https://github.com/subactor/subllm/issues/72) | Docs/Report checks are invoked by `scripts/verify`; this new analysis requires its tracked Report sidecar. | Confirm complete protected coverage/canary before closing the wider issue. |
+| [72](https://github.com/subactor/subllm/issues/72) | Implemented checks and immutable-byte adoption repair are present in merged PR95; 17 focused canaries pass. | Closed as completed after comparing the original acceptance with source, entry point, index/sidecar checks and negative canaries. |
 | [71](https://github.com/subactor/subllm/issues/71) | Historical continuation references a legacy checkout. | Observe its owner, dirty state and unique history before any cleanup. |
 | [59](https://github.com/subactor/subllm/issues/59) | Versioned routing contract, CLI export and tests exist. | Verify exact consumer pins and live readback. |
 | [42](https://github.com/subactor/subllm/issues/42) | Multiple code-edit routes exist. | Actual executor access and funded fallback availability; catalog presence alone is insufficient. |
@@ -152,11 +153,29 @@ research. GitHub issue numbers and native ticket numbers are distinct.
 The preceding native availability audit received successful responses from
 Gemini 3.8 Flash, 3.6 Flash, 3.7 Flash Medium, 3.5 Flash Lite and 3.1 Pro High
 through agy, plus GPT-5.6 Sol/Luna through the installed Codex CLI. OpenRouter
-returned HTTP402, ZAI429 and the tested old Gemini2.5 routes404. These dated
-observations do not guarantee continued access. No account cooldown was reset,
+previously returned HTTP402, ZAI429 and the tested old Gemini2.5 routes404.
+A later native DeepSeek request succeeded without changing credentials. These
+dated observations do not guarantee continued access. No account cooldown was reset,
 credit purchased or shared provider configuration changed.
 
 <!-- docs:section hypotheses -->
+## Native access observation
+
+A native SDK request on 2026-10-24 returned `OK` in 1.909 seconds with
+34 prompt tokens, 12 completion tokens and reported cost USD0.0000044034.
+The request allowed only Baidu, Decart and Relace, capped output at 16 tokens
+and enforced prompt/output price caps of USD0.10/0.60 per million. The native
+non-streaming transport does not expose TTFT; no winning endpoint identity is
+inferred merely from its billed price.
+
+A subsequent calibration pinned only `baidu/fp8`. It failed in 0.804 seconds
+with HTTP403, confirmed by the correlated native attempt archive. The bounded
+benchmark stopped after that first error without retry, health reset or a
+weaker allowlist. This is not a measured successful Baidu latency or evidence
+that every OpenRouter route is unavailable. Failed-request billing was not
+verified. Issue [134](https://github.com/subactor/subllm/issues/134) retains the
+streaming TTFT and permitted-provider calibration acceptance.
+
 ## Scheduling and latency hypotheses
 
 Cache-heavy batch work may favor direct off-peak DeepSeek; output-heavy work
@@ -219,7 +238,7 @@ actual timeout boundary. Hard quote budgets and endpoint selection should use
 a fresh snapshot, then an explicit allowlist; an empty ranking must not weaken
 the budget or silently switch model.
 
-Before production selection, restore normal account availability and run a
+Before production selection, verify the chosen provider is permitted and run a
 small, capped streaming benchmark of the chosen same-snapshot candidates.
 Record region, quantization, errors, cache and billed cost. Reuse issues42/84
 for executor access/telemetry and issue24 for full catalog migration. Close
