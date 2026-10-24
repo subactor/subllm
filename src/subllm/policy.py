@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Iterator, Mapping, Sequence
 from dataclasses import replace
 from types import MappingProxyType
@@ -957,3 +958,22 @@ _ROUTE_VALUES = (
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})
+
+
+# Compatibility defaults remain available for the migration release. Catalog
+# selection is explicit, process-start only, and never inferred from a proposal.
+LEGACY_APPLICATION_IDS = frozenset(APPLICATIONS)
+CATALOG_DOCUMENT = None
+CATALOG_PROVIDER_DEFAULTS = None
+if os.environ.get("SUBLLM_CATALOG_FILE") or os.environ.get("SUBLLM_CATALOG_SHA256"):
+    from .catalog import load_catalog
+
+    _compiled_catalog = load_catalog(os.environ.get("SUBLLM_CATALOG_FILE", ""),
+                                     os.environ.get("SUBLLM_CATALOG_SHA256"),
+                                     adapters=_BASE_PROVIDERS, legacy_models=_BASE_MODELS)
+    PROVIDERS._base = _compiled_catalog.providers
+    MODELS._base = _compiled_catalog.models
+    APPLICATIONS = _compiled_catalog.applications
+    ROUTES = _compiled_catalog.routes
+    CATALOG_DOCUMENT = _compiled_catalog.canonical_json
+    CATALOG_PROVIDER_DEFAULTS = _compiled_catalog.provider_defaults

@@ -5,6 +5,7 @@ import shutil
 from collections.abc import Mapping
 from dataclasses import replace
 
+from .catalog import effective_digest
 from .cli_common import CLI_EXECUTABLES
 from .credential_env import credential_is_valid, merged_environment
 from .errors import (
@@ -177,7 +178,7 @@ def configured_routes(
         if key not in seen:
             unique.append(route)
             seen.add(key)
-    return tuple(unique)
+    return tuple(replace(route, policy_sha256=effective_digest(runtime_policy, route)) for route in unique)
 
 
 def configured_route(
