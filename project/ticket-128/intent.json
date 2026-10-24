@@ -1,0 +1,104 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-128",
+  "summary": "Add opt-in DeepSeek V4.1 catalog/route, strict OpenRouter cost/latency controls and deterministic task-cost quotes. Repair whitespace-only explicit-policy provenance discovered by independent review.",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-128/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/openrouter_routing.py",
+    "src/subllm/policy.py",
+    "src/subllm/proxy.py",
+    "src/subllm/resolver.py",
+    "tests/test_openrouter_routing.py",
+    "tests/test_policy.py",
+    "src/subllm/policy_config.py",
+    "tests/test_policy_config.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "859b89abab0bae5acd396910165059a47a00c402",
+    "targetBranch": "main",
+    "outcome": "Add opt-in DeepSeek V4.1 catalog/route, strict OpenRouter cost/latency controls and deterministic task-cost quotes. Repair whitespace-only explicit-policy provenance discovered by independent review. Publish through protected OneDev and independent Validator.",
+    "nonGoals": [
+      "No shared credentials, billing purchases, runtime deployment, historical cleanup or review-policy changes."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 120,
+    "budgets": {
+      "maxImplementationFiles": 8,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add opt-in DeepSeek V4.1 catalog/route, strict OpenRouter cost/latency controls and deterministic task-cost quotes.",
+      "components": [
+        {
+          "name": "feature",
+          "paths": [
+            "src/subllm/openrouter_routing.py",
+            "src/subllm/policy.py",
+            "src/subllm/proxy.py",
+            "src/subllm/resolver.py",
+            "tests/test_openrouter_routing.py",
+            "tests/test_policy.py"
+          ]
+        },
+        {
+          "name": "policy provenance repair",
+          "paths": [
+            "src/subllm/policy_config.py",
+            "tests/test_policy_config.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Explicit optional SDK configuration and provenance"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of this bounded change; retain shared operator configuration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python scripts/check-docs-report.py",
+          "python -m pytest -q tests scripts/tests",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "Native Wellman local gates, then exact-head OneDev and independent protected Validator."
+      },
+      {
+        "criterion": "AC-05",
+        "commands": [
+          "python -m pytest -q tests/test_policy_config.py"
+        ],
+        "evidence": "Whitespace-only selector keeps implicit project provenance; explicit padded path remains operator provenance."
+      }
+    ]
+  }
+}

@@ -166,6 +166,20 @@ _BASE_MODELS = MappingProxyType(
                 ),
             ),
         ),
+        "deepseek-v4.1-flash": ModelSpec(
+            id="deepseek-v4.1-flash",
+            providers=_provider_models(openrouter=ProviderModelSpec(
+                litellm_model="openrouter/deepseek/deepseek-v4.1-flash",
+                wire_model="deepseek/deepseek-v4.1-flash")),
+            vision=True,
+        ),
+        "deepseek-v4.1-flash-1017": ModelSpec(
+            id="deepseek-v4.1-flash-1017",
+            providers=_provider_models(openrouter=ProviderModelSpec(
+                litellm_model="openrouter/deepseek/deepseek-v4.1-flash-1017",
+                wire_model="deepseek/deepseek-v4.1-flash-1017")),
+            vision=True,
+        ),
         "deepseek-v4-pro": ModelSpec(
             id="deepseek-v4-pro",
             providers=_provider_models(
@@ -934,6 +948,9 @@ _ROUTE_VALUES = (
     RoutePolicy("supervisor", "delegation", _DEFAULT),
     RoutePolicy("supervisor", "review", _DEFAULT),
     RoutePolicy("subactor-proxy", "chat", _DEFAULT),
+    RoutePolicy("subactor-proxy", "deepseek-flash", (
+        RouteCandidate("openrouter", "deepseek-v4.1-flash"),
+    )),
     RoutePolicy("subactor-proxy", "completion", _DEFAULT),
     RoutePolicy("premesh", "chat", _DEFAULT),
     RoutePolicy("autogrammar-gillm", "invoke", _DEFAULT),
