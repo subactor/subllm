@@ -185,7 +185,7 @@ def test_interaction_context_captures_full_prompts_and_responses(tmp_path: Path)
 def test_query_usage_postgres_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dsn = default_postgres_dsn()
     if not dsn:
-        pytest.skip("Set SUBLLM_TEST_POSTGRES_DSN to an owned loopback usage_test_ database")
+        pytest.skip("PostgreSQL not reachable on local development port")
 
     store = InteractionStore(tmp_path / "archive", postgres_dsn=dsn)
     set_default_interaction_store(store)
