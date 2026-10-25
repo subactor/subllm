@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import builtins
 import os
 from pathlib import Path
 
@@ -44,6 +45,19 @@ def test_postgres_fixture_cannot_inherit_libpq_routing_or_credentials(monkeypatc
     assert default_postgres_dsn() == dsn
 
 
+def test_postgres_fixture_validation_does_not_require_optional_driver(monkeypatch: pytest.MonkeyPatch) -> None:
+    original_import = builtins.__import__
+
+    def without_postgres_driver(name, *args, **kwargs):
+        if name == "psycopg" or name.startswith("psycopg."):
+            raise ModuleNotFoundError("Optional PostgreSQL driver is unavailable")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", without_postgres_driver)
+    dsn = "postgresql://postgres@127.0.0.1:5432/usage_test_fixture"
+    assert _isolated_postgres_dsn({"SUBLLM_TEST_POSTGRES_DSN": dsn}) == dsn
+
+
 @pytest.mark.parametrize("dsn", [
     "postgresql://postgres@127.0.0.1:5432/shared",
     "postgresql://postgres@192.0.2.1:5432/usage_test_fixture",
@@ -51,6 +65,16 @@ def test_postgres_fixture_cannot_inherit_libpq_routing_or_credentials(monkeypatc
     "postgresql://postgres@127.0.0.1:5432/usage_test_",
     "host=127.0.0.1 hostaddr=192.0.2.1 dbname=usage_test_fixture",
     "host=127.0.0.1 dbname=usage_test_fixture service=operator",
+    "postgresql://postgres@127.0.0.1:5432/usage_test_fixture?host=192.0.2.1",
+    "postgresql://postgres@127.0.0.1:5432/usage_test_fixture?hostaddr=192.0.2.1",
+    "postgresql://postgres@127.0.0.1:5432/usage_test_fixture#operator",
+    "postgresql://postgres@127.0.0.1:99999/usage_test_fixture",
+    "postgresql://postgres@127.0.0.1:0/usage_test_fixture",
+    "postgresql://postgres@127.0.0.1:5432/usage_test_%2Fshared",
+    "postgresql://post\ngres@127.0.0.1:5432/usage_test_fixture",
+    "postgresql://operator@other@127.0.0.1:5432/usage_test_fixture",
+    r"postgresql://operator\@127.0.0.1:5432/usage_test_fixture",
+    "postgresql://post%gres@127.0.0.1:5432/usage_test_fixture",
     "not a database connection string",
 ])
 def test_postgres_fixture_rejects_unsafe_opt_in(dsn: str) -> None:

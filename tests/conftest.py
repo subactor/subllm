@@ -4,6 +4,7 @@ import os
 import re
 from collections.abc import Mapping
 from pathlib import Path
+from urllib.parse import unquote, urlsplit
 
 import pytest
 
@@ -11,27 +12,34 @@ from subllm import reset_provider_health
 
 
 def _isolated_postgres_dsn(environ: Mapping[str, str]) -> str | None:
-    """Only an explicit loopback test database may receive integration writes."""
+    """Accept a plain PostgreSQL URI without importing the optional driver."""
     dsn = environ.get("SUBLLM_TEST_POSTGRES_DSN", "").strip()
     if not dsn:
         return None
-    from psycopg import ProgrammingError
-    from psycopg.conninfo import conninfo_to_dict
-
-    try:
-        parameters = conninfo_to_dict(dsn)
-    except (ProgrammingError, ValueError):
-        raise pytest.UsageError(
-            "SUBLLM_TEST_POSTGRES_DSN must name an isolated loopback usage_test_ database"
-        ) from None
-    loopback = {"127.0.0.1", "::1"}
+    message = "SUBLLM_TEST_POSTGRES_DSN must be a plain PostgreSQL URI for an isolated loopback usage_test_ database"
     if (
-        parameters.get("host") not in loopback
-        or parameters.get("hostaddr", parameters.get("host")) not in loopback
-        or re.fullmatch(r"usage_test_[A-Za-z0-9_]+", parameters.get("dbname", "")) is None
-        or parameters.get("service")
+        not dsn.startswith(("postgresql://", "postgres://"))
+        or any(character.isspace() or ord(character) < 32 for character in dsn)
+        or "\\" in dsn
+        or re.search(r"%(?![0-9A-Fa-f]{2})", dsn)
     ):
-        raise pytest.UsageError("SUBLLM_TEST_POSTGRES_DSN must name an isolated loopback usage_test_ database")
+        raise pytest.UsageError(message)
+    try:
+        uri = urlsplit(dsn)
+        hostname = uri.hostname
+        port = uri.port
+    except ValueError:
+        raise pytest.UsageError(message) from None
+    if (
+        uri.scheme not in {"postgresql", "postgres"}
+        or hostname not in {"127.0.0.1", "::1"}
+        or port == 0
+        or uri.netloc.count("@") > 1
+        or re.fullmatch(r"/usage_test_[A-Za-z0-9_]+", unquote(uri.path)) is None
+        or "?" in dsn
+        or "#" in dsn
+    ):
+        raise pytest.UsageError(message)
     return dsn
 
 
