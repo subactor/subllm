@@ -1,0 +1,27 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-143",
+  "summary": "Default the agy provider to gemini-3.8-flash and align the encoded defaults",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-143/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy_config.py",
+    "subllm.toml",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

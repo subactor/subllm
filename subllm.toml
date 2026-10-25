@@ -24,7 +24,7 @@ max_attempts = 6
 # route. default_model is the logical model ID from src/subllm/policy.py.
 # Credential strategies (ADOPT wellmanifest policy-dsl / env-dsl):
 #   ZAI_API_KEY        → zai                    → glm-5.3
-#   GEMINI_API_KEY     → agy (gemini-sdk)       → gemini-3.1-pro-high
+#   GEMINI_API_KEY     → agy (gemini-sdk)       → gemini-3.8-flash
 #   OPENAI_API_KEY     → codex                  → gpt-5.6-sol
 #   ANTHROPIC_API_KEY  → claude                 → claude-opus-5
 #   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol
@@ -39,7 +39,7 @@ default_model = "glm-5.3"
 [providers.agy]
 enabled = true
 priority = 10
-default_model = "gemini-3.1-pro-high"
+default_model = "gemini-3.8-flash"
 
 [providers.codex-cli]
 enabled = true
