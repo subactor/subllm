@@ -1,10 +1,47 @@
 from __future__ import annotations
 
+import os
+import re
+from collections.abc import Mapping
 from pathlib import Path
 
 import pytest
 
 from subllm import reset_provider_health
+
+
+def _isolated_postgres_dsn(environ: Mapping[str, str]) -> str | None:
+    """Only an explicit loopback test database may receive integration writes."""
+    dsn = environ.get("SUBLLM_TEST_POSTGRES_DSN", "").strip()
+    if not dsn:
+        return None
+    from psycopg import ProgrammingError
+    from psycopg.conninfo import conninfo_to_dict
+
+    try:
+        parameters = conninfo_to_dict(dsn)
+    except (ProgrammingError, ValueError):
+        raise pytest.UsageError(
+            "SUBLLM_TEST_POSTGRES_DSN must name an isolated loopback usage_test_ database"
+        ) from None
+    loopback = {"127.0.0.1", "::1"}
+    if (
+        parameters.get("host") not in loopback
+        or parameters.get("hostaddr", parameters.get("host")) not in loopback
+        or re.fullmatch(r"usage_test_[A-Za-z0-9_]+", parameters.get("dbname", "")) is None
+        or parameters.get("service")
+    ):
+        raise pytest.UsageError("SUBLLM_TEST_POSTGRES_DSN must name an isolated loopback usage_test_ database")
+    return dsn
+
+
+def _isolate_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
+    dsn = _isolated_postgres_dsn(os.environ)
+    for name in ("SUBLLM_POSTGRES_DSN", "SUBLLM_DATABASE_URL", "SUBLLM_GATEWAY_DATABASE_URL"):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.setenv("SUBLLM_USE_LOCAL_POSTGRES", "0")
+    if dsn:
+        monkeypatch.setenv("SUBLLM_POSTGRES_DSN", dsn)
 
 
 @pytest.fixture(autouse=True)
@@ -14,6 +51,7 @@ def _isolate_provider_credentials(monkeypatch: pytest.MonkeyPatch, tmp_path) -> 
     credential_file.write_text("# No operator credentials in tests.\n", encoding="utf-8")
     credential_file.chmod(0o600)
     monkeypatch.setenv("SUBLLM_ENV_FILE", str(credential_file))
+    _isolate_postgres(monkeypatch)
     monkeypatch.setenv("SUBLLM_HEALTH_STATE_FILE", str(tmp_path / "provider-health.json"))
     monkeypatch.delenv("SUBLLM_PROVIDER_ORDER", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)

@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from conftest import _isolate_postgres, _isolated_postgres_dsn
 
 from subllm.client_types import CompletionResponse
 from subllm.interaction_context import begin_attempt, finish_attempt
@@ -14,6 +15,36 @@ from subllm.interaction_store import (
 from subllm.resolver import configured_route
 from subllm.types import ResolvedRoute
 from subllm.usage import query_interaction_detail, query_usage
+
+
+def test_postgres_fixture_does_not_inherit_application_database(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SUBLLM_TEST_POSTGRES_DSN", raising=False)
+    for name in ("SUBLLM_POSTGRES_DSN", "SUBLLM_DATABASE_URL", "SUBLLM_GATEWAY_DATABASE_URL"):
+        monkeypatch.setenv(name, "postgresql://operator@127.0.0.1:5432/shared")
+    monkeypatch.setenv("SUBLLM_USE_LOCAL_POSTGRES", "1")
+    _isolate_postgres(monkeypatch)
+    assert default_postgres_dsn() is None
+
+
+@pytest.mark.parametrize("host", ["127.0.0.1", "[::1]"])
+def test_postgres_fixture_accepts_explicit_loopback_test_database(host: str) -> None:
+    dsn = f"postgresql://postgres@{host}:5432/usage_test_fixture"
+    assert _isolated_postgres_dsn({"SUBLLM_TEST_POSTGRES_DSN": dsn}) == dsn
+
+
+@pytest.mark.parametrize("dsn", [
+    "postgresql://postgres@127.0.0.1:5432/shared",
+    "postgresql://postgres@192.0.2.1:5432/usage_test_fixture",
+    "postgresql://postgres@localhost:5432/usage_test_fixture",
+    "postgresql://postgres@127.0.0.1:5432/usage_test_",
+    "host=127.0.0.1 hostaddr=192.0.2.1 dbname=usage_test_fixture",
+    "host=127.0.0.1 dbname=usage_test_fixture service=operator",
+    "not a database connection string",
+])
+def test_postgres_fixture_rejects_unsafe_opt_in(dsn: str) -> None:
+    with pytest.raises(pytest.UsageError, match="isolated loopback usage_test_") as failure:
+        _isolated_postgres_dsn({"SUBLLM_TEST_POSTGRES_DSN": dsn})
+    assert dsn not in str(failure.value)
 
 
 def test_default_postgres_dsn_environment_precedence(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -118,7 +149,7 @@ def test_interaction_context_captures_full_prompts_and_responses(tmp_path: Path)
 def test_query_usage_postgres_integration(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
     dsn = default_postgres_dsn()
     if not dsn:
-        pytest.skip("PostgreSQL not reachable on local development port")
+        pytest.skip("Set SUBLLM_TEST_POSTGRES_DSN to an owned loopback usage_test_ database")
 
     store = InteractionStore(tmp_path / "archive", postgres_dsn=dsn)
     set_default_interaction_store(store)

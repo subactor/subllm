@@ -1,0 +1,100 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-146",
+  "summary": "Return service unavailable for transient usage ingestion storage failures",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-146/**",
+    "project/TICKETS.md",
+    "src/subllm/poa/http.py",
+    "tests/test_usage_mcp.py",
+    "tests/conftest.py",
+    "tests/test_postgres_interaction_store.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "093066ce8fdd5e25c65bb66b329c861e796e3374",
+    "targetBranch": "main",
+    "outcome": "Publish the existing USAGE-STORAGE-001 response as HTTP503 for failed usage ingestion through protected OneDev and independent Validator delivery. Require an explicitly opted-in isolated PostgreSQL fixture during validation instead of implicit shared runtime database access.",
+    "nonGoals": [
+      "No telemetry retries, provider replay, routing, credentials, dependencies or running service changes."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse the existing query storage-error classification in the HTTP command handler.",
+      "components": [
+        {
+          "name": "usage-http",
+          "paths": [
+            "src/subllm/poa/http.py",
+            "tests/test_usage_mcp.py"
+          ]
+        },
+        {
+          "name": "validation-fixture",
+          "paths": [
+            "tests/conftest.py",
+            "tests/test_postgres_interaction_store.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Existing usage-ingestion storage failure uses HTTP503 consistently with the usage-query endpoint."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the exact error-status fix through protected publication."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_usage_mcp.py"
+        ],
+        "evidence": "Isolated HTTP regression for failed storage, recovery, and unchanged malformed-input rejection."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "bash project/governance-check.sh",
+          "bash scripts/verify",
+          "git diff --check"
+        ],
+        "evidence": "Managed governance, stack validation and independent exact-head protected CI."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_postgres_interaction_store.py",
+          "SUBLLM_TEST_POSTGRES_DSN=<owned loopback usage_test_ fixture> ./scripts/verify"
+        ],
+        "evidence": "Unset test opt-in disables implicit local/shared application PostgreSQL; explicit malformed, remote and non-test targets fail before connecting; full suite exercises an owned disposable PostgreSQL fixture."
+      }
+    ]
+  }
+}

@@ -178,3 +178,56 @@ def test_http_ingest_mcp_and_rest_parity():
         server.shutdown()
         server.server_close()
         thread.join()
+
+
+def test_http_ingest_storage_failure_is_transient_and_explicit_recovery_works(monkeypatch, tmp_path):
+    invalid = tmp_path / "invalid.sqlite3"
+    invalid.write_text("not a SQLite database")
+    monkeypatch.setenv("SUBLLM_USAGE_DB", str(invalid))
+    bus = PolicyBus()
+    server = make_server("127.0.0.1", 0, bus)
+    thread = threading.Thread(target=server.serve_forever, daemon=True)
+    thread.start()
+    target = f"http://127.0.0.1:{server.server_port}/v1/commands"
+
+    def submit(payload):
+        return urlopen(
+            Request(target, data=json.dumps(payload).encode(), headers={"Content-Type": "application/json"}),
+            timeout=5,
+        )
+
+    try:
+        with pytest.raises(HTTPError) as failure:
+            submit(event())
+        assert failure.value.code == 503
+        assert json.load(failure.value) == {
+            "error": {
+                "code": "USAGE-STORAGE-001",
+                "message": "USAGE-STORAGE-001: Usage history is temporarily unavailable",
+            }
+        }
+        assert bus.store.events() == []
+        assert invalid.read_text() == "not a SQLite database"
+
+        healthy = tmp_path / "recovered.sqlite3"
+        monkeypatch.setenv("SUBLLM_USAGE_DB", str(healthy))
+        with submit(event()) as response:
+            assert response.status == 200
+            assert json.load(response) == {
+                "schema": "subllm.usage-ingest/v1", "accepted": True, "duplicate": False,
+            }
+        assert query_usage({})["summary"]["attempts"] == 1
+        assert len(bus.store.events()) == 1
+
+        malformed = event()
+        malformed["attempt"]["duration_ms"] = -1
+        with pytest.raises(HTTPError) as invalid_request:
+            submit(malformed)
+        assert invalid_request.value.code == 400
+        assert json.load(invalid_request.value)["error"]["code"] == "USAGE-EVENT-001"
+        assert query_usage({})["summary"]["attempts"] == 1
+        assert len(bus.store.events()) == 1
+    finally:
+        server.shutdown()
+        server.server_close()
+        thread.join()
