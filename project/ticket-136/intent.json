@@ -1,0 +1,94 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-136",
+  "summary": "Bound caller usage queries with explicit concurrent partition indexes",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-136/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/interaction_store.py",
+    "src/subllm/usage_indexes.py",
+    "tests/test_usage_indexes.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "62cb4c6995f07ccff66605e9a847cb33b4dbea84",
+    "targetBranch": "main",
+    "outcome": "Repair issue142 with caller-leading usage indexes, explicit bounded concurrent maintenance for existing PostgreSQL partitions, safe empty-new-partition indexes, protected source delivery and observed bounded additive migration/runtime readback on the existing local development archive.",
+    "nonGoals": [
+      "No provider/model policy, credentials, dependency or package-release changes. No destructive DDL, data deletion, arbitrary SQL, historical backfill on provider writes or query deadline increase. Preserve full-message search and exact aggregates."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 100,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Caller/kind/started-at/id expression indexes belong to the existing archive. First-use writes index only a newly created empty leaf. An explicit native module CLI observes existing leaves, pins a metadata-only plan and builds at most four indexes concurrently with lock/statement bounds. Existing conflicting/invalid indexes are preserved and reported. Plan/readback grant no publication authority.",
+      "components": [
+        {
+          "name": "usage-storage",
+          "paths": [
+            "src/subllm/interaction_store.py",
+            "src/subllm/usage_indexes.py"
+          ]
+        },
+        {
+          "name": "usage-index-regressions",
+          "paths": [
+            "tests/test_usage_indexes.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Explicit bounded usage-index maintenance module CLI"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "usage-storage",
+          "description": "Additive nonunique archive indexes; payloads and ownership remain unchanged. Existing local archive is migrated explicitly only after protected source publication and exact metadata-plan observation."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected source revert preserves existing query behavior and all data. Added nonunique indexes need no removal to roll back; any removal requires separate exact authority."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage_indexes.py",
+          "python -m pytest -q tests scripts/tests",
+          "python -m ruff check --no-respect-gitignore src tests integration",
+          "python -m build",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Real partitioned PostgreSQL large-message fixture, exact query/search/pagination parity, plan-index evidence, stale/conflicting-plan failures, bounded apply/no hot-path history and full protected checks; deployment/readback distinct from source publication."
+      }
+    ]
+  }
+}

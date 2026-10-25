@@ -116,10 +116,14 @@ class InteractionStore:
 
                     following = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                     table = "interactions_" + day.replace("-", "")
+                    existed = db.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0] is not None
                     db.execute(
                         f"CREATE TABLE IF NOT EXISTS {table} PARTITION OF interactions "
                         f"FOR VALUES FROM ('{day}') TO ('{following}')"
                     )
+                    if not existed:
+                        from .usage_indexes import create_empty_partition_index
+                        create_empty_partition_index(db, table)
                 if write:
                     db.execute(
                         "CREATE TABLE IF NOT EXISTS operational_events "
