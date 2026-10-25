@@ -1,0 +1,96 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-139",
+  "summary": "Avoid archive writer DDL deadlocks and SQLite contention; recover exact interrupted replacement",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-139/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/usage_indexes.py",
+    "tests/test_usage_indexes.py",
+    "src/subllm/interaction_store.py",
+    "tests/test_postgres_interaction_store.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "5cfda0744a815401d687af514484d99a8e809dcb",
+    "targetBranch": "main",
+    "outcome": "Resolve issue146 and its parent142: publish native writer metadata fast-path and exact-OID recovery for interrupted replacement52943, observe protected runtime promotion of pinned writers, then complete bounded migration/readback after changed prerequisites. Also repair the reproduced pre-existing SQLite local-thread contention without increasing its5s lock-wait budget.",
+    "nonGoals": [
+      "No DROP, rename, catalog validity mutation, unknown-object cleanup, automatic retry/recovery, provider-result or query-deadline change, credential access or unreviewed runtime deployment. Preserve original52892 and artifact52899; rebuilding exact invalid replacement52943 may replace its physical OID."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 110,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Native writers retain first-use advisory serialization, observe local relation metadata in the actual creation namespace, and run parent/partition/event-table or started-at-index DDL only when absent. This removes unnecessary recursive table/index locks while preserving first-use creation. Prove native writers complete during historical concurrent indexing. Add explicit database/OID/owner/definition/digest-pinned concurrent recovery of the deterministic invalid replacement, retaining original and known artifacts; refuse changed/healthy/constraint/active/extra-artifact targets. Keep30s defaults, opt-in120s cap,5000ms query deadline. Runtime changes require existing protected promotion, never direct edits to immutable packages. SQLite writes for the same inode share a weakly held process-local gate, with the existing5s busy budget shared between local queueing and SQLite lock acquisition; reads and interprocess file locks remain intact.",
+      "components": [
+        {
+          "name": "archive-storage",
+          "paths": [
+            "src/subllm/usage_indexes.py",
+            "src/subllm/interaction_store.py"
+          ]
+        },
+        {
+          "name": "storage-regressions",
+          "paths": [
+            "tests/test_usage_indexes.py",
+            "tests/test_postgres_interaction_store.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Explicit native replacement-recovery plan/apply operations"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "archive-storage",
+          "description": "Concurrent physical recovery of exact owned interrupted replacement52943, preserving logical index name/keys and original52892/artifact52899; native query deadline remains5000ms."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected source revert; known invalid/partial objects are preserved and reported, with no automatic drop or unknown-object change."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage_indexes.py",
+          "python tests/test_usage_indexes.py",
+          "python -m pytest -q tests scripts/tests",
+          "python -m ruff check --no-respect-gitignore src tests integration",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Unit tests without optional driver, genuine interrupted concurrent-build fixture and bounded recovery, old-OID/conflicting/constraint/healthy guards, full stack/protected exact-head source merge, then exact local recovery and all-partition query/index readback."
+      }
+    ]
+  }
+}

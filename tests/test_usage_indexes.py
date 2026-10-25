@@ -9,9 +9,11 @@ normal pytest suite runs the unit boundaries without requiring Docker.
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import sys
 import time
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
 from types import SimpleNamespace
@@ -250,6 +252,113 @@ def test_replacement_preserves_unowned_or_conflicting_artifacts(monkeypatch, cha
         indexes._replacement_context(Catalog(), name)
 
 
+@pytest.mark.parametrize('exists', [False, True])
+def test_native_writer_preserves_first_use_without_recurring_index_ddl(monkeypatch, tmp_path, exists):
+    from subllm.interaction_store import InteractionStore
+    calls = []
+    class Native:
+        def __enter__(self):
+            return self
+        def __exit__(self, *a):
+            pass
+        def execute(self, query, values=()):
+            calls.append(query)
+            if 'pg_class i JOIN pg_class t' in query:
+                return Result((1,) if exists else None)
+            return Result(('existing-partition',))
+    monkeypatch.setattr(sys.modules['psycopg'], 'connect', lambda *a, **kw: Native(), raising=False)
+    with InteractionStore(tmp_path, postgres_dsn='fixture').connect('2026-01-01', True):
+        pass
+    assert calls[0] == 'SELECT pg_advisory_xact_lock(861940)'
+    ddl = [q for q in calls if q.startswith('CREATE INDEX IF NOT EXISTS interaction_started')]
+    assert len(ddl) == (0 if exists else 1)
+
+
+def test_sqlite_writers_share_a_gate_across_store_instances(monkeypatch, tmp_path):
+    from subllm.interaction_store import InteractionStore
+    monkeypatch.setattr('subllm.interaction_store.utc_now', lambda: '2026-01-01T00:00:00.000Z')
+    def write(n):
+        return InteractionStore(tmp_path / 'private').begin(kind='llm', caller='fixture',
+                                                           target='fixture', request={'number': n})
+    with ThreadPoolExecutor(8) as pool:
+        records = list(pool.map(write, range(24)))
+    store = InteractionStore(tmp_path / 'private')
+    assert len(store.query('2026-01-01')) == len({r['id'] for r in records}) == 24
+    with store.connect('2026-01-01') as db:
+        summary = db.execute('SELECT count(*),min(sequence),max(sequence) FROM operational_events').fetchone()
+        assert summary == (24, 1, 24)
+
+
+def test_sqlite_local_queue_shares_the_existing_busy_budget(monkeypatch, tmp_path):
+    from subllm import interaction_store
+    path = tmp_path / 'fixture.sqlite3'
+    path.touch(mode=0o600)
+    clock = iter([0, 3])
+    monkeypatch.setattr(interaction_store.time, 'monotonic', lambda: next(clock))
+    with interaction_store._sqlite_write_slot(path, True) as remaining:
+        assert remaining == 2
+
+
+def _child_sqlite_write(directory):
+    from subllm.interaction_store import InteractionStore
+    with InteractionStore(Path(directory)).connect('2026-01-01', True) as db:
+        db.execute("INSERT INTO interactions VALUES('2026-01-01','child','{}')")
+
+
+@pytest.mark.parametrize('start_method', multiprocessing.get_all_start_methods())
+def test_sqlite_child_does_not_inherit_a_parent_thread_gate(tmp_path, start_method):
+    from subllm import interaction_store
+    directory = tmp_path / 'private'
+    directory.mkdir(mode=0o700)
+    path = directory / '2026-01-01.sqlite3'
+    path.touch(mode=0o600)
+    with interaction_store._sqlite_write_slot(path, True):
+        child = multiprocessing.get_context(start_method).Process(target=_child_sqlite_write, args=(str(directory),))
+        child.start()
+        child.join(8)
+        if child.is_alive():
+            child.terminate()
+            child.join(3)
+        assert child.exitcode == 0
+
+
+@pytest.mark.parametrize('change', ['oid', 'healthy', 'owner', 'constraint', 'leaf', 'definition', 'artifact'])
+def test_failed_replacement_recovery_is_exact_and_preserves_conflicts(monkeypatch, change):
+    target = {'index': indexes.index_name('public', 'interactions_20260101'), 'table_oid': 10, 'owner_oid': 20}
+    monkeypatch.setattr(indexes, '_replacement_inputs', lambda *a: (target, [{'oid': 12}]))
+    name = indexes._replacement_name(target, [{'oid': 12}])
+    found = [13, 10, False, True, 20, False]
+    for tag, position, value in [('healthy', 2, True), ('owner', 4, 21),
+                                 ('constraint', 5, True), ('leaf', 1, 11)]:
+        if change == tag:
+            found[position] = value
+    monkeypatch.setattr(indexes, '_index_rows', lambda *a: ([(name,)], None, None))
+    monkeypatch.setattr(indexes, '_definition_matches', lambda *a: change != 'definition')
+    class Metadata:
+        def execute(self, query, args=()):
+            return Result((int(change == 'artifact'),) if 'SELECT count(*)' in query else tuple(found))
+    with pytest.raises(InvalidPolicyError):
+        indexes.replacement_recovery_plan(Metadata(), target['index'], 11, [12], 14 if change == 'oid' else 13)
+
+
+def test_failed_replacement_recovery_never_retries_or_exports_deadlock_text(monkeypatch):
+    selected = {'sha256': 'a' * 64, 'target': {'namespace': 'public'},
+                'replacement': 'exact-replacement', 'statement_timeout_ms': 120000}
+    monkeypatch.setattr(indexes, 'replacement_recovery_plan', lambda *a, **kw: selected)
+    rebuilt = []
+    def fail(*a):
+        rebuilt.append(a)
+        raise DatabaseError('private transaction text', '40P01')
+    monkeypatch.setattr(indexes, '_reindex', fail)
+    with pytest.raises(InvalidPolicyError):
+        indexes.recover_replacement(Connection(), 'original', 11, [12], 13, 'b' * 64)
+    assert not rebuilt
+    receipt = indexes.recover_replacement(Connection(), 'original', 11, [12], 13, 'a' * 64)
+    assert len(rebuilt) == 1 and receipt['status'] == 'interrupted'
+    assert receipt['sqlstate'] == '40P01' and receipt['preserved_index_oid'] == 11
+    assert 'private' not in json.dumps(receipt)
+
+
 @pytest.mark.parametrize('field,value', [(1, False), (2, True), (3, False), (5, 5),
                                         (6, '0 0 0 0'), (9, '0 0 0 0'), (10, '0 0 0 0'),
                                         (8, ["document::jsonb->>'ca ll er'::text",
@@ -427,7 +536,10 @@ def verify_postgres():
                     break
                 time.sleep(.02)
             assert active, 'concurrent build did not reach the database'
-        with psycopg.connect(dsn, options='-c statement_timeout=1000') as fresh_writer:
+        from psycopg.conninfo import make_conninfo
+        native_writer = InteractionStore(Path('/unused-native-writer'),
+                                         postgres_dsn=make_conninfo(dsn, options='-c statement_timeout=1000'))
+        with native_writer.connect('2026-01-02', True) as fresh_writer:
             fresh_writer.execute("INSERT INTO interactions VALUES('2026-01-02','fixture-new-writer','{}')")
         writer.commit()
         task.join(35)
@@ -514,8 +626,21 @@ def verify_postgres():
                                                statement_timeout_ms=120000)
         with pytest.raises(InvalidPolicyError):
             indexes.replace(db, name, target['index_oid'], artifact_oids, replacement['sha256'])
-        result = indexes.replace(db, name, target['index_oid'], artifact_oids, replacement['sha256'],
-                                 statement_timeout_ms=120000)
+        with psycopg.connect(dsn) as blocker:
+            blocker.execute("INSERT INTO interactions VALUES('2026-01-06','held-replacement','{}')")
+            with (psycopg.connect(dsn, autocommit=True, options='-c statement_timeout=1000') as builder,
+                  pytest.raises(psycopg.errors.QueryCanceled)):
+                indexes.create_index(builder, 'public', 'interactions_20260106', concurrent=True,
+                                     name=replacement['replacement'])
+            blocker.rollback()
+        replacement_oid = db.execute('SELECT to_regclass(%s)::oid', (replacement['replacement'],)).fetchone()[0]
+        repair = indexes.replacement_recovery_plan(db, name, target['index_oid'], artifact_oids, replacement_oid,
+                                                  statement_timeout_ms=120000)
+        with pytest.raises(InvalidPolicyError):
+            indexes.recover_replacement(db, name, target['index_oid'], artifact_oids, replacement_oid,
+                                        repair['sha256'])
+        result = indexes.recover_replacement(db, name, target['index_oid'], artifact_oids, replacement_oid,
+                                             repair['sha256'], statement_timeout_ms=120000)
         assert result['status'] == 'completed' and result['preserved_objects_modified'] is False
         assert indexes._replacement_context(db, name) == (target, artifacts)
         assert db.execute('SELECT count(*),sum(length(document)) FROM interactions_20260106').fetchone() == snapshot
@@ -523,6 +648,9 @@ def verify_postgres():
         assert ready['leaves'][-1]['ready_index'] == replacement['replacement']
         with pytest.raises(InvalidPolicyError):
             indexes.replacement_plan(db, name, target['index_oid'], artifact_oids)
+        with pytest.raises(InvalidPolicyError):
+            indexes.replacement_recovery_plan(db, name, target['index_oid'], artifact_oids,
+                                              result['observed_oid'])
     large_ms = None
     if os.environ.get('SUBLLM_TEST_LARGE_INDEX') == '1':
         # One GiB of synthetic uncompressed documents exercises the opt-in
@@ -550,11 +678,20 @@ def verify_postgres():
         with pytest.raises(InvalidPolicyError):
             indexes.plan(db)
         assert db.execute('SELECT to_regclass(%s)', (name,)).fetchone()[0] is not None
+        db.execute('CREATE SCHEMA writer_scope')
+    # A public index with the same name must not suppress first-use creation
+    # in the writer's actual creation namespace.
+    from psycopg.conninfo import make_conninfo
+    scoped = InteractionStore(Path('/unused-scoped-writer'),
+                              postgres_dsn=make_conninfo(dsn, options='-c search_path=writer_scope,public'))
+    with scoped.connect('2026-01-01', True) as db:
+        assert db.execute("SELECT to_regclass('writer_scope.interaction_started')").fetchone()[0] is not None
     print(json.dumps({'status': 'passed', 'rows': 1500, 'payload_bytes': 65536,
                       'before_ms': round(before_ms, 3), 'after_ms': round(after_ms, 3),
                       'concurrent_writer': 'passed', 'query_parity': 'passed', 'caller_index_conditions': 3,
                       'invalid_index_recovery': 'passed', 'recovery_fixture_rows': 500,
                       'preserved_reindex_artifact_replacement': 'passed',
+                      'failed_replacement_recovery': 'passed', 'native_writer_namespace': 'passed',
                       'large_fixture_document_bytes': 1073741824 if large_ms is not None else None,
                       'large_index_ms': large_ms}))
 
