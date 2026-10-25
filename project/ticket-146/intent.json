@@ -24,7 +24,7 @@
   "conflictsWith": [],
   "integrationTicket": null,
   "delivery": {
-    "acceptedBaseSha": "093066ce8fdd5e25c65bb66b329c861e796e3374",
+    "acceptedBaseSha": "a6221087cff67437bb8ce1305472d530b014dd37",
     "targetBranch": "main",
     "outcome": "Publish the existing USAGE-STORAGE-001 response as HTTP503 for failed usage ingestion through protected OneDev and independent Validator delivery. Require an explicitly opted-in isolated PostgreSQL fixture during validation instead of implicit shared runtime database access.",
     "nonGoals": [

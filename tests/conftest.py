@@ -37,6 +37,9 @@ def _isolated_postgres_dsn(environ: Mapping[str, str]) -> str | None:
 
 def _isolate_postgres(monkeypatch: pytest.MonkeyPatch) -> None:
     dsn = _isolated_postgres_dsn(os.environ)
+    for name in tuple(os.environ):
+        if name.startswith("PG"):
+            monkeypatch.delenv(name)
     for name in ("SUBLLM_POSTGRES_DSN", "SUBLLM_DATABASE_URL", "SUBLLM_GATEWAY_DATABASE_URL"):
         monkeypatch.delenv(name, raising=False)
     monkeypatch.setenv("SUBLLM_USE_LOCAL_POSTGRES", "0")

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from pathlib import Path
 
 import pytest
@@ -30,6 +31,17 @@ def test_postgres_fixture_does_not_inherit_application_database(monkeypatch: pyt
 def test_postgres_fixture_accepts_explicit_loopback_test_database(host: str) -> None:
     dsn = f"postgresql://postgres@{host}:5432/usage_test_fixture"
     assert _isolated_postgres_dsn({"SUBLLM_TEST_POSTGRES_DSN": dsn}) == dsn
+
+
+def test_postgres_fixture_cannot_inherit_libpq_routing_or_credentials(monkeypatch: pytest.MonkeyPatch) -> None:
+    dsn = "postgresql://postgres@127.0.0.1:5432/usage_test_fixture"
+    monkeypatch.setenv("SUBLLM_TEST_POSTGRES_DSN", dsn)
+    inherited = {"PGHOSTADDR": "192.0.2.1", "PGSERVICE": "operator", "PGPASSFILE": "/operator/passwords"}
+    for name, value in inherited.items():
+        monkeypatch.setenv(name, value)
+    _isolate_postgres(monkeypatch)
+    assert not set(inherited).intersection(os.environ)
+    assert default_postgres_dsn() == dsn
 
 
 @pytest.mark.parametrize("dsn", [
