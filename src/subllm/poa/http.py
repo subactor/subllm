@@ -156,7 +156,7 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
                 self._json(200, self.bus.command(payload))
                 return
         except PoaContractError as exc:
-            self._error(400, exc.code, str(exc))
+            self._error(503 if exc.code == "USAGE-STORAGE-001" else 400, exc.code, str(exc))
             return
         except SubLLMError:
             self._error(422, "SUBLLM-POLICY-001", "policy request was rejected")
