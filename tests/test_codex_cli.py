@@ -22,22 +22,23 @@ def fake_codex(tmp_path, monkeypatch):
     return install
 
 
-def test_fixed_transport_no_credentials_or_checkout(fake_codex):
+@pytest.mark.parametrize("model", ["gpt-5.6-sol", "gpt-6-luna"])
+def test_fixed_transport_no_credentials_or_checkout(fake_codex, model):
     fake_codex('''import json, os, sys
 from pathlib import Path
 args = sys.argv[1:]
 assert args[0] == 'exec'
 assert '--ignore-user-config' in args and '--ephemeral' in args
 assert args[args.index('--sandbox') + 1] == 'read-only'
-assert args[args.index('--model') + 1] == 'gpt-5.6-sol'
+assert args[args.index('--model') + 1] == MODEL
 assert not any(k.endswith('API_KEY') for k in os.environ)
 assert not (Path.cwd() / '.git').exists()
 request = json.load(sys.stdin)
 assert request['messages'][0]['content'] == 'hello'
 Path(args[args.index('--output-last-message') + 1]).write_text('answer')
 print(json.dumps({'type':'turn.completed','usage':{'input_tokens':7,'output_tokens':2}}))
-''')
-    assert invoke("gpt-5.6-sol", [{"role": "user", "content": "hello"}], 2, None) == (
+'''.replace("MODEL", repr(model)))
+    assert invoke(model, [{"role": "user", "content": "hello"}], 2, None) == (
         "answer", {"input_tokens": 7, "output_tokens": 2})
 
 
@@ -80,7 +81,7 @@ def test_route_is_explicit_and_preserves_api_provider(fake_codex, monkeypatch):
     assert routes[0].api_key == routes[0].api_base == ""
     with pytest.raises(ValueError, match="local Codex login"):
         routes[0].litellm_kwargs()
-    assert all(r.provider != "codex-cli" for r in configured_routes("onedev-agent", "code-edit"))
+    assert all(r.provider != "codex-cli" for r in configured_routes("validator-agent", "direct-pr-review"))
 
 
 def test_missing_binary_has_no_available_route(monkeypatch, tmp_path):

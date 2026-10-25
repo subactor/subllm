@@ -13,6 +13,32 @@ from subllm import (
 )
 
 
+@pytest.mark.parametrize("function", ["code-edit", "code-context"])
+def test_luna_codex_cli_policy_routes_exact_model(tmp_path, monkeypatch, function):
+    policy = _policy_file(tmp_path / "subllm.toml")
+    with policy.open("a") as stream:
+        stream.write('\n[providers.codex-cli]\nenabled = true\npriority = 16\n'
+                     'default_model = "gpt-6-luna"\n')
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+    monkeypatch.setenv("SUBLLM_PROVIDER_ORDER", "codex-cli")
+    routes = configured_routes("onedev-agent", function)
+    assert len(routes) == 1
+    assert routes[0].provider == routes[0].transport == "codex-cli"
+    assert routes[0].wire_model == "gpt-6-luna"
+    assert routes[0].api_key_env == routes[0].api_base == ""
+    policy.write_text(policy.read_text().replace(
+        "[providers.codex-cli]\nenabled = true", "[providers.codex-cli]\nenabled = false"))
+    with pytest.raises(InvalidPolicyError, match="no enabled candidate"):
+        configured_routes("onedev-agent", function)
+
+
+def test_luna_not_implicitly_admitted_for_api_provider(tmp_path, monkeypatch):
+    policy = _policy_file(tmp_path / "subllm.toml", codex_model="gpt-6-luna")
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+    with pytest.raises(InvalidPolicyError, match="unavailable through provider codex"):
+        load_policy_config()
+
+
 def _policy_file(
     path: Path,
     *,
