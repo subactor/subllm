@@ -144,6 +144,112 @@ def test_batch_time_budget_does_not_start_another_index(monkeypatch):
     assert result['status'] == 'batch-budget-exhausted' and result['created'] == []
 
 
+def test_batch_never_shortens_the_next_statement_budget(monkeypatch):
+    monkeypatch.setattr(indexes, 'plan', lambda db: catalog())
+    monkeypatch.setattr(indexes, '_indexes', lambda db, oid, name: name)
+    times = iter([0, 0, 20])
+    monkeypatch.setattr(indexes.time, 'monotonic', lambda: next(times))
+    created = []
+    monkeypatch.setattr(indexes, 'create_index', lambda *a, **kw: created.append(kw))
+    result = indexes.apply(Connection(), 'a' * 64)
+    assert len(created) == 1 and result['remaining'] == 5
+    assert result['status'] == 'batch-budget-exhausted'
+
+
+@pytest.mark.parametrize('timeout', [True, 0, 999, 120001, 30000.0, '120000'])
+def test_unbounded_or_ambiguous_ddl_budget_is_rejected_before_lock(timeout):
+    db = Connection()
+    with pytest.raises(InvalidPolicyError):
+        indexes.apply(db, 'a' * 64, statement_timeout_ms=timeout)
+    assert not db.calls
+
+
+def test_extended_ddl_budget_is_pinned_and_bounded(monkeypatch):
+    observed = []
+    def planned(db, *, statement_timeout_ms):
+        observed.append(statement_timeout_ms)
+        return catalog()
+    monkeypatch.setattr(indexes, 'plan', planned)
+    monkeypatch.setattr(indexes, '_indexes', lambda db, oid, name: name)
+    monkeypatch.setattr(indexes, 'create_index', lambda *a, **kw: None)
+    db = Connection()
+    assert indexes.apply(db, 'a' * 64, maximum=1, statement_timeout_ms=120000)['remaining'] == 5
+    assert observed == [120000]
+    assert ("SELECT set_config('statement_timeout',%s,false)", ('120000',)) in db.calls
+    assert indexes._batch_seconds(120000) == 135
+
+
+@pytest.mark.parametrize('oid,artifacts', [(True, [2]), (0, [2]), (1, []), (1, [2, 2]),
+                                        (1, [True]), (1, [2**32]), (1, list(range(1, 6)))])
+def test_replacement_requires_explicit_bounded_oid_set(oid, artifacts):
+    db = Connection()
+    with pytest.raises(InvalidPolicyError):
+        indexes.replacement_plan(db, 'unused', oid, artifacts)
+    assert not db.calls
+
+
+def test_replacement_plan_binds_original_artifacts_and_budget(monkeypatch):
+    target = {'index': indexes.index_name('public', 'interactions_20260101'), 'index_oid': 12}
+    artifacts = [{'oid': 13}]
+    monkeypatch.setattr(indexes, '_replacement_context', lambda *a: (target, artifacts))
+    monkeypatch.setattr(indexes, '_database', lambda db: {'oid': 20})
+    class Empty(Connection):
+        def execute(self, *a):
+            return Result((None,))
+    first = indexes.replacement_plan(Empty(), target['index'], 12, [13])
+    extended = indexes.replacement_plan(Empty(), target['index'], 12, [13], statement_timeout_ms=120000)
+    assert first['sha256'] != extended['sha256']
+    assert extended['preserved_objects_modified'] is False
+    with pytest.raises(InvalidPolicyError):
+        indexes.replacement_plan(Empty(), target['index'], 12, [14])
+    with pytest.raises(InvalidPolicyError):
+        indexes.replacement_plan(Empty(), target['index'], 11, [13])
+
+
+def test_stale_replacement_never_creates_an_index(monkeypatch):
+    monkeypatch.setattr(indexes, 'replacement_plan', lambda *a, **kw: {'sha256': 'a' * 64})
+    monkeypatch.setattr(indexes, 'create_index', lambda *a, **kw: pytest.fail('stale plan'))
+    with pytest.raises(InvalidPolicyError):
+        indexes.replace(Connection(), 'index', 12, [13], 'b' * 64)
+
+
+def test_interrupted_replacement_reports_preserved_objects_without_driver_text(monkeypatch):
+    plan = {'sha256': 'a' * 64, 'target': {'namespace': 'public', 'table': 'interactions_20260101'},
+            'replacement': 'new', 'statement_timeout_ms': 120000}
+    monkeypatch.setattr(indexes, 'replacement_plan', lambda *a, **kw: plan)
+    def fail(*a, **kw):
+        raise DatabaseError('private credential detail', '57014')
+    monkeypatch.setattr(indexes, 'create_index', fail)
+    result = indexes.replace(Connection(), 'old', 12, [13], 'a' * 64, statement_timeout_ms=120000)
+    assert result['status'] == 'interrupted' and result['preserved_artifact_oids'] == [13]
+    assert result['preserved_objects_modified'] is False and 'private' not in json.dumps(result)
+
+
+@pytest.mark.parametrize('change', ['healthy-original', 'owner', 'unknown-name', 'healthy-artifact',
+                                  'constraint', 'foreign-leaf', 'changed-definition'])
+def test_replacement_preserves_unowned_or_conflicting_artifacts(monkeypatch, change):
+    name = indexes.index_name('public', 'interactions_20260101')
+    target = {'index': name, 'index_oid': 12, 'table_oid': 10, 'owner_oid': 20,
+              'valid': change == 'healthy-original'}
+    monkeypatch.setattr(indexes, '_owned_index_state', lambda *a, **kw: target)
+    artifact = [13, name + '_ccnew', 20, 10, False, False, False]
+    if change == 'unknown-name':
+        artifact[1] = name + '_ccold'
+    for tag, position, value in [('owner', 2, 21), ('healthy-artifact', 4, True),
+                                 ('constraint', 6, True), ('foreign-leaf', 3, 11)]:
+        if change == tag:
+            artifact[position] = value
+    monkeypatch.setattr(indexes, '_index_rows', lambda *a: ([(artifact[1],)], None, None))
+    monkeypatch.setattr(indexes, '_definition_matches', lambda *a: change != 'changed-definition')
+    class Catalog:
+        def execute(self, query, args=()):
+            if query.startswith('SELECT relowner'):
+                return Result((20,))
+            return SimpleNamespace(fetchall=lambda: [tuple(artifact)])
+    with pytest.raises(InvalidPolicyError):
+        indexes._replacement_context(Catalog(), name)
+
+
 @pytest.mark.parametrize('field,value', [(1, False), (2, True), (3, False), (5, 5),
                                         (6, '0 0 0 0'), (9, '0 0 0 0'), (10, '0 0 0 0'),
                                         (8, ["document::jsonb->>'ca ll er'::text",
@@ -377,20 +483,80 @@ def verify_postgres():
         assert all(leaf['ready_index'] for leaf in indexes.plan(db)['leaves'])
         with pytest.raises(InvalidPolicyError):
             indexes.recovery_plan(db, name, repaired['observed_oid'])
-    # A conflicting named index is preserved, never dropped/rebuilt implicitly.
+    # A canceled REINDEX leaves a real _ccnew artifact. Replacement must add a
+    # different equivalent index while preserving both old OIDs and definitions.
     with psycopg.connect(dsn, autocommit=True) as db:
         db.execute("CREATE TABLE interactions_20260106 PARTITION OF interactions "
                    "FOR VALUES FROM ('2026-01-06') TO ('2026-01-07')")
-        name = indexes.index_name('public', 'interactions_20260106')
+        db.execute("INSERT INTO interactions SELECT '2026-01-06'::date,id,document "
+                   "FROM interactions_20260104")
+    name = indexes.index_name('public', 'interactions_20260106')
+    for operation in ('create', 'reindex'):
+        with psycopg.connect(dsn) as blocker:
+            blocker.execute("INSERT INTO interactions VALUES('2026-01-06',%s,'{}')", ('held-' + operation,))
+            with (psycopg.connect(dsn, autocommit=True, options='-c statement_timeout=1000') as builder,
+                  pytest.raises(psycopg.errors.QueryCanceled)):
+                if operation == 'create':
+                    indexes.create_index(builder, 'public', 'interactions_20260106', concurrent=True)
+                else:
+                    indexes._reindex(builder, 'public', name)
+            blocker.commit()
+    with psycopg.connect(dsn, autocommit=True) as db:
+        target, artifacts = indexes._replacement_context(db, name)
+        artifact_oids = [x['oid'] for x in artifacts]
+        assert len(artifact_oids) == 1
+        with pytest.raises(InvalidPolicyError):
+            indexes.plan(db)
+        with pytest.raises(InvalidPolicyError):
+            indexes.recovery_plan(db, name, target['index_oid'])
+        snapshot = db.execute('SELECT count(*),sum(length(document)) FROM interactions_20260106').fetchone()
+        replacement = indexes.replacement_plan(db, name, target['index_oid'], artifact_oids,
+                                               statement_timeout_ms=120000)
+        with pytest.raises(InvalidPolicyError):
+            indexes.replace(db, name, target['index_oid'], artifact_oids, replacement['sha256'])
+        result = indexes.replace(db, name, target['index_oid'], artifact_oids, replacement['sha256'],
+                                 statement_timeout_ms=120000)
+        assert result['status'] == 'completed' and result['preserved_objects_modified'] is False
+        assert indexes._replacement_context(db, name) == (target, artifacts)
+        assert db.execute('SELECT count(*),sum(length(document)) FROM interactions_20260106').fetchone() == snapshot
+        ready = indexes.plan(db, statement_timeout_ms=120000)
+        assert ready['leaves'][-1]['ready_index'] == replacement['replacement']
+        with pytest.raises(InvalidPolicyError):
+            indexes.replacement_plan(db, name, target['index_oid'], artifact_oids)
+    large_ms = None
+    if os.environ.get('SUBLLM_TEST_LARGE_INDEX') == '1':
+        # One GiB of synthetic uncompressed documents exercises the opt-in
+        # maintenance budget; no shared archive or interaction payload is read.
+        with psycopg.connect(dsn, autocommit=True, options='-c statement_timeout=120000') as db:
+            db.execute("CREATE TABLE interactions_20260108 PARTITION OF interactions "
+                       "FOR VALUES FROM ('2026-01-08') TO ('2026-01-09')")
+            db.execute("INSERT INTO interactions SELECT '2026-01-08'::date,'large-'||i,"
+                       "json_build_object('kind','llm_attempt','caller','index-large',"
+                       "'started_at','2026-01-08T00:00:00Z','request',repeat(md5(i::text),16384))::text "
+                       "FROM generate_series(1,2048)i")
+            selected = indexes.plan(db, statement_timeout_ms=120000)
+            start = time.perf_counter()
+            large = indexes.apply(db, selected['sha256'], maximum=1, statement_timeout_ms=120000)
+            large_ms = round((time.perf_counter() - start) * 1000, 3)
+            assert large['status'] == 'completed' and large['remaining'] == 0
+            assert all(x['ready_index'] for x in indexes.plan(db)['leaves'])
+    # A conflicting named index is preserved, never dropped/rebuilt implicitly.
+    with psycopg.connect(dsn, autocommit=True) as db:
+        db.execute("CREATE TABLE interactions_20260107 PARTITION OF interactions "
+                   "FOR VALUES FROM ('2026-01-07') TO ('2026-01-08')")
+        name = indexes.index_name('public', 'interactions_20260107')
         from psycopg import sql
-        db.execute(sql.SQL('CREATE INDEX {} ON interactions_20260106(id)').format(sql.Identifier(name)))
+        db.execute(sql.SQL('CREATE INDEX {} ON interactions_20260107(id)').format(sql.Identifier(name)))
         with pytest.raises(InvalidPolicyError):
             indexes.plan(db)
         assert db.execute('SELECT to_regclass(%s)', (name,)).fetchone()[0] is not None
     print(json.dumps({'status': 'passed', 'rows': 1500, 'payload_bytes': 65536,
                       'before_ms': round(before_ms, 3), 'after_ms': round(after_ms, 3),
                       'concurrent_writer': 'passed', 'query_parity': 'passed', 'caller_index_conditions': 3,
-                      'invalid_index_recovery': 'passed', 'recovery_fixture_rows': 500}))
+                      'invalid_index_recovery': 'passed', 'recovery_fixture_rows': 500,
+                      'preserved_reindex_artifact_replacement': 'passed',
+                      'large_fixture_document_bytes': 1073741824 if large_ms is not None else None,
+                      'large_index_ms': large_ms}))
 
 
 if __name__ == '__main__':
