@@ -340,8 +340,7 @@ def _valid_replacement(db, oid, name, owner):
     return True
 
 
-def replacement_plan(db, name, expected_index_oid, artifact_oids, *, statement_timeout_ms=INDEX_TIMEOUT_MS):
-    timeout = _timeout(statement_timeout_ms)
+def _replacement_inputs(db, name, expected_index_oid, artifact_oids):
     if (type(expected_index_oid) is not int or not 1 <= expected_index_oid <= 2**32 - 1
             or not isinstance(artifact_oids, (list, tuple)) or not 1 <= len(artifact_oids) <= 4
             or any(type(x) is not int or not 1 <= x <= 2**32 - 1 for x in artifact_oids)
@@ -350,6 +349,12 @@ def replacement_plan(db, name, expected_index_oid, artifact_oids, *, statement_t
     target, artifacts = _replacement_context(db, name)
     if target['index_oid'] != expected_index_oid or sorted(artifact_oids) != [x['oid'] for x in artifacts]:
         _fail("preserved object OIDs changed; observe again")
+    return target, artifacts
+
+
+def replacement_plan(db, name, expected_index_oid, artifact_oids, *, statement_timeout_ms=INDEX_TIMEOUT_MS):
+    timeout = _timeout(statement_timeout_ms)
+    target, artifacts = _replacement_inputs(db, name, expected_index_oid, artifact_oids)
     replacement = _replacement_name(target, artifacts)
     if db.execute("SELECT to_regclass(%s)", ('public.' + replacement,)).fetchone()[0] is not None:
         _fail("replacement name already exists; inspect preserved objects")
@@ -404,6 +409,69 @@ def _reindex(db, namespace, name):
     db.execute(sql.SQL("REINDEX INDEX CONCURRENTLY {}").format(sql.Identifier(namespace, name)))
 
 
+def _no_rebuild_artifacts(db, name):
+    prefix = name + '_cc'
+    if db.execute("SELECT count(*) FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
+                  "WHERE n.nspname='public' AND left(c.relname,length(%s))=%s", (prefix, prefix)).fetchone()[0]:
+        _fail("replacement rebuild artifacts require owner inspection; preserved")
+
+
+def replacement_recovery_plan(db, name, expected_index_oid, artifact_oids, replacement_oid,
+                              *, statement_timeout_ms=INDEX_TIMEOUT_MS):
+    """Observe one failed deterministic replacement, not an arbitrary index."""
+    timeout = _timeout(statement_timeout_ms)
+    if type(replacement_oid) is not int or not 1 <= replacement_oid <= 2**32 - 1:
+        _fail("an exact positive replacement OID is required")
+    target, artifacts = _replacement_inputs(db, name, expected_index_oid, artifact_oids)
+    replacement = _replacement_name(target, artifacts)
+    found = db.execute("SELECT c.oid,i.indrelid,i.indisvalid,i.indisready,c.relowner,"
+                       "EXISTS(SELECT 1 FROM pg_constraint k WHERE k.conindid=c.oid) "
+                       "FROM pg_class c JOIN pg_index i ON i.indexrelid=c.oid "
+                       "WHERE c.oid=to_regclass(%s)", ('public.' + replacement,)).fetchone()
+    rows, collation, opclass = _index_rows(db, target['table_oid'])
+    row = next((row for row in rows if row[0] == replacement), None)
+    if (found is None or found[0] != replacement_oid or found[1] != target['table_oid']
+            or found[2] is not False or type(found[3]) is not bool or found[4] != target['owner_oid']
+            or found[5] or row is None or not _definition_matches(row, collation, opclass)):
+        _fail("replacement OID, validity, owner or definition conflicts; preserved")
+    _no_rebuild_artifacts(db, replacement)
+    return _seal({'schema': 'subllm.usage-index-replacement-recovery-plan/v1', 'authority': 'none',
+                  'database': _database(db), 'target': target, 'artifacts': artifacts,
+                  'replacement': replacement, 'replacement_oid': replacement_oid,
+                  'replacement_ready': found[3], 'keys': list(KEYS), 'operation': 'REINDEX INDEX CONCURRENTLY',
+                  'statement_timeout_ms': timeout, 'lock_timeout_ms': LOCK_TIMEOUT_MS,
+                  'preserved_objects_modified': False})
+
+
+def recover_replacement(db, name, expected_index_oid, artifact_oids, replacement_oid, expected_sha256,
+                        *, statement_timeout_ms=INDEX_TIMEOUT_MS):
+    """One pinned physical recovery, retaining the original and known artifacts."""
+    import psycopg
+    if not isinstance(expected_sha256, str) or not re.fullmatch('[a-f0-9]{64}', expected_sha256):
+        _fail("replacement recovery requires a pinned plan")
+    with _maintenance(db):
+        observed = replacement_recovery_plan(db, name, expected_index_oid, artifact_oids, replacement_oid,
+                                             statement_timeout_ms=statement_timeout_ms)
+        if observed['sha256'] != expected_sha256:
+            _fail("replacement recovery plan is stale; observe again")
+        target = observed['target']
+        result = {'schema': 'subllm.usage-index-replacement-recovery-receipt/v1', 'authority': 'none',
+                  'plan_sha256': expected_sha256, 'index': observed['replacement'], 'previous_oid': replacement_oid,
+                  'preserved_index_oid': expected_index_oid, 'preserved_artifact_oids': sorted(artifact_oids),
+                  'preserved_objects_modified': False}
+        db.execute("SELECT set_config('statement_timeout',%s,false)", (str(observed['statement_timeout_ms']),))
+        try:
+            _reindex(db, target['namespace'], observed['replacement'])
+        except psycopg.Error as exc:
+            return {**result, 'status': 'interrupted', 'sqlstate': exc.sqlstate}
+        if (_replacement_context(db, name) != (target, observed['artifacts'])
+                or not _valid_replacement(db, target['table_oid'], observed['replacement'], target['owner_oid'])):
+            _fail("replacement recovery readback failed; preserved objects need inspection")
+        _no_rebuild_artifacts(db, observed['replacement'])
+        oid = db.execute('SELECT to_regclass(%s)::oid', ('public.' + observed['replacement'],)).fetchone()[0]
+        return {**result, 'status': 'completed', 'observed_oid': oid, 'valid': True}
+
+
 def recover(db, name: str, expected_index_oid: int, expected_sha256: str) -> dict:
     """One explicit physical rebuild; never called automatically by apply."""
     import psycopg
@@ -442,13 +510,15 @@ def main(argv=None) -> int:
         recovery.add_argument('--index-oid', type=int, required=True)
         if command == 'recover':
             recovery.add_argument('--expected-plan-sha256', required=True)
-    for command in ('replacement-plan', 'replace'):
+    for command in ('replacement-plan', 'replace', 'replacement-recovery-plan', 'replacement-recover'):
         replacement = commands.add_parser(command)
         replacement.add_argument('--index', required=True)
         replacement.add_argument('--index-oid', type=int, required=True)
         replacement.add_argument('--artifact-oid', type=int, action='append', required=True)
         replacement.add_argument('--statement-timeout-ms', type=int, default=INDEX_TIMEOUT_MS)
-        if command == 'replace':
+        if command in ('replacement-recovery-plan', 'replacement-recover'):
+            replacement.add_argument('--replacement-oid', type=int, required=True)
+        if command in ('replace', 'replacement-recover'):
             replacement.add_argument('--expected-plan-sha256', required=True)
     args = parser.parse_args(argv)
     try:
@@ -471,6 +541,15 @@ def main(argv=None) -> int:
             elif args.command == 'replace':
                 result = replace(db, args.index, args.index_oid, args.artifact_oid, args.expected_plan_sha256,
                                  statement_timeout_ms=args.statement_timeout_ms)
+            elif args.command == 'replacement-recovery-plan':
+                db.read_only = True
+                result = replacement_recovery_plan(db, args.index, args.index_oid, args.artifact_oid,
+                                                   args.replacement_oid,
+                                                   statement_timeout_ms=args.statement_timeout_ms)
+            elif args.command == 'replacement-recover':
+                result = recover_replacement(db, args.index, args.index_oid, args.artifact_oid,
+                                             args.replacement_oid, args.expected_plan_sha256,
+                                             statement_timeout_ms=args.statement_timeout_ms)
             elif args.command == 'recover-plan':
                 db.read_only = True
                 result = recovery_plan(db, args.index, args.index_oid)

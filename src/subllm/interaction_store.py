@@ -6,7 +6,10 @@ import json
 import os
 import re
 import sqlite3
+import threading
+import time
 import uuid
+import weakref
 from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -90,6 +93,48 @@ def checked_day(day):
     return day
 
 
+class _SQLiteWriteGate:
+    def __init__(self):
+        self.lock = threading.Lock()
+
+
+_SQLITE_WRITE_GATES = weakref.WeakValueDictionary()
+_SQLITE_WRITE_GUARD = threading.Lock()
+
+
+def _reset_sqlite_write_gates():
+    global _SQLITE_WRITE_GATES, _SQLITE_WRITE_GUARD
+    _SQLITE_WRITE_GATES = weakref.WeakValueDictionary()
+    _SQLITE_WRITE_GUARD = threading.Lock()
+
+
+if hasattr(os, 'register_at_fork'):
+    os.register_at_fork(after_in_child=_reset_sqlite_write_gates)
+
+
+@contextmanager
+def _sqlite_write_slot(path: Path, write: bool):
+    if not write:
+        yield 5
+        return
+    identity = path.stat()
+    key = (identity.st_dev, identity.st_ino)
+    with _SQLITE_WRITE_GUARD:
+        gate = _SQLITE_WRITE_GATES.get(key)
+        if gate is None:
+            gate = _SQLiteWriteGate()
+            _SQLITE_WRITE_GATES[key] = gate
+    started = time.monotonic()
+    if not gate.lock.acquire(timeout=5):
+        raise sqlite3.OperationalError('database is locked')
+    try:
+        # Queueing and the interprocess SQLite busy wait share the original5s
+        # budget. Strong local references retain the weak gate while waiting.
+        yield max(0, 5 - (time.monotonic() - started))
+    finally:
+        gate.lock.release()
+
+
 class InteractionStore:
     def __init__(self, directory: Path, postgres_dsn: str | None = None):
         self.directory = directory
@@ -107,29 +152,39 @@ class InteractionStore:
                 if write:
                     # Serialize first-use DDL across service processes.
                     db.execute("SELECT pg_advisory_xact_lock(861940)")
-                    db.execute(
-                        "CREATE TABLE IF NOT EXISTS interactions "
-                        "(day date NOT NULL, id text NOT NULL, document text NOT NULL, "
-                        "PRIMARY KEY(day,id)) PARTITION BY RANGE(day)"
-                    )
+                    if db.execute("SELECT to_regclass(format('%%I.%%I',current_schema(),%s::text))",
+                                  ('interactions',)).fetchone()[0] is None:
+                        db.execute(
+                            "CREATE TABLE IF NOT EXISTS interactions "
+                            "(day date NOT NULL, id text NOT NULL, document text NOT NULL, "
+                            "PRIMARY KEY(day,id)) PARTITION BY RANGE(day)"
+                        )
                     from datetime import timedelta
 
                     following = (datetime.strptime(day, "%Y-%m-%d") + timedelta(days=1)).strftime("%Y-%m-%d")
                     table = "interactions_" + day.replace("-", "")
-                    existed = db.execute("SELECT to_regclass(%s)", (table,)).fetchone()[0] is not None
-                    db.execute(
-                        f"CREATE TABLE IF NOT EXISTS {table} PARTITION OF interactions "
-                        f"FOR VALUES FROM ('{day}') TO ('{following}')"
-                    )
+                    existed = db.execute("SELECT to_regclass(format('%%I.%%I',current_schema(),%s::text))",
+                                         (table,)).fetchone()[0] is not None
                     if not existed:
+                        db.execute(
+                            f"CREATE TABLE IF NOT EXISTS {table} PARTITION OF interactions "
+                            f"FOR VALUES FROM ('{day}') TO ('{following}')"
+                        )
                         from .usage_indexes import create_empty_partition_index
                         create_empty_partition_index(db, table)
-                if write:
+                if write and db.execute("SELECT to_regclass(format('%%I.%%I',current_schema(),%s::text))",
+                                        ('operational_events',)).fetchone()[0] is None:
                     db.execute(
                         "CREATE TABLE IF NOT EXISTS operational_events "
                         "(day TEXT, sequence INTEGER, event TEXT NOT NULL, PRIMARY KEY(day,sequence))"
                     )
-                if write:
+                if write and db.execute(
+                    "SELECT 1 FROM pg_class i JOIN pg_class t ON i.relnamespace=t.relnamespace "
+                    "WHERE t.oid=to_regclass('interactions') AND i.relname='interaction_started'"
+                ).fetchone() is None:
+                    # Even IF NOT EXISTS recursively locks archive partitions.
+                    # Observe the actual parent namespace under the first-use
+                    # advisory lock; existing indexes need no recurring DDL.
                     db.execute(
                         "CREATE INDEX IF NOT EXISTS interaction_started ON interactions "
                         "(day, ((document::jsonb->>'started_at')),id)"
@@ -152,26 +207,27 @@ class InteractionStore:
             return
         elif path.is_symlink():
             raise OSError("Archive symlinks are forbidden")
-        db = sqlite3.connect(path if write else path.as_uri() + "?mode=ro", uri=not write, timeout=5)
-        try:
-            with db:
-                if write:
-                    db.execute("BEGIN IMMEDIATE")
-                    db.execute(
-                        "CREATE TABLE IF NOT EXISTS interactions "
-                        "(day TEXT NOT NULL, id TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(day,id))"
-                    )
-                    db.execute(
-                        "CREATE TABLE IF NOT EXISTS operational_events "
-                        "(day TEXT, sequence INTEGER, event TEXT NOT NULL, PRIMARY KEY(day,sequence))"
-                    )
-                    db.execute(
-                        "CREATE INDEX IF NOT EXISTS interaction_started ON interactions "
-                        "(json_extract(document,'$.started_at'),id)"
-                    )
-                yield db
-        finally:
-            db.close()
+        with _sqlite_write_slot(path, write) as timeout:
+            db = sqlite3.connect(path if write else path.as_uri() + "?mode=ro", uri=not write, timeout=timeout)
+            try:
+                with db:
+                    if write:
+                        db.execute("BEGIN IMMEDIATE")
+                        db.execute(
+                            "CREATE TABLE IF NOT EXISTS interactions "
+                            "(day TEXT NOT NULL, id TEXT NOT NULL, document TEXT NOT NULL, PRIMARY KEY(day,id))"
+                        )
+                        db.execute(
+                            "CREATE TABLE IF NOT EXISTS operational_events "
+                            "(day TEXT, sequence INTEGER, event TEXT NOT NULL, PRIMARY KEY(day,sequence))"
+                        )
+                        db.execute(
+                            "CREATE INDEX IF NOT EXISTS interaction_started ON interactions "
+                            "(json_extract(document,'$.started_at'),id)"
+                        )
+                    yield db
+            finally:
+                db.close()
 
     def sql(self, db, query, args=()):
         return db.execute(query.replace("?", "%s") if self.dsn else query, args)
