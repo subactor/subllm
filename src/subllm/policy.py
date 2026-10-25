@@ -295,6 +295,12 @@ _BASE_MODELS = MappingProxyType(
                 ),
             ),
         ),
+        "gpt-6-luna": ModelSpec(
+            id="gpt-6-luna",
+            providers=_provider_models(
+                **{"codex-cli": ProviderModelSpec(litellm_model="", wire_model="gpt-6-luna")},
+            ),
+        ),
         "gpt-5.6-luna": ModelSpec(
             id="gpt-5.6-luna",
             providers=_provider_models(
@@ -809,6 +815,9 @@ _KORU = _DEFAULT + (
 )
 
 _CODING = (
+    # Explicit operator routing can select the CLI without changing API routes.
+    # Keep this behind existing providers when no provider order is supplied.
+    RouteCandidate(provider="codex-cli", priority_offset=100),
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="cursor", model="gpt-5.6-sol"),
