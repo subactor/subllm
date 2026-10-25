@@ -10,6 +10,7 @@ import threading
 import time
 import uuid
 import weakref
+from collections import deque
 from collections.abc import Mapping
 from contextlib import contextmanager
 from datetime import UTC, datetime
@@ -95,7 +96,27 @@ def checked_day(day):
 
 class _SQLiteWriteGate:
     def __init__(self):
-        self.lock = threading.Lock()
+        self.condition = threading.Condition()
+        self.queue = deque()
+        self.busy = False
+
+    def acquire(self, timeout):
+        marker = object()
+        with self.condition:
+            self.queue.append(marker)
+            admitted = self.condition.wait_for(lambda: not self.busy and self.queue[0] is marker, timeout)
+            if not admitted:
+                self.queue.remove(marker)
+                self.condition.notify_all()
+                return False
+            self.queue.popleft()
+            self.busy = True
+            return True
+
+    def release(self):
+        with self.condition:
+            self.busy = False
+            self.condition.notify_all()
 
 
 _SQLITE_WRITE_GATES = weakref.WeakValueDictionary()
@@ -125,14 +146,14 @@ def _sqlite_write_slot(path: Path, write: bool):
             gate = _SQLiteWriteGate()
             _SQLITE_WRITE_GATES[key] = gate
     started = time.monotonic()
-    if not gate.lock.acquire(timeout=5):
+    if not gate.acquire(timeout=5):
         raise sqlite3.OperationalError('database is locked')
     try:
         # Queueing and the interprocess SQLite busy wait share the original5s
         # budget. Strong local references retain the weak gate while waiting.
         yield max(0, 5 - (time.monotonic() - started))
     finally:
-        gate.lock.release()
+        gate.release()
 
 
 class InteractionStore:

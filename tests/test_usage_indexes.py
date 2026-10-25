@@ -9,6 +9,7 @@ normal pytest suite runs the unit boundaries without requiring Docker.
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import sys
 import time
@@ -298,25 +299,27 @@ def test_sqlite_local_queue_shares_the_existing_busy_budget(monkeypatch, tmp_pat
         assert remaining == 2
 
 
-@pytest.mark.skipif(not hasattr(os, 'fork'), reason='POSIX fork required')
-def test_sqlite_child_does_not_inherit_a_parent_thread_gate(monkeypatch, tmp_path):
+def _child_sqlite_write(directory):
+    from subllm.interaction_store import InteractionStore
+    with InteractionStore(Path(directory)).connect('2026-01-01', True) as db:
+        db.execute("INSERT INTO interactions VALUES('2026-01-01','child','{}')")
+
+
+@pytest.mark.parametrize('start_method', multiprocessing.get_all_start_methods())
+def test_sqlite_child_does_not_inherit_a_parent_thread_gate(tmp_path, start_method):
     from subllm import interaction_store
-    monkeypatch.setattr(interaction_store, 'utc_now', lambda: '2026-01-01T00:00:00.000Z')
     directory = tmp_path / 'private'
     directory.mkdir(mode=0o700)
     path = directory / '2026-01-01.sqlite3'
     path.touch(mode=0o600)
     with interaction_store._sqlite_write_slot(path, True):
-        pid = os.fork()
-        if pid == 0:
-            try:
-                interaction_store.InteractionStore(directory).begin(kind='llm', caller='fixture',
-                                                                    target='fixture', request={})
-            except BaseException:
-                os._exit(1)
-            os._exit(0)
-        _, status = os.waitpid(pid, 0)
-        assert os.waitstatus_to_exitcode(status) == 0
+        child = multiprocessing.get_context(start_method).Process(target=_child_sqlite_write, args=(str(directory),))
+        child.start()
+        child.join(8)
+        if child.is_alive():
+            child.terminate()
+            child.join(3)
+        assert child.exitcode == 0
 
 
 @pytest.mark.parametrize('change', ['oid', 'healthy', 'owner', 'constraint', 'leaf', 'definition', 'artifact'])
