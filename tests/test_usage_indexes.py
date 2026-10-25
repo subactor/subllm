@@ -172,6 +172,75 @@ def test_conflicting_named_index_is_preserved(field, value):
     with pytest.raises(InvalidPolicyError):
         indexes._indexes(Metadata(), 12, 'owned_index')
 
+
+@pytest.mark.parametrize('oid', [True, 0, -1, 2**32])
+def test_recovery_requires_exact_positive_oid(monkeypatch, oid):
+    monkeypatch.setattr(indexes, '_owned_index_state', lambda *a: pytest.fail('metadata must not be read'))
+    with pytest.raises(InvalidPolicyError):
+        indexes.recovery_plan(Connection(), 'unused', oid)
+
+
+@pytest.mark.parametrize('state', [{'index_oid': 13, 'valid': False}, {'index_oid': 12, 'valid': True}])
+def test_recovery_plan_rejects_replaced_or_healthy_index(monkeypatch, state):
+    monkeypatch.setattr(indexes, '_owned_index_state', lambda *a: state)
+    with pytest.raises(InvalidPolicyError):
+        indexes.recovery_plan(Connection(), 'unused', 12)
+
+
+def recovery_document():
+    return {'sha256': 'a' * 64, 'target': {'namespace': 'public', 'table_oid': 22, 'owner_oid': 7}}
+
+
+def test_recovery_is_explicit_and_stale_plan_does_not_rebuild(monkeypatch):
+    monkeypatch.setattr(indexes, 'recovery_plan', lambda *a: recovery_document())
+    monkeypatch.setattr(indexes, '_reindex', lambda *a: pytest.fail('stale plan must not rebuild'))
+    with pytest.raises(InvalidPolicyError):
+        indexes.recover(Connection(), 'managed', 12, 'b' * 64)
+
+
+def test_recovery_rebuilds_once_and_reads_back_logical_identity(monkeypatch):
+    monkeypatch.setattr(indexes, 'recovery_plan', lambda *a: recovery_document())
+    calls = []
+    monkeypatch.setattr(indexes, '_reindex', lambda *a: calls.append(a[1:]))
+    monkeypatch.setattr(indexes, '_owned_index_state', lambda *a:
+                        {'valid': True, 'ready': True, 'table_oid': 22, 'index_oid': 99, 'owner_oid': 7})
+    result = indexes.recover(Connection(), 'managed', 12, 'a' * 64)
+    assert calls == [('public', 'managed')]
+    assert result['status'] == 'completed' and result['previous_oid'] == 12 and result['observed_oid'] == 99
+
+
+def test_interrupted_recovery_preserves_objects_and_driver_privacy(monkeypatch):
+    monkeypatch.setattr(indexes, 'recovery_plan', lambda *a: recovery_document())
+    def interrupted(*a):
+        raise DatabaseError('private row or credential detail', '55P03')
+    monkeypatch.setattr(indexes, '_reindex', interrupted)
+    result = indexes.recover(Connection(), 'managed', 12, 'a' * 64)
+    assert result['status'] == 'interrupted' and result['sqlstate'] == '55P03'
+    assert 'private' not in json.dumps(result)
+
+
+@pytest.mark.parametrize('found', [None, (12, 22, False, True, True), (12, 99, False, True, False)])
+def test_recovery_preserves_missing_constraint_or_foreign_indexes(monkeypatch, found):
+    monkeypatch.setattr(indexes, '_archive', lambda db: (1, [(22, 'public', 'interactions_20260101', 'r')]))
+    class Metadata:
+        def execute(self, *args):
+            return Result(found)
+    with pytest.raises(InvalidPolicyError):
+        indexes._owned_index_state(Metadata(), indexes.index_name('public', 'interactions_20260101'))
+
+
+def test_recovery_rejects_a_still_active_build(monkeypatch):
+    table = 'interactions_20260101'
+    name = indexes.index_name('public', table)
+    monkeypatch.setattr(indexes, '_archive', lambda db: (1, [(22, 'public', table, 'r')]))
+    monkeypatch.setattr(indexes, '_index_rows', lambda *a: ([(name,)], 100, 3126))
+    monkeypatch.setattr(indexes, '_definition_matches', lambda *a: True)
+    class Metadata:
+        def execute(self, query, *args):
+            return Result((1,)) if 'pg_stat_progress_create_index' in query else Result((12, 22, False, True, False, 7))
+    with pytest.raises(InvalidPolicyError):
+        indexes._owned_index_state(Metadata(), name)
+
 def test_cli_unavailable_database_has_a_secret_free_result(monkeypatch, capsys):
     from subllm import interaction_store
     monkeypatch.setattr(interaction_store, 'default_postgres_dsn', lambda: None)
@@ -279,19 +348,49 @@ def verify_postgres():
     found = store.query_attempts(application='index-target', search='needle-fixture')
     assert found['summary']['attempts'] == 6
     assert store.query_attempts(application='index-target', search='not-found')['summary']['attempts'] == 0
-    # A conflicting named index is preserved, never dropped/rebuilt implicitly.
+    # Reproduce an actual abandoned concurrent build, then explicitly rebuild
+    # only its exact nonunique component-owned OID and logical definition.
     with psycopg.connect(dsn, autocommit=True) as db:
         db.execute("CREATE TABLE interactions_20260105 PARTITION OF interactions "
                    "FOR VALUES FROM ('2026-01-05') TO ('2026-01-06')")
+        db.execute("INSERT INTO interactions SELECT '2026-01-05'::date,id,document "
+                   "FROM interactions_20260104")
+    with psycopg.connect(dsn) as blocker:
+        blocker.execute("INSERT INTO interactions VALUES('2026-01-05','recovery-held','{}')")
+        with (
+            psycopg.connect(dsn, autocommit=True, options='-c statement_timeout=1000') as builder,
+            pytest.raises(psycopg.errors.QueryCanceled),
+        ):
+            indexes.create_index(builder, 'public', 'interactions_20260105', concurrent=True)
+        blocker.commit()
+    with psycopg.connect(dsn, autocommit=True) as db:
         name = indexes.index_name('public', 'interactions_20260105')
+        oid = db.execute('SELECT to_regclass(%s)::oid', (name,)).fetchone()[0]
+        repair = indexes.recovery_plan(db, name, oid)
+        assert not repair['target']['valid']
+        with pytest.raises(InvalidPolicyError):
+            indexes.plan(db)
+        with pytest.raises(InvalidPolicyError):
+            indexes.recover(db, name, oid, '0' * 64)
+        repaired = indexes.recover(db, name, oid, repair['sha256'])
+        assert repaired['status'] == 'completed' and repaired['valid']
+        assert all(leaf['ready_index'] for leaf in indexes.plan(db)['leaves'])
+        with pytest.raises(InvalidPolicyError):
+            indexes.recovery_plan(db, name, repaired['observed_oid'])
+    # A conflicting named index is preserved, never dropped/rebuilt implicitly.
+    with psycopg.connect(dsn, autocommit=True) as db:
+        db.execute("CREATE TABLE interactions_20260106 PARTITION OF interactions "
+                   "FOR VALUES FROM ('2026-01-06') TO ('2026-01-07')")
+        name = indexes.index_name('public', 'interactions_20260106')
         from psycopg import sql
-        db.execute(sql.SQL('CREATE INDEX {} ON interactions_20260105(id)').format(sql.Identifier(name)))
+        db.execute(sql.SQL('CREATE INDEX {} ON interactions_20260106(id)').format(sql.Identifier(name)))
         with pytest.raises(InvalidPolicyError):
             indexes.plan(db)
         assert db.execute('SELECT to_regclass(%s)', (name,)).fetchone()[0] is not None
     print(json.dumps({'status': 'passed', 'rows': 1500, 'payload_bytes': 65536,
                       'before_ms': round(before_ms, 3), 'after_ms': round(after_ms, 3),
-                      'concurrent_writer': 'passed', 'query_parity': 'passed', 'caller_index_conditions': 3}))
+                      'concurrent_writer': 'passed', 'query_parity': 'passed', 'caller_index_conditions': 3,
+                      'invalid_index_recovery': 'passed', 'recovery_fixture_rows': 500}))
 
 
 if __name__ == '__main__':

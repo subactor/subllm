@@ -1,0 +1,92 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-137",
+  "summary": "Recover exact owned invalid usage indexes after concurrent interruption",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-137/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/usage_indexes.py",
+    "tests/test_usage_indexes.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "a58c9df6257c3f0ae71e22a674ef6515ae722c77",
+    "targetBranch": "main",
+    "outcome": "Complete issue142 after the observed SQLSTATE55P03: independently publish explicit OID/definition/digest-bound concurrent recovery for a component-owned invalid usage index, then repair the exact known failed index52788 and resume bounded additive archive indexing with native query readback.",
+    "nonGoals": [
+      "No DROP command, data deletion, arbitrary SQL, unknown/constraint/healthy-index repair, automatic repair from ordinary apply, provider-policy, credential, dependency or release change. No query deadline increase."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 70,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep normal plan/apply fail closed on invalid indexes. Explicit recovery observes one managed nonunique invalid leaf index, binds its exact database/OID/logical definition, and executes REINDEX INDEX CONCURRENTLY with bounded time/resources and no automatic cleanup/retry. Preserve logical schema and rows. Raise only the separately bounded DDL lock wait to5000ms after the measured250ms interruption; query deadline remains5000ms.",
+      "components": [
+        {
+          "name": "index-maintenance",
+          "paths": [
+            "src/subllm/usage_indexes.py"
+          ]
+        },
+        {
+          "name": "recovery-regressions",
+          "paths": [
+            "tests/test_usage_indexes.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Explicit recover-plan/recover operations within the native usage-index module CLI"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "index-maintenance",
+          "description": "Concurrent physical rebuild of the exact known component-owned invalid nonunique index, preserving logical definition and all archive data; remaining additive leaf indexing remains explicit."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected source revert; known invalid/partial objects are preserved and reported, with no automatic drop or unknown-object change."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage_indexes.py",
+          "python tests/test_usage_indexes.py",
+          "python -m pytest -q tests scripts/tests",
+          "python -m ruff check --no-respect-gitignore src tests integration",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Unit tests without optional driver, genuine interrupted concurrent-build fixture and bounded recovery, old-OID/conflicting/constraint/healthy guards, full stack/protected exact-head source merge, then exact local recovery and all-partition query/index readback."
+      }
+    ]
+  }
+}
