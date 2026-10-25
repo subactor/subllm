@@ -81,7 +81,7 @@ class RuntimePolicyConfig:
 _DEFAULTS = MappingProxyType(
     {
         "zai": ProviderPolicyConfig(enabled=True, priority=0, default_model="glm-5.3"),
-        "agy": ProviderPolicyConfig(enabled=True, priority=10, default_model="gemini-3.1-pro-high"),
+        "agy": ProviderPolicyConfig(enabled=True, priority=10, default_model="gemini-3.8-flash"),
         "codex-cli": ProviderPolicyConfig(enabled=True, priority=16, default_model="gpt-5.6-sol"),
         # CLI-authenticated executors spend a subscription, so they stay off until the operator opts in.
         "cursor-cli": ProviderPolicyConfig(enabled=False, priority=21, default_model="cursor-auto"),

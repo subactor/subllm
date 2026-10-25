@@ -116,7 +116,7 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
         for provider, settings in policy.providers.items()
     } == {
         "zai": "glm-5.3",
-        "agy": "gemini-3.1-pro-high",
+        "agy": "gemini-3.8-flash",
         "codex": "gpt-5.6-sol",
         "codex-cli": "gpt-5.6-sol",
         "agy-cli": "claude-sonnet-4-6",
