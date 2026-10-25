@@ -22,5 +22,63 @@
   "stacks": [],
   "dependsOn": [],
   "conflictsWith": [],
-  "integrationTicket": null
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "093066ce8fdd5e25c65bb66b329c861e796e3374",
+    "targetBranch": "main",
+    "outcome": "Publish exact GPT-6 Luna CLI coding routes through independent OneDev and Validator; runtime activation tracked in Willman PLF-20145.",
+    "nonGoals": [
+      "No global provider defaults, API admission, runtime source mutation or bypass of resource/lease gates."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extend existing model catalog and coding route candidates; keep CLI authentication and existing sandbox transport.",
+      "components": [
+        {
+          "name": "routing",
+          "paths": [
+            "src/subllm/policy.py"
+          ]
+        },
+        {
+          "name": "regressions",
+          "paths": [
+            "tests/test_codex_cli.py",
+            "tests/test_policy_config.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Explicit operator selection of gpt-6-luna through coding routes"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert model and route additions through protected publication."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "886 passed and 1 optional database test skipped; shared PostgreSQL timeout separately tracked STARTER-030. Live routed completion passed."
+      }
+    ]
+  }
 }

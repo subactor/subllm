@@ -26,6 +26,10 @@ def test_luna_codex_cli_policy_routes_exact_model(tmp_path, monkeypatch, functio
     assert routes[0].provider == routes[0].transport == "codex-cli"
     assert routes[0].wire_model == "gpt-6-luna"
     assert routes[0].api_key_env == routes[0].api_base == ""
+    policy.write_text(policy.read_text().replace(
+        "[providers.codex-cli]\nenabled = true", "[providers.codex-cli]\nenabled = false"))
+    with pytest.raises(InvalidPolicyError, match="no enabled candidate"):
+        configured_routes("onedev-agent", function)
 
 
 def test_luna_not_implicitly_admitted_for_api_provider(tmp_path, monkeypatch):
