@@ -10,16 +10,29 @@ from __future__ import annotations
 
 import json
 import os
+import sys
 import time
 from pathlib import Path
 from threading import Thread
+from types import SimpleNamespace
 
-import psycopg
 import pytest
 
 from subllm import usage_indexes as indexes
 from subllm.errors import InvalidPolicyError
 
+
+class DatabaseError(Exception):
+    def __init__(self, message, sqlstate):
+        super().__init__(message)
+        self.sqlstate = sqlstate
+
+
+@pytest.fixture(autouse=True)
+def _optional_postgres_driver(monkeypatch):
+    # Unit cases model driver failures without requiring the optional gateway
+    # package. The explicit PostgreSQL entrypoint below uses the real driver.
+    monkeypatch.setitem(sys.modules, 'psycopg', SimpleNamespace(Error=DatabaseError))
 
 class Result:
     def __init__(self, row):
@@ -96,7 +109,7 @@ def test_interrupted_batch_reports_only_public_context(monkeypatch):
     monkeypatch.setattr(indexes, 'plan', lambda db: expected)
 
     def interrupted(*args, **kwargs):
-        raise psycopg.errors.LockNotAvailable('private row or credential text must not escape')
+        raise DatabaseError('private row or credential text must not escape', '55P03')
     monkeypatch.setattr(indexes, 'create_index', interrupted)
     db = Connection()
     receipt = indexes.apply(db, expected['sha256'])
@@ -115,7 +128,7 @@ def test_partial_batch_keeps_earlier_successes_and_stops(monkeypatch):
     def build(db, schema, table, **kw):
         calls.append(table)
         if len(calls) == 2:
-            raise psycopg.errors.QueryCanceled('private driver detail')
+            raise DatabaseError('private driver detail', '57014')
     monkeypatch.setattr(indexes, 'create_index', build)
     result = indexes.apply(Connection(), expected['sha256'])
     assert len(calls) == 2 and len(result['created']) == 1
@@ -132,7 +145,16 @@ def test_batch_time_budget_does_not_start_another_index(monkeypatch):
 
 
 @pytest.mark.parametrize('field,value', [(1, False), (2, True), (3, False), (5, 5),
-                                        (6, '0 0 0 0'), (9, '0 0 0 0'), (10, '0 0 0 0')])
+                                        (6, '0 0 0 0'), (9, '0 0 0 0'), (10, '0 0 0 0'),
+                                        (8, ["document::jsonb->>'ca ll er'::text",
+                                             "document::jsonb->>'kind'::text",
+                                             "document::jsonb->>'started_at'::text", 'id']),
+                                        (8, ["document::jsonb->>'call(er)'::text",
+                                             "document::jsonb->>'kind'::text",
+                                             "document::jsonb->>'started_at'::text", 'id']),
+                                        (8, ["document()::jsonb->>'caller'::text",
+                                             "document::jsonb->>'kind'::text",
+                                             "document::jsonb->>'started_at'::text", 'id'])])
 def test_conflicting_named_index_is_preserved(field, value):
     row = ['owned_index', True, False, True, 4, 4, '0 0 3 3', 'btree',
            ["(document::jsonb ->> 'caller'::text)", "(document::jsonb ->> 'kind'::text)",
@@ -168,6 +190,8 @@ def _nodes(node):
 
 
 def verify_postgres():
+    import psycopg
+
     from subllm.interaction_store import InteractionStore
     dsn = os.environ['SUBLLM_TEST_POSTGRES_DSN']
     with psycopg.connect(dsn, autocommit=True) as db:

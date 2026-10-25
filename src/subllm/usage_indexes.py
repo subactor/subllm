@@ -63,6 +63,29 @@ def create_empty_partition_index(db, table: str):
         create_index(db, schema, table, concurrent=False)
 
 
+
+def _key_tokens(value: str) -> tuple[str, ...]:
+    # Preserve quoted JSON keys and function-call syntax. Removing every space
+    # or parenthesis can mistake 'ca ll er' or document() for the caller column.
+    tokens = re.findall(r"'(?:[^']|'')*'|::|->>|[A-Za-z_][A-Za-z_0-9]*|[()]|\S", value)
+    while tokens and tokens[0] == '(':
+        depth, closing = 0, None
+        for position, token in enumerate(tokens):
+            depth += (token == '(') - (token == ')')
+            if depth == 0:
+                closing = position
+                break
+        if closing != len(tokens) - 1:
+            break
+        tokens = tokens[1:-1]
+    while True:
+        position = next((i for i in range(len(tokens) - 2)
+                         if tokens[i:i + 3] == ['(', 'document', ')']), None)
+        if position is None:
+            break
+        tokens[position:position + 3] = ['document']
+    return tuple(tokens)
+
 def _indexes(db, oid: int, name: str):
     rows = db.execute(
         "SELECT c.relname,i.indisvalid AND i.indisready,i.indisunique,i.indpred IS NULL,"
@@ -76,9 +99,9 @@ def _indexes(db, oid: int, name: str):
         "JOIN pg_am a ON a.oid=o.opcmethod WHERE t.oid='text'::regtype AND o.opcdefault AND a.amname='btree'"
     ).fetchone()
     def matches(row):
-        normalized = tuple(re.sub(r"[\s()]", "", key) for key in row[8])
+        normalized = tuple(_key_tokens(key) for key in row[8])
         return (row[1] and not row[2] and row[3] and row[4:6] == (4, 4)
-                and row[6] == "0 0 3 3" and row[7] == "btree" and normalized == KEYS
+                and row[6] == "0 0 3 3" and row[7] == "btree" and normalized == tuple(_key_tokens(key) for key in KEYS)
                 and row[9] == " ".join([str(collation)] * 4)
                 and row[10] == " ".join([str(opclass)] * 4))
     for row in rows:
