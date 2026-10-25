@@ -1,0 +1,92 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-138",
+  "summary": "Explicit additive replacement preserving interrupted concurrent-index artifacts",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-138/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/usage_indexes.py",
+    "tests/test_usage_indexes.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "02e01718f1d241a8bbfb937920038c740880d4c6",
+    "targetBranch": "main",
+    "outcome": "Independently publish and apply an exact-database/OID/definition-pinned additive replacement for the known invalid archive index52892 and artifact52899 without modifying either preserved object; resume bounded indexing and verify caller-query readback for issue142.",
+    "nonGoals": [
+      "No DROP, rename, cleanup, data deletion, implicit repair, unknown/healthy/constraint index modification, provider/dependency/release change, or query timeout increase."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 105,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep defaults at30s and query deadline5000ms. Explicit digest-pinned plan/apply may request up to120s DDL and a bounded135s batch. Never start an item without its full requested statement budget. Add an explicit replacement-plan/replace that validates exact invalid canonical/artifact OIDs, owners, archive and logical definition; creates one deterministic alternative concurrently and preserves original objects. Ordinary plan accepts that replacement only when exact preserved metadata and valid replacement identity/definition match; ordinary apply/recover never repairs or cleans artifacts.",
+      "components": [
+        {
+          "name": "index-maintenance",
+          "paths": [
+            "src/subllm/usage_indexes.py"
+          ]
+        },
+        {
+          "name": "recovery-regressions",
+          "paths": [
+            "tests/test_usage_indexes.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional bounded DDL budget plus explicit native replacement-plan/replace operations"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "index-maintenance",
+          "description": "Additive equivalent physical index, retaining known invalid objects and archive rows. Explicit120s maintenance cap is independent of5000ms query deadline."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected source revert; known invalid/partial objects are preserved and reported, with no automatic drop or unknown-object change."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage_indexes.py",
+          "python tests/test_usage_indexes.py",
+          "python -m pytest -q tests scripts/tests",
+          "python -m ruff check --no-respect-gitignore src tests integration",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Unit tests without optional driver, genuine interrupted concurrent-build fixture and bounded recovery, old-OID/conflicting/constraint/healthy guards, full stack/protected exact-head source merge, then exact local recovery and all-partition query/index readback."
+      }
+    ]
+  }
+}
