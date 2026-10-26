@@ -864,8 +864,7 @@ _VISION = (
 _SZEPTNIK = (
     RouteCandidate(provider="zai", model="glm-5.3"),
     RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
-    RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
-    RouteCandidate(provider="openrouter", model="glm-5.2"),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
 )
 
 _ROUTE_VALUES = (
