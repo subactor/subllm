@@ -56,6 +56,7 @@ def _configured(
     runtime_policy: RuntimePolicyConfig,
     *,
     order: tuple[str, ...] | None,
+    priority_stride: int = 10,
 ) -> ConfiguredRoute:
     app = runtime_policy.applications[application]
     provider = PROVIDERS[candidate.provider]
@@ -72,7 +73,7 @@ def _configured(
         if order is None:
             priority = custom.priority + candidate.priority_offset
         else:
-            priority = order.index(provider.id) * 10 + candidate.priority_offset
+            priority = order.index(provider.id) * priority_stride + candidate.priority_offset
         return ConfiguredRoute(
             application=application,
             application_name=app.name,
@@ -105,7 +106,7 @@ def _configured(
     if order is None:
         priority = provider_policy.priority + candidate.priority_offset
     else:
-        priority = order.index(provider.id) * 10 + candidate.priority_offset
+        priority = order.index(provider.id) * priority_stride + candidate.priority_offset
     return ConfiguredRoute(
         application=application,
         application_name=app.name,
@@ -150,8 +151,12 @@ def configured_routes(
             candidates_list.append(
                 RouteCandidate(provider=custom.id, model=custom.default_model, priority_offset=0)
             )
+    # Provider order is authoritative; offsets only rank models within a provider.
+    offsets = [item.priority_offset for item in candidates_list]
+    priority_stride = max(10, max(offsets, default=0) - min(offsets, default=0) + 1)
     candidates = (
-        _configured(application, function, item, runtime_policy, order=order)
+        _configured(application, function, item, runtime_policy, order=order,
+                    priority_stride=priority_stride)
         for item in candidates_list
         if (
             (item.provider in runtime_policy.providers and runtime_policy.providers[item.provider].enabled)

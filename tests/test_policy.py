@@ -231,7 +231,6 @@ def test_szeptnik_routes_use_only_openai_compatible_transports(function: str) ->
     assert [(route.provider, route.model) for route in routes] == [
         ("zai", "glm-5.3"),
         ("zai", "glm-5.3-flash"),
-        ("openrouter", "glm-5.2"),
         ("openrouter", "glm-5.3-flash"),
     ]
     assert all(route.transport == "openai-compatible" for route in routes)

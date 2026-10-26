@@ -91,3 +91,49 @@ def test_empty_and_duplicate_provider_names_fail_closed() -> None:
 
 def test_parse_provider_order_trims_whitespace() -> None:
     assert parse_provider_order(" cursor , openrouter ") == ("cursor", "openrouter")
+
+
+@pytest.mark.parametrize("function", ("code-edit", "code-context"))
+def test_explicit_order_keeps_subscription_cli_before_local_despite_offset(function: str) -> None:
+    from subllm import configured_routes
+
+    order = ("agy", "codex-cli", "claude-cli", "zai", "openrouter", "ollama")
+    routes = configured_routes("onedev-agent", function, environ={SUBLLM_PROVIDER_ORDER: ",".join(order)})
+    providers = list(dict.fromkeys(route.provider for route in routes))
+    assert "codex-cli" in providers
+    assert providers == [provider for provider in order if provider in providers]
+    assert providers[-1] == "ollama"
+    assert [r.priority for r in routes] == sorted(r.priority for r in routes)
+    assert len({r.priority for r in routes}) == len(routes)
+
+
+def test_explicit_order_keeps_large_model_offset_inside_its_provider() -> None:
+    from subllm import configured_routes
+
+    routes = configured_routes("koru-agent", "planning-assistant", environ={
+        SUBLLM_PROVIDER_ORDER: "openrouter,agy,ollama",
+    })
+    providers = list(dict.fromkeys(route.provider for route in routes))
+    assert providers == ["openrouter", "agy", "ollama"]
+    assert next(r for r in routes if r.model == "deepseek-v4-pro").priority < next(
+        r for r in routes if r.provider == "agy"
+    ).priority
+
+
+def test_explicit_cli_order_does_not_bypass_quota_cooldown() -> None:
+    from subllm import configured_routes
+    from subllm.health import order_by_health, record_failure
+    from subllm.policy_config import load_policy_config
+
+    routes = configured_routes("onedev-agent", "code-edit", environ={
+        SUBLLM_PROVIDER_ORDER: "agy,codex-cli,openrouter,ollama",
+    })
+    policy = load_policy_config().execution
+    for _ in range(policy.failure_threshold):
+        record_failure("codex-cli", reason="http_429", latency_seconds=0.1, policy=policy, now=100)
+    healthy = order_by_health(tuple(routes), now=101)
+    assert "codex-cli" not in [r.provider for r in healthy]
+    assert healthy[0].provider == "agy"
+    assert healthy[-1].provider == "ollama"
+    recovered = order_by_health(tuple(routes), now=101 + policy.cooldown_seconds)
+    assert "codex-cli" in [r.provider for r in recovered]
