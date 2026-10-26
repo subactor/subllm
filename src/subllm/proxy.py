@@ -31,8 +31,270 @@ from .types import ResolvedRoute
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
 DEFAULT_PROXY_PORT = 11435
+SYSTEM_ONE_REQUEST_SCHEMA = "wellmanifest.system-one-request/v1"
+SYSTEM_ONE_RESPONSE_SCHEMA = "wellmanifest.system-one-response/v1"
+SYSTEM_ONE_LOCAL_OLLAMA_MODELS: tuple[str, ...] = (
+    "qwen3.5:0.8b",
+    "willman-eval:qwen3.5-0.8b",
+    "qwen3.5:2b",
+    "willman-eval:qwen3.5-2b",
+    "qwen3.5:4b",
+    "willman-eval:qwen3.5-4b",
+    "qwen2.5:1.5b",
+)
 
 _TICKET_PATTERN = re.compile(r"^(ticket-[A-Za-z0-9_.-]+)")
+
+
+def _resolve_system_one_ollama_upstream(configured_upstream: str) -> str:
+    """Resolve an active local Ollama upstream for System One, falling back to DEFAULT_OLLAMA_UPSTREAM."""
+    if is_upstream_ollama_alive(configured_upstream):
+        return configured_upstream
+    if configured_upstream != DEFAULT_OLLAMA_UPSTREAM and is_upstream_ollama_alive(DEFAULT_OLLAMA_UPSTREAM):
+        return DEFAULT_OLLAMA_UPSTREAM
+    return configured_upstream
+
+
+def _select_local_system_one_ollama_model(
+    requested_model: str,
+    upstream_url: str = DEFAULT_OLLAMA_UPSTREAM,
+) -> str | None:
+    """Select an installed local Ollama model matching the System One profile or Qwen3.5 backbone."""
+    installed = get_upstream_ollama_models(upstream_url)
+    if not installed:
+        return None
+    installed_names = [
+        str(m.get("name") or m.get("model") or "").strip()
+        for m in installed
+        if str(m.get("name") or m.get("model") or "").strip()
+    ]
+    if not installed_names:
+        return None
+    installed_set = set(installed_names)
+    req = requested_model.strip()
+    req_low = req.lower()
+
+    if req in installed_set:
+        return req
+    if f"{req}:latest" in installed_set:
+        return f"{req}:latest"
+
+    preferred_candidates: list[str] = []
+    if any(k in req_low for k in ("0.8b", "0.6b", "0.5b", "322m", "340m", "270m", "laya", "nanojev", "jevlike")):
+        preferred_candidates.extend(["qwen3.5:0.8b", "willman-eval:qwen3.5-0.8b", "qwen2.5:1.5b"])
+    elif "2b" in req_low:
+        preferred_candidates.extend(["qwen3.5:2b", "willman-eval:qwen3.5-2b", "qwen3.5:0.8b"])
+    elif any(k in req_low for k in ("4b", "kev", "semif", "jevos")):
+        preferred_candidates.extend(["qwen3.5:4b", "willman-eval:qwen3.5-4b", "qwen3.5:0.8b"])
+
+    for candidate in [*preferred_candidates, *SYSTEM_ONE_LOCAL_OLLAMA_MODELS]:
+        if candidate in installed_set:
+            return candidate
+    return installed_names[0]
+
+
+def _normalize_question_options(raw_options: Any, q_type: str) -> tuple[list[str], dict[str, str]]:
+    """Extract ordered option keys and optional human descriptions from a System One question."""
+    if isinstance(raw_options, Mapping):
+        keys = [str(k) for k in raw_options if str(k)]
+        descriptions = {str(k): str(v) for k, v in raw_options.items() if str(k)}
+        return keys, descriptions
+    if isinstance(raw_options, Sequence) and not isinstance(raw_options, (str, bytes)):
+        keys = [str(x) for x in raw_options if str(x)]
+        return keys, {}
+    if q_type == "noul":
+        return ["true", "false"], {}
+    if q_type == "score":
+        return ["1", "2", "3"], {}
+    return [], {}
+
+
+def _extract_json_object(raw_text: str) -> dict[str, Any]:
+    """Parse JSON object from model output, tolerating markdown fences."""
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    try:
+        parsed = json.loads(cleaned)
+        if isinstance(parsed, dict):
+            return parsed
+    except Exception:
+        pass
+    start = cleaned.find("{")
+    end = cleaned.rfind("}")
+    if start != -1 and end > start:
+        try:
+            parsed = json.loads(cleaned[start : end + 1])
+            if isinstance(parsed, dict):
+                return parsed
+        except Exception:
+            pass
+    return {}
+
+
+def _normalize_system_one_probabilities(
+    questions: Sequence[Mapping[str, Any]],
+    parsed_output: Mapping[str, Any],
+) -> tuple[dict[str, dict[str, float]], dict[str, Any]]:
+    """Normalize raw model probabilities or chosen answers into valid probability distributions."""
+    raw_probs = parsed_output.get("probabilities")
+    raw_probs_map = raw_probs if isinstance(raw_probs, Mapping) else {}
+    raw_answers = parsed_output.get("answers")
+    raw_answers_map = raw_answers if isinstance(raw_answers, Mapping) else {}
+
+    probabilities: dict[str, dict[str, float]] = {}
+    answers: dict[str, Any] = {}
+
+    for q in questions:
+        q_id = str(q.get("id") or "").strip()
+        if not q_id:
+            continue
+        q_type = str(q.get("type") or "choice").strip().lower()
+        option_keys, _ = _normalize_question_options(q.get("options"), q_type)
+        if not option_keys:
+            continue
+
+        dist: dict[str, float] = {}
+        q_prob_candidate = raw_probs_map.get(q_id)
+        if not isinstance(q_prob_candidate, Mapping) and isinstance(parsed_output.get(q_id), Mapping):
+            q_prob_candidate = parsed_output.get(q_id)
+
+        if isinstance(q_prob_candidate, Mapping):
+            for opt in option_keys:
+                val = q_prob_candidate.get(opt)
+                if val is None and opt.lower() in ("true", "false"):
+                    val = q_prob_candidate.get(opt.lower() == "true")
+                try:
+                    num = float(val) if val is not None and not isinstance(val, bool) else 0.0
+                except (TypeError, ValueError):
+                    num = 0.0
+                dist[opt] = max(0.0, num) if math.isfinite(num) else 0.0
+
+        total = sum(dist.values())
+        if total > 0:
+            dist = {opt: round(v / total, 6) for opt, v in dist.items()}
+        else:
+            chosen = raw_answers_map.get(q_id)
+            if chosen is None and not isinstance(parsed_output.get(q_id), Mapping):
+                chosen = parsed_output.get(q_id)
+            chosen_str = None
+            if isinstance(chosen, bool):
+                chosen_str = "true" if chosen else "false"
+            elif chosen is not None:
+                chosen_str = str(chosen).strip()
+
+            matched_opt = None
+            if chosen_str:
+                for opt in option_keys:
+                    if opt == chosen_str or opt.lower() == chosen_str.lower():
+                        matched_opt = opt
+                        break
+
+            n = len(option_keys)
+            if matched_opt is not None:
+                if n == 1:
+                    dist = {matched_opt: 1.0}
+                else:
+                    hi = 0.84
+                    lo = round((1.0 - hi) / (n - 1), 6)
+                    dist = {opt: (hi if opt == matched_opt else lo) for opt in option_keys}
+            else:
+                uni = round(1.0 / n, 6)
+                dist = {opt: uni for opt in option_keys}
+
+        probabilities[q_id] = dist
+        best_opt = max(dist, key=lambda k: dist[k])
+        if q_type == "noul":
+            answers[q_id] = float(dist.get("true", 0.0)) >= float(dist.get("false", 0.0))
+        elif q_type == "score":
+            try:
+                answers[q_id] = round(sum(float(k) * float(v) for k, v in dist.items()), 3)
+            except ValueError:
+                answers[q_id] = best_opt
+        else:
+            answers[q_id] = best_opt
+
+    return probabilities, answers
+
+
+def _build_system_one_messages(payload: Mapping[str, Any]) -> list[dict[str, str]]:
+    """Build compact JSON-constrained messages for a System One decision request."""
+    state = payload.get("state") if isinstance(payload.get("state"), Mapping) else {}
+    raw_questions = payload.get("questions") if isinstance(payload.get("questions"), Sequence) else []
+    compact_questions: list[dict[str, Any]] = []
+    for q in raw_questions:
+        if not isinstance(q, Mapping):
+            continue
+        q_id = str(q.get("id") or "").strip()
+        if not q_id:
+            continue
+        q_type = str(q.get("type") or "choice").strip().lower()
+        opt_keys, opt_descs = _normalize_question_options(q.get("options"), q_type)
+        q_entry: dict[str, Any] = {
+            "id": q_id,
+            "type": q_type,
+            "question": str(q.get("question") or ""),
+            "options": opt_descs if opt_descs else opt_keys,
+        }
+        compact_questions.append(q_entry)
+
+    system_prompt = (
+        "You are a Jev / System One typed decision engine (`choice`, `score`, `noul`). "
+        "Respond with ONLY a valid JSON object containing key \"answers\" mapping each question id "
+        "to its single best option string from that question's options, and optional key \"probabilities\" "
+        "mapping each question id to a probability distribution over its options."
+    )
+    user_payload = {
+        "state": dict(state),
+        "questions": compact_questions,
+    }
+    return [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
+    ]
+
+
+def _complete_ollama_system_one(
+    upstream_url: str,
+    ollama_model: str,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    temperature: float = 0.2,
+    timeout_seconds: float = 6.0,
+) -> CompletionResponse:
+    """Invoke local Ollama `/api/chat` with `think: false` and `format: json` for fast System One scoring."""
+    url = f"{upstream_url.rstrip('/')}/api/chat"
+    body_payload = {
+        "model": ollama_model,
+        "messages": [dict(m) for m in messages],
+        "stream": False,
+        "think": False,
+        "format": "json",
+        "options": {
+            "temperature": max(0.0, float(temperature)),
+            "num_predict": 256,
+        },
+    }
+    req = Request(
+        url,
+        data=json.dumps(body_payload).encode("utf-8"),
+        headers={"Content-Type": "application/json", "User-Agent": "subllm-proxy"},
+        method="POST",
+    )
+    with urlopen(req, timeout=timeout_seconds) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    msg = data.get("message") if isinstance(data, Mapping) else {}
+    content = str(msg.get("content") or "") if isinstance(msg, Mapping) else ""
+    prompt_tokens = int(data.get("prompt_eval_count") or 0) if isinstance(data, Mapping) else 0
+    eval_tokens = int(data.get("eval_count") or 0) if isinstance(data, Mapping) else 0
+    return CompletionResponse(
+        content=content,
+        provider="ollama",
+        model=str(data.get("model") or ollama_model),
+        usage={"input_tokens": prompt_tokens, "output_tokens": eval_tokens},
+        finish_reason=str(data.get("done_reason") or "stop"),
+    )
 
 
 def _model_family(model_id: str) -> str:
@@ -460,6 +722,10 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
 
+        if path in {"/v1/decide", "/v1/system-one/decide"}:
+            self._handle_system_one_decide(payload)
+            return
+
         if path == "/v1/chat/completions":
             self._handle_openai_chat_completions(payload)
             return
@@ -482,6 +748,118 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return
 
         self._error(404, "PROXY-404", f"path '{path}' is not registered")
+
+    def _handle_system_one_decide(self, payload: Mapping[str, Any]) -> None:
+        if not isinstance(payload, Mapping):
+            self._error(400, "INVALID_REQUEST", "JSON object payload is required")
+            return
+        questions = payload.get("questions")
+        if not isinstance(questions, Sequence) or isinstance(questions, (str, bytes)) or not questions:
+            self._error(400, "INVALID_REQUEST", "questions array is required")
+            return
+        valid_questions = [q for q in questions if isinstance(q, Mapping) and str(q.get("id") or "").strip()]
+        if not valid_questions:
+            self._error(400, "INVALID_REQUEST", "at least one valid question with id is required")
+            return
+
+        raw_model = str(payload.get("model") or "qwen3.5:0.8b")
+        clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
+        requested_timeout = payload.get("timeout")
+        try:
+            timeout = 8.0 if requested_timeout is None else float(requested_timeout)
+            if isinstance(requested_timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
+                raise ValueError("invalid timeout")
+        except (TypeError, ValueError):
+            self._error(400, "INVALID_REQUEST", "timeout must be finite and greater than zero")
+            return
+
+        try:
+            temperature = float(payload.get("temperature", 0.2))
+            if not math.isfinite(temperature):
+                temperature = 0.2
+        except (TypeError, ValueError):
+            temperature = 0.2
+
+        app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application") or "heyasa"
+        func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function") or "command"
+        req_id = f"sysone-{uuid.uuid4().hex[:12]}"
+        messages = _build_system_one_messages(payload)
+
+        t0 = time.monotonic()
+        response: CompletionResponse | None = None
+        last_error: Exception | None = None
+
+        effective_upstream = _resolve_system_one_ollama_upstream(self.ollama_upstream)
+        prefers_explicit_route = (
+            (clean_model in MODELS and not clean_model.startswith("qwen"))
+            or ("/" in clean_model and tuple(clean_model.split("/", 1)) in ROUTES)
+        )
+        if not prefers_explicit_route and is_upstream_ollama_alive(effective_upstream):
+            local_model = _select_local_system_one_ollama_model(clean_model, effective_upstream)
+            if local_model is not None:
+                try:
+                    response = _complete_ollama_system_one(
+                        effective_upstream,
+                        local_model,
+                        messages,
+                        temperature=temperature,
+                        timeout_seconds=min(timeout, 6.0),
+                    )
+                except Exception as exc:
+                    last_error = exc
+
+        if response is None:
+            fallback_payload = dict(payload)
+            fallback_payload.setdefault("response_format", {"type": "json_object"})
+            is_known_target = clean_model in MODELS or (
+                "/" in clean_model and tuple(clean_model.split("/", 1)) in ROUTES
+            )
+            fallback_model = clean_model if is_known_target else f"{app}/{func}"
+            try:
+                response = self._execute_model_or_route(
+                    fallback_model,
+                    messages,
+                    app,
+                    func,
+                    timeout,
+                    req_id,
+                    fallback_payload,
+                )
+            except Exception as exc:
+                last_error = exc
+                self._error(500, "COMPLETION_FAILED", str(last_error))
+                return
+
+        duration_ms = round((time.monotonic() - t0) * 1000)
+        _write_proxy_receipt(ticket, app, func, clean_model, response, duration_ms)
+
+        parsed = _extract_json_object(response.content)
+        probabilities, answers = _normalize_system_one_probabilities(valid_questions, parsed)
+
+        extra_headers = {
+            "X-Subactor-Provider": response.provider,
+            "X-Subactor-Model": response.model,
+            "X-Subactor-Duration-Ms": str(duration_ms),
+        }
+        if ticket:
+            extra_headers["X-Subactor-Ticket"] = ticket
+
+        self._json(
+            200,
+            {
+                "schema": SYSTEM_ONE_RESPONSE_SCHEMA,
+                "id": req_id,
+                "provider": response.provider,
+                "model": response.model,
+                "requested_model": clean_model,
+                "wire_format": str(payload.get("wire_format") or "jev-system-one"),
+                "probabilities": probabilities,
+                "answers": answers,
+                "usage": dict(response.usage),
+                "duration_ms": duration_ms,
+            },
+            extra_headers=extra_headers,
+        )
 
     def _handle_openai_chat_completions(self, payload: Mapping[str, Any]) -> None:
         raw_model = str(payload.get("model") or "glm-5.3")
