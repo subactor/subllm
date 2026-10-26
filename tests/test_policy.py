@@ -117,8 +117,8 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
     } == {
         "zai": "glm-5.3",
         "agy": "gemini-3.8-flash",
-        "codex": "gpt-5.6-sol",
-        "codex-cli": "gpt-5.6-sol",
+        "codex": "gpt-6-sol",
+        "codex-cli": "gpt-6-sol",
         "agy-cli": "claude-sonnet-4-6",
         "claude-cli": "claude-sonnet-5",
         "claude": "claude-opus-5",
@@ -146,6 +146,8 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
         ("gemini-3.5-flash-lite", "agy", "gemini/gemini-3.5-flash-lite", "gemini-3.5-flash-lite"),
         ("claude-opus-5", "claude", "anthropic/claude-opus-5", "claude-opus-5"),
         ("claude-sonnet-5", "claude", "anthropic/claude-sonnet-5", "claude-sonnet-5"),
+        ("gpt-6-sol", "codex", "openai/gpt-6-sol", "gpt-6-sol"),
+        ("gpt-6-sol", "codex-cli", "", "gpt-6-sol"),
         ("gpt-5.6-sol", "codex", "openai/gpt-5.6-sol", "gpt-5.6-sol"),
         ("gpt-5.6-sol", "cursor", "cursor/gpt-5.6-sol", "gpt-5.6-sol"),
         ("gpt-5.6-terra", "codex", "openai/gpt-5.6-terra", "gpt-5.6-terra"),
@@ -173,6 +175,7 @@ def test_direct_tier_models_do_not_invent_openrouter_aliases() -> None:
         "gemini-3.7-flash-medium",
         "claude-opus-5",
         "claude-sonnet-5",
+        "gpt-6-sol",
         "gpt-5.6-sol",
         "gpt-5.6-terra",
         "gpt-5.6-luna",
@@ -263,7 +266,7 @@ def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, fun
     if (application, function) == ("organism-guard", "refactor"):
         route = configured_routes(application, function)[0]
         assert route.provider == route.transport == "codex-cli"
-        assert route.model == "gpt-5.6-sol"
+        assert route.model == "gpt-6-sol"
         return
     if policy.modality == "vision":
         route = configured_routes(application, function)[0]
