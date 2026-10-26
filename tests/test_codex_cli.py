@@ -22,7 +22,7 @@ def fake_codex(tmp_path, monkeypatch):
     return install
 
 
-@pytest.mark.parametrize("model", ["gpt-5.6-sol", "gpt-6-luna"])
+@pytest.mark.parametrize("model", ["gpt-6-sol", "gpt-5.6-sol", "gpt-6-luna"])
 def test_fixed_transport_no_credentials_or_checkout(fake_codex, model):
     fake_codex('''import json, os, sys
 from pathlib import Path

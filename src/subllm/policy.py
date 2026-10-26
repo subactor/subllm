@@ -272,6 +272,16 @@ _BASE_MODELS = MappingProxyType(
                 **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="claude-opus-4-6-thinking")},
             ),
         ),
+        "gpt-6-sol": ModelSpec(
+            id="gpt-6-sol",
+            providers=_provider_models(
+                **{"codex-cli": ProviderModelSpec(litellm_model="", wire_model="gpt-6-sol")},
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-6-sol",
+                    wire_model="gpt-6-sol",
+                ),
+            ),
+        ),
         "gpt-5.6-sol": ModelSpec(
             id="gpt-5.6-sol",
             providers=_provider_models(
@@ -752,7 +762,7 @@ _DEFAULT = (
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
     RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
-    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="codex", model="gpt-6-sol"),
     RouteCandidate(provider="claude", model="claude-sonnet-5"),
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
@@ -779,7 +789,7 @@ _REPAIR = (
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
     RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
-    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="codex", model="gpt-6-sol"),
     RouteCandidate(provider="claude", model="claude-sonnet-5"),
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
@@ -797,7 +807,7 @@ _VALIDATOR = (
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
     RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
-    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="codex", model="gpt-6-sol"),
     RouteCandidate(provider="claude", model="claude-sonnet-5"),
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
@@ -824,7 +834,7 @@ _CODING = (
     RouteCandidate(provider="cursor", model="grok-4.6", priority_offset=5),
     RouteCandidate(provider="agy", model="gemini-3.8-flash"),
     RouteCandidate(provider="agy", model="gemini-3.6-flash", priority_offset=1),
-    RouteCandidate(provider="codex", model="gpt-5.6-sol"),
+    RouteCandidate(provider="codex", model="gpt-6-sol"),
     RouteCandidate(provider="claude", model="claude-sonnet-5"),
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),

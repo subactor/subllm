@@ -25,7 +25,7 @@ max_attempts = 6
 # Credential strategies (ADOPT wellmanifest policy-dsl / env-dsl):
 #   ZAI_API_KEY        → zai                    → glm-5.3
 #   GEMINI_API_KEY     → agy (gemini-sdk)       → gemini-3.8-flash
-#   OPENAI_API_KEY     → codex                  → gpt-5.6-sol
+#   OPENAI_API_KEY     → codex                  → gpt-6-sol
 #   ANTHROPIC_API_KEY  → claude                 → claude-opus-5
 #   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol
 #   OLLAMA_API_KEY     → ollama                 → qwen3-coder:30b
@@ -44,12 +44,12 @@ default_model = "gemini-3.8-flash"
 [providers.codex-cli]
 enabled = true
 priority = 16
-default_model = "gpt-5.6-sol"
+default_model = "gpt-6-sol"
 
 [providers.codex]
 enabled = true
 priority = 15
-default_model = "gpt-5.6-sol"
+default_model = "gpt-6-sol"
 
 [providers.claude]
 enabled = true

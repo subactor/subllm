@@ -263,7 +263,8 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["zai"].priority == 0
     assert policy.providers["zai"].default_model == "glm-5.3"
     assert policy.providers["agy"].default_model == "gemini-3.8-flash"
-    assert policy.providers["codex"].default_model == "gpt-5.6-sol"
+    assert policy.providers["codex"].default_model == "gpt-6-sol"
+    assert policy.providers["codex-cli"].default_model == "gpt-6-sol"
     assert policy.providers["claude"].default_model == "claude-opus-5"
     assert policy.providers["cursor"].priority == 20
     assert policy.providers["cursor"].default_model == "gpt-5.6-sol"

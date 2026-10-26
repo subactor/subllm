@@ -1,0 +1,91 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-147",
+  "summary": "Default Codex and Codex CLI routes to GPT-6 Sol",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-147/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/credential_template.py",
+    "src/subllm/policy.py",
+    "subllm.toml",
+    "tests/test_codex_cli.py",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "2d93bb8acdeeec4ccd6e4e1f0be2cf5a89b9b108",
+    "targetBranch": "main",
+    "outcome": "Admit gpt-6-sol to codex and codex-cli and default codex (p=15) and codex-cli (p=16) routes and subllm.toml to gpt-6-sol.",
+    "nonGoals": [
+      "No changes to Cursor Sol (cursor/gpt-5.6-sol) or OpenRouter wire IDs.",
+      "No edits to src/subllm/policy_config.py while ticket-145 reserves that path."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 6,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Register gpt-6-sol on codex and codex-cli in src/subllm/policy.py and update shared route candidates and repository subllm.toml provider defaults to gpt-6-sol.",
+      "components": [
+        {
+          "name": "routing",
+          "paths": [
+            "src/subllm/policy.py",
+            "src/subllm/credential_template.py",
+            "subllm.toml"
+          ]
+        },
+        {
+          "name": "regressions",
+          "paths": [
+            "tests/test_policy.py",
+            "tests/test_policy_config.py",
+            "tests/test_codex_cli.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Default codex and codex-cli route candidates and repository policy to gpt-6-sol"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert model and route changes through protected publication."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q",
+          "bash project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "All focused and full unit tests pass (889 passed, 1 optional postgres skipped), governance-check.sh and wellman check pass with 0 errors."
+      }
+    ]
+  }
+}
