@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-149",
+  "summary": "Serve System One decision requests in subllm-proxy with local Ollama Qwen3.5 fallback",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-149/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "b299ea7c791588db0e95c1718fa75e48da97c60f",
+    "targetBranch": "main",
+    "outcome": "Serve System One typed decision requests (/v1/decide and /v1/system-one/decide) in subllm-proxy using local Ollama Qwen3.5 models with governed SubLLM route fallback.",
+    "nonGoals": [
+      "No edits to src/subllm/policy.py or subllm.toml while ticket-148 reserves those paths.",
+      "No edits to src/subllm/policy_config.py while ticket-145 reserves that path."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add /v1/decide and /v1/system-one/decide POST handlers in src/subllm/proxy.py that score System One questions via local Ollama Qwen3.5 (with think=False and format=json) or fallback SubLLM routes and normalize probability distributions.",
+      "components": [
+        {
+          "name": "proxy",
+          "paths": [
+            "src/subllm/proxy.py"
+          ]
+        },
+        {
+          "name": "tests",
+          "paths": [
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Expose POST /v1/decide and POST /v1/system-one/decide on subllm-proxy"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert ticket-149 commit through protected publication."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python3 -m pytest -q tests/test_proxy.py",
+          "./project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "All tests in tests/test_proxy.py pass, governance-check.sh and wellman check pass with 0 errors."
+      }
+    ]
+  }
+}

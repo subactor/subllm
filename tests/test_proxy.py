@@ -380,3 +380,149 @@ def test_client_wait_is_independent_of_application_timeout(proxy_server, monkeyp
     assert status == 200 and body["choices"][0]["message"]["content"] == "controlled reply"
     assert headers["X-Subactor-Model"] == "gemini-3.8-flash"
     assert seen == [.5, .5]
+
+
+def test_proxy_system_one_decide_uses_local_qwen3_5_ollama_when_available(proxy_server, monkeypatch):
+    base_url, _ = proxy_server
+
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda url, *_: True)
+    monkeypatch.setattr(
+        proxy,
+        "get_upstream_ollama_models",
+        lambda url, *_: [
+            {"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"},
+            {"name": "qwen3.5:4b", "model": "qwen3.5:4b"},
+        ],
+    )
+    seen_ollama = []
+
+    def fake_ollama_system_one(upstream_url, ollama_model, messages, **kwargs):
+        seen_ollama.append((ollama_model, kwargs.get("temperature")))
+        return CompletionResponse(
+            content=json.dumps({
+                "answers": {
+                    "uri_choice": "heyasa://local/audio/control/set-volume?level=30",
+                    "risk_score": "1",
+                    "execution_allowed": "true",
+                }
+            }),
+            provider="ollama",
+            model=ollama_model,
+            usage={"input_tokens": 90, "output_tokens": 28},
+            finish_reason="stop",
+        )
+
+    monkeypatch.setattr(proxy, "_complete_ollama_system_one", fake_ollama_system_one)
+
+    payload = {
+        "schema": "wellmanifest.system-one-request/v1",
+        "model": "laya/laya-multilingual-322m@ticket-149",
+        "wire_format": "jev-system-one",
+        "temperature": 0.35,
+        "state": {"query": "ustaw głośność na 30%", "autonomy_mode": "confirm"},
+        "questions": [
+            {
+                "id": "uri_choice",
+                "type": "choice",
+                "question": "Select the canonical DockURI / Action URI.",
+                "options": [
+                    "heyasa://local/audio/control/set-volume?level=30",
+                    "heyasa://local/system/query/status",
+                ],
+            },
+            {
+                "id": "risk_score",
+                "type": "score",
+                "question": "Score operational risk level from 1 to 3.",
+                "options": ["1", "2", "3"],
+            },
+            {
+                "id": "execution_allowed",
+                "type": "noul",
+                "question": "Is immediate execution safe and free of negation?",
+                "options": ["true", "false"],
+            },
+        ],
+    }
+    status, body, headers = _request("POST", f"{base_url}/v1/decide", payload)
+    assert status == 200
+    assert body["schema"] == "wellmanifest.system-one-response/v1"
+    assert body["provider"] == "ollama"
+    assert body["model"] == "qwen3.5:0.8b"
+    assert seen_ollama == [("qwen3.5:0.8b", 0.35)]
+    assert headers.get("X-Subactor-Provider") == "ollama"
+    assert headers.get("X-Subactor-Model") == "qwen3.5:0.8b"
+    assert headers.get("X-Subactor-Ticket") == "ticket-149"
+
+    probs = body["probabilities"]
+    assert probs["uri_choice"]["heyasa://local/audio/control/set-volume?level=30"] > probs["uri_choice"]["heyasa://local/system/query/status"]
+    assert abs(sum(probs["uri_choice"].values()) - 1.0) < 1e-4
+    assert abs(sum(probs["risk_score"].values()) - 1.0) < 1e-4
+    assert abs(sum(probs["execution_allowed"].values()) - 1.0) < 1e-4
+    assert body["answers"]["uri_choice"] == "heyasa://local/audio/control/set-volume?level=30"
+    assert body["answers"]["execution_allowed"] is True
+
+
+def test_proxy_system_one_decide_falls_back_to_subllm_route_when_ollama_unavailable(proxy_server, monkeypatch):
+    base_url, _ = proxy_server
+
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: False)
+    seen_routes = []
+
+    def fake_execute(self, clean_model, messages, app, func, timeout, req_id, payload):
+        seen_routes.append((clean_model, app, func, payload.get("response_format")))
+        return CompletionResponse(
+            content=json.dumps({
+                "probabilities": {
+                    "selected_operation": {"op_0": 0.9, "NO_MATCH": 0.05, "CLARIFY": 0.03, "PLAN_REQUIRED": 0.02},
+                    "read_only_diagnosis": {"true": 0.1, "false": 0.9},
+                }
+            }),
+            provider="zai",
+            model="glm-5.3-flash",
+            usage={"input_tokens": 64, "output_tokens": 22},
+            finish_reason="stop",
+        )
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", fake_execute)
+
+    payload = {
+        "schema": "wellmanifest.system-one-request/v1",
+        "model": "kev/kev-4b-qwen3.5",
+        "wire_format": "jev-system-one",
+        "state": {"query": "zrestartuj usługę auth"},
+        "questions": [
+            {
+                "id": "selected_operation",
+                "type": "choice",
+                "question": "Która operacja najlepiej odpowiada żądaniu użytkownika?",
+                "options": {
+                    "op_0": "Restart usługi systemowej.",
+                    "NO_MATCH": "Żadna dostępna operacja nie odpowiada żądaniu.",
+                    "CLARIFY": "Żądanie wymaga doprecyzowania.",
+                    "PLAN_REQUIRED": "Zadanie wymaga sekwencji operacji.",
+                },
+            },
+            {
+                "id": "read_only_diagnosis",
+                "type": "noul",
+                "question": "Czy użytkownik oczekuje wyłącznie diagnozy?",
+                "options": ["true", "false"],
+            },
+        ],
+    }
+    status, body, headers = _request("POST", f"{base_url}/v1/system-one/decide", payload)
+    assert status == 200
+    assert seen_routes == [("heyasa/command", "heyasa", "command", {"type": "json_object"})]
+    assert body["provider"] == "zai"
+    assert body["model"] == "glm-5.3-flash"
+    assert body["answers"]["selected_operation"] == "op_0"
+    assert body["answers"]["read_only_diagnosis"] is False
+    assert headers.get("X-Subactor-Provider") == "zai"
+
+
+def test_proxy_system_one_decide_rejects_missing_questions(proxy_server):
+    base_url, _ = proxy_server
+    status, body, _ = _request("POST", f"{base_url}/v1/decide", {"schema": "wellmanifest.system-one-request/v1"})
+    assert status == 400
+    assert body["error"]["code"] == "INVALID_REQUEST"
