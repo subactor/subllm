@@ -1,0 +1,85 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-153",
+  "summary": "Resolve exact private archive references from usage telemetry",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-153/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/poa/bus.py",
+    "src/subllm/usage.py",
+    "tests/test_usage.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "fdd71c26f39f527d1601c32cf3cbd4eaa0926aa5",
+    "targetBranch": "main",
+    "outcome": "Resolve request/response details from an explicit exact archive day/id supplied by instrumented callers, preserving payload-free metadata and historical unlinked rows.",
+    "nonGoals": [
+      "No heuristic historical joins, model calls, provider/routing changes, writes to reserved client_routes.py, credentials or unreviewed runtime promotion."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add optional strictly validated archive_ref day/id to metadata ingest and journal. Read exact private records only after checking correlation and caller/function/provider/model/status bindings. Legacy databases remain readable without writes; missing, unavailable or mismatched references fail closed.",
+      "components": [
+        {
+          "name": "usage-link",
+          "paths": [
+            "src/subllm/usage.py",
+            "src/subllm/poa/bus.py",
+            "tests/test_usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional archive_ref metadata on record-usage commands."
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "usage-link",
+          "description": "Add nullable exact archive day/id reference columns to the component-owned usage journal on writes only. No record ownership transfer, historical backfill or private payload movement."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert source; old readers ignore additive nullable journal columns."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage.py",
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Private subllm-exact-archive-20261027 receipts and protected exact-head validation."
+      }
+    ]
+  }
+}

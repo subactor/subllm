@@ -54,6 +54,21 @@ def _count(usage: Mapping[str, Any], *names: str) -> int | None:
     return None
 
 
+def archive_reference(value: Any) -> dict[str, str] | None:
+    """An opaque exact reference, never a payload or a heuristic correlation."""
+    if value is None:
+        return None
+    if not isinstance(value, dict) or set(value) != {"id", "day"}:
+        raise ValueError("Invalid archive reference")
+    if not isinstance(value["id"], str) or not re.fullmatch(r"[a-f0-9]{32}", value["id"]):
+        raise ValueError("Invalid archive reference")
+    day = value["day"]
+    if not isinstance(day, str) or not re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", day):
+        raise ValueError("Invalid archive reference")
+    datetime.strptime(day, "%Y-%m-%d")
+    return {"id": value["id"], "day": day}
+
+
 def record_attempt(
     *,
     request_id: str,
@@ -66,10 +81,12 @@ def record_attempt(
     duration_ms: int,
     usage: Mapping[str, Any],
     event_key: str | None = None,
+    archive_ref: dict[str, str] | None = None,
     strict: bool = False,
 ) -> bool:
     """Logging failure must never retry a paid request or replace its result."""
     try:
+        reference = archive_reference(archive_ref)
         path = journal_path()
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         # Exclusive creation prevents a window with world-readable default permissions.
@@ -89,10 +106,14 @@ def record_attempt(
             columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
             if "event_key" not in columns:
                 db.execute("ALTER TABLE attempts ADD COLUMN event_key TEXT")
+            for column in ("archive_id", "archive_day"):
+                if column not in columns:
+                    db.execute(f"ALTER TABLE attempts ADD COLUMN {column} TEXT")
             db.execute("CREATE UNIQUE INDEX IF NOT EXISTS attempts_event ON attempts(event_key)")
             cursor = db.execute(
                 "INSERT OR IGNORE INTO attempts(timestamp,request_id,application,function,provider,model,status,"
-                "diagnostic_code,duration_ms,input_tokens,output_tokens,event_key) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                "diagnostic_code,duration_ms,input_tokens,output_tokens,event_key,archive_id,archive_day) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     datetime.now(UTC).isoformat(timespec="milliseconds"),
                     hashlib.sha256(request_id.encode()).hexdigest()[:24],
@@ -106,6 +127,8 @@ def record_attempt(
                     _count(usage, "input_tokens", "prompt_tokens"),
                     _count(usage, "output_tokens", "completion_tokens"),
                     hashlib.sha256(event_key.encode()).hexdigest() if event_key else None,
+                    reference["id"] if reference else None,
+                    reference["day"] if reference else None,
                 ),
             )
         return cursor.rowcount == 1
@@ -287,24 +310,34 @@ def query_interaction_detail(record_id: str, database: str | Path | None = None)
     try:
         with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=0.5)) as db:
             db.row_factory = sqlite3.Row
+            columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
+            projection = (
+                "id,timestamp,request_id,application,function,provider,model,status,"
+                "diagnostic_code,duration_ms,input_tokens,output_tokens,"
+                + ("archive_id,archive_day" if {"archive_id", "archive_day"} <= columns
+                   else "NULL AS archive_id,NULL AS archive_day")
+            )
             row = None
             if record_id.isascii() and record_id.isdecimal() and len(record_id) <= 19 and int(record_id) < 2**63:
                 row = db.execute(
-                    "SELECT id,timestamp,request_id,application,function,provider,model,status,"
-                    "diagnostic_code,duration_ms,input_tokens,output_tokens FROM attempts WHERE id = ?",
+                    f"SELECT {projection} FROM attempts WHERE id = ?",
                     (int(record_id),),
                 ).fetchone()
             if row is None:
                 row = db.execute(
-                    "SELECT id,timestamp,request_id,application,function,provider,model,status,"
-                    "diagnostic_code,duration_ms,input_tokens,output_tokens FROM attempts WHERE request_id = ?",
+                    f"SELECT {projection} FROM attempts WHERE request_id = ? ORDER BY id DESC LIMIT 2",
                     (record_id,),
-                ).fetchone()
+                ).fetchall()
+                if len(row) > 1:
+                    raise PoaContractError("USAGE-DETAIL-001", "Select an individual usage attempt")
+                row = row[0] if row else None
             if row is None:
                 if archive_failed:
                     raise PoaContractError("USAGE-STORAGE-001", "Interaction archive is temporarily unavailable")
                 return None
             data = dict(row)
+            if data["archive_id"] is not None or data["archive_day"] is not None:
+                return _linked_detail(data)
             return {
                 "id": data["id"],
                 "day": data["timestamp"][:10],
@@ -336,3 +369,30 @@ def query_interaction_detail(record_id: str, database: str | Path | None = None)
             }
     except sqlite3.Error as exc:
         raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
+
+
+def _linked_detail(attempt: Mapping[str, Any]) -> dict[str, Any]:
+    from .interaction_store import get_default_interaction_store
+
+    try:
+        reference = archive_reference({"id": attempt["archive_id"], "day": attempt["archive_day"]})
+        store = get_default_interaction_store()
+        detail = store.get_interaction(reference["id"], day=reference["day"]) if store is not None else None
+    except Exception as exc:
+        raise PoaContractError("USAGE-STORAGE-001", "Interaction archive is temporarily unavailable") from exc
+    if detail is None:
+        raise PoaContractError("USAGE-STORAGE-001", "Referenced interaction archive is unavailable")
+    metadata = detail.get("metadata", {})
+    correlation = detail.get("correlation_id")
+    if (
+        detail.get("id") != reference["id"] or detail.get("day") != reference["day"]
+        or detail.get("caller") != attempt["application"]
+        or detail.get("status") != attempt["status"]
+        or not isinstance(correlation, str)
+        or hashlib.sha256(correlation.encode()).hexdigest()[:24] != attempt["request_id"]
+        or not isinstance(metadata, dict)
+        or any(metadata.get(key) != attempt[key] for key in ("application", "function", "provider", "model"))
+    ):
+        raise PoaContractError("USAGE-DETAIL-001", "Interaction archive reference does not match the usage attempt")
+    return {**detail, "usage_attempt_id": attempt["id"],
+            "payload_capture": {"state": "stored", "source": "private-archive"}}
