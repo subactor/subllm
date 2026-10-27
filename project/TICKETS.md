@@ -132,4 +132,5 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | **ticket-148** | [`README.md`](./ticket-148/README.md) | - | - | - | - | - |
 | **ticket-149** | [`README.md`](./ticket-149/README.md) | - | - | - | - | - |
 | **ticket-151** | [`README.md`](./ticket-151/README.md) | - | - | - | - | - |
+| **ticket-152** | [`README.md`](./ticket-152/README.md) | - | - | - | - | - |
 <!-- AUTO:TICKET_INDEX:END -->

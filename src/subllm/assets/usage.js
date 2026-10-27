@@ -2,7 +2,6 @@
 const $ = id => document.getElementById(id);
 let next = null, before = null, busy = false, applied = new URLSearchParams();
 let currentVisibleAttempts = [];
-let currentStorage = null;
 const number = value => value == null ? '—' : Number(value).toLocaleString('pl-PL');
 function choices(id, values) {
   const select = $(id), selected = select.value;
@@ -145,7 +144,8 @@ async function refresh() {
       cell(tr, attempt.provider, attempt.model);
       const td = cell(tr, ''); const badge = document.createElement('span');
       badge.className = 'badge' + (attempt.status === 'error' ? ' error' : '');
-      badge.textContent = attempt.status === 'success' ? 'Sukces' : 'Błąd'; td.append(badge);
+      badge.textContent = attempt.status === 'success' ? 'Sukces wywołania' : 'Błąd'; td.append(badge);
+      badge.title = 'Wynik wywołania modelu; nie potwierdza ukończenia zadania ani scalenia zmian.';
       if(attempt.diagnostic_code) { const small=document.createElement('small'); small.textContent=attempt.diagnostic_code; td.append(small); }
       const limit = timeoutLimit(attempt);
       const durationCell = cell(tr, number(attempt.duration_ms) + ' ms');
@@ -158,7 +158,6 @@ async function refresh() {
     next = data.next_before; $('older').disabled = !next;
     $('empty').hidden = data.attempts.length > 0;
     $('notice').hidden = true; $('dot').className='ready';
-    currentStorage = data.storage;
     $('connection').textContent = data.storage === 'empty' ? 'Oczekiwanie na pierwsze wywołanie' : (data.storage === 'postgres' ? 'Połączono z PostgreSQL' : 'Połączono z historią');
     const searchQ = applied.get('search');
     $('page-info').textContent = `Widoczne: ${data.attempts.length}${searchQ ? ` · Szukaj: "${searchQ}"` : ''} · ${before ? 'starsza strona' : 'najnowsza strona'}`;
@@ -169,8 +168,19 @@ async function refresh() {
   } finally { busy=false; }
 }
 let currentSelectedAttempt = null;
+let detailGeneration = 0;
+function hasDetailId(attempt) {
+  return /^(?:[1-9][0-9]{0,18}|[a-f0-9]{24}|[a-f0-9]{32})$/i.test(String(attempt.id ?? ''));
+}
+function payloadNote(capture) {
+  if (capture?.state === 'unlinked') {
+    return 'Ten wpis zawiera tylko metadane. Brak jednoznacznego powiązania z prywatnym archiwum; treść może być zapisana osobno.';
+  }
+  if (capture?.state === 'unavailable') return 'Nie udało się odczytać szczegółów. Spróbuj ponownie.';
+  return 'Brak zarejestrowanej treści w tym wpisie.';
+}
 function formatMessages(req) {
-  if (!req) return 'Brak zarejestrowanego promptu (wywołanie bez przechwytywania payloadu).';
+  if (!req) return 'Brak zarejestrowanej treści żądania w tym wpisie.';
   if (Array.isArray(req.messages)) {
     return req.messages.map(m => `--- [${(m.role || 'user').toUpperCase()}] ---\n${m.content || ''}`).join('\n\n');
   }
@@ -204,6 +214,7 @@ function renderDetailPlanfile(attempt) {
   }
 }
 function showDetail(attempt, tr) {
+  const generation = ++detailGeneration;
   currentSelectedAttempt = attempt;
   $('detail').hidden = false;
   $('detail-id').textContent = attempt.request_id || attempt.id;
@@ -224,13 +235,21 @@ function showDetail(attempt, tr) {
     tokens: { input: attempt.input_tokens, output: attempt.output_tokens },
     diagnostic_code: attempt.diagnostic_code
   };
+  metaObj.payload_capture = attempt.payload_capture || null;
   $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
 
-  if ((!attempt.request || !attempt.response) && attempt.id && (currentStorage === 'postgres' || typeof attempt.id === 'string' && /^[a-f0-9]{32}$/i.test(attempt.id))) {
-    fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id))
-      .then(r => r.ok ? r.json() : null)
+  if ((!attempt.request || !attempt.response) && hasDetailId(attempt)) {
+    if (!attempt.request) $('detail-prompt').textContent = 'Wczytywanie szczegółów żądania…';
+    if (!attempt.response) $('detail-response').textContent = 'Wczytywanie szczegółów odpowiedzi…';
+    fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id), {cache:'no-store', signal:AbortSignal.timeout(15000)})
+      .then(r => { if (!r.ok) throw new Error('detail_read_failed'); return r.json(); })
       .then(d => {
+        if (generation !== detailGeneration || currentSelectedAttempt !== attempt) return;
         if (d) {
+          // Older collectors return journal metadata without a capture marker.
+          const capture = d.payload_capture || {state:(d.request || d.response) ? 'stored' : 'unlinked'};
+          attempt.payload_capture = capture;
+          metaObj.payload_capture = capture;
           if (d.request) {
             attempt.request = d.request;
             $('detail-prompt').textContent = formatMessages(d.request);
@@ -243,10 +262,19 @@ function showDetail(attempt, tr) {
             attempt.response = d.response;
             $('detail-response').textContent = formatResponse(d.response);
           }
+          if (!attempt.request) $('detail-prompt').textContent = payloadNote(capture);
+          if (!attempt.response) $('detail-response').textContent = payloadNote(capture);
+          $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
           renderDetailPlanfile(attempt);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (generation !== detailGeneration || currentSelectedAttempt !== attempt) return;
+        metaObj.payload_capture = {state:'unavailable'};
+        if (!attempt.request) $('detail-prompt').textContent = payloadNote(metaObj.payload_capture);
+        if (!attempt.response) $('detail-response').textContent = payloadNote(metaObj.payload_capture);
+        $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
+      });
   }
 
   for (const r of $('rows').children) r.classList.remove('selected');
@@ -254,6 +282,8 @@ function showDetail(attempt, tr) {
   $('detail').scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 $('close-detail')?.addEventListener('click', () => {
+  ++detailGeneration;
+  currentSelectedAttempt = null;
   $('detail').hidden = true;
   for (const r of $('rows').children) r.classList.remove('selected');
 });
@@ -311,26 +341,29 @@ $('copy-table-all')?.addEventListener('click', async () => {
         diagnostic_code: attempt.diagnostic_code,
         task: extractPlanfileInfo(attempt),
         request: attempt.request || null,
-        response: attempt.response || null
+        response: attempt.response || null,
+        payload_capture: attempt.payload_capture || null
       };
 
-      if ((!item.request || !item.response) && attempt.id && (currentStorage === 'postgres' || typeof attempt.id === 'string' && /^[a-f0-9]{32}$/i.test(attempt.id))) {
+      if ((!item.request || !item.response) && hasDetailId(attempt)) {
         try {
-          const res = await fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id));
+          const res = await fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id), {cache:'no-store', signal:AbortSignal.timeout(15000)});
           if (res.ok) {
             const detail = await res.json();
             if (detail) {
               if (detail.request) item.request = detail.request;
               if (detail.response) item.response = detail.response;
+              item.payload_capture = detail.payload_capture || {state:(detail.request || detail.response) ? 'stored' : 'unlinked'};
             }
-          }
-        } catch (_) {}
+          } else item.payload_capture = {state:'unavailable'};
+        } catch (_) { item.payload_capture = {state:'unavailable'}; }
       }
       exportData.push(item);
     }
 
     await navigator.clipboard.writeText(JSON.stringify(exportData, null, 2));
-    alert(`Skopiowano pełne dane diagnostyczne (${exportData.length} żądań z promptami i odpowiedziami) do schowka.`);
+    const complete = exportData.filter(item => item.request && item.response).length;
+    alert(`Skopiowano ${exportData.length} wpisów: ${complete} z pełną treścią, ${exportData.length - complete} bez pełnej treści żądania lub odpowiedzi.`);
   } catch (err) {
     alert('Błąd eksportu do schowka: ' + err);
   } finally {

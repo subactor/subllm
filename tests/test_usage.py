@@ -9,6 +9,7 @@ import threading
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from pathlib import Path
+from types import SimpleNamespace
 from urllib.error import HTTPError
 from urllib.parse import urlencode
 from urllib.request import Request, urlopen
@@ -22,7 +23,7 @@ from subllm.poa import PolicyBus, make_server
 from subllm.poa.errors import PoaContractError
 from subllm.poa.registry import USAGE_URI
 from subllm.resolver import configured_route
-from subllm.usage import journal_path, query_usage, record_attempt
+from subllm.usage import journal_path, query_interaction_detail, query_usage, record_attempt
 
 
 def record(**kwargs):
@@ -218,6 +219,65 @@ def test_query_does_not_mutate_sqlite_metadata():
     query_usage({})
     with closing(sqlite3.connect(journal_path())) as db:
         assert db.execute("PRAGMA schema_version").fetchone() == before
+
+
+def test_journal_detail_reports_unlinked_payloads_without_guessing_archive(monkeypatch):
+    def unexpected_archive():
+        pytest.fail('A numeric journal ID is not an archive ID')
+    monkeypatch.setattr('subllm.interaction_store.get_default_interaction_store', unexpected_archive)
+    record()
+    row = query_usage({})['attempts'][0]
+    before = journal_path().read_bytes()
+    for identifier in (str(row['id']), row['request_id']):
+        detail = query_interaction_detail(identifier)
+        assert detail['request'] is None and detail['response'] is None
+        assert detail['payload_capture'] == {
+            'state': 'unlinked', 'source': 'usage-journal', 'reason': 'no_archive_reference',
+        }
+        assert detail['metadata']['input_tokens'] == 12
+    assert journal_path().read_bytes() == before
+
+
+def test_exact_archive_id_returns_stored_content_without_mutating_record(monkeypatch, server):
+    record_id = 'a' * 32
+    original = {'id': record_id, 'request': {'messages': [{'role': 'user', 'content': 'fixture'}]},
+                'response': {'content': 'answer'}}
+    def get(identifier):
+        assert identifier == record_id
+        return original
+    monkeypatch.setattr('subllm.interaction_store.get_default_interaction_store',
+                        lambda: SimpleNamespace(get_interaction=get))
+    with urlopen(server + '/v1/usage/detail?id=' + record_id, timeout=5) as response:
+        detail = json.load(response)
+    assert detail['request'] == original['request'] and detail['response'] == original['response']
+    assert detail['payload_capture'] == {'state': 'stored', 'source': 'private-archive'}
+    assert 'payload_capture' not in original
+
+
+@pytest.mark.parametrize('failure', ['archive', 'journal'])
+def test_detail_storage_failure_is_http_503_and_keeps_driver_text_private(monkeypatch, server, failure):
+    record_id = 'a' * 32 if failure == 'archive' else '1'
+    if failure == 'archive':
+        def unavailable(identifier):
+            raise RuntimeError('PRIVATE_DRIVER_DETAIL')
+        monkeypatch.setattr('subllm.interaction_store.get_default_interaction_store',
+                            lambda: SimpleNamespace(get_interaction=unavailable))
+    else:
+        journal_path().write_text('PRIVATE_DRIVER_DETAIL')
+    with pytest.raises(HTTPError) as caught:
+        urlopen(server + '/v1/usage/detail?id=' + record_id, timeout=5)
+    assert caught.value.code == 503
+    body = caught.value.read()
+    assert json.loads(body)['error']['code'] == 'USAGE-STORAGE-001'
+    assert b'PRIVATE_DRIVER_DETAIL' not in body
+
+
+def test_missing_or_oversized_numeric_detail_is_not_a_storage_failure(server):
+    record()
+    for identifier in ('9' * 32, 'missing'):
+        with pytest.raises(HTTPError) as caught:
+            urlopen(server + '/v1/usage/detail?id=' + identifier, timeout=5)
+        assert caught.value.code == 404
 
 
 def test_query_usage_search_filter(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):

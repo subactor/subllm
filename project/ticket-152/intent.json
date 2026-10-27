@@ -1,0 +1,95 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-152",
+  "summary": "Explain payload availability and make usage detail lookup reliable",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-152/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/assets/usage.js",
+    "src/subllm/poa/http.py",
+    "src/subllm/usage.py",
+    "tests/test_usage.py",
+    "tests/test_usage_detail_ui.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "d97e0b3b2ecca8dd134cf7fe4cc9a145a3656289",
+    "targetBranch": "main",
+    "outcome": "Make usage details truthful and reliable for archived and metadata-only calls, with explicit unlinked/unavailable states and race-safe asynchronous selection.",
+    "nonGoals": [
+      "No guessed joins of historical prompts to journal rows, provider-policy changes, token-budget changes, private payload ingestion into public telemetry, or unreviewed runtime promotion."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep archive IDs separate from numeric journal IDs. Report additive payload_capture metadata; fetch every valid selected ID, distinguish absent linkage from storage failure and ignore stale detail responses. Preserve loopback/same-origin access and payload-free telemetry.",
+      "components": [
+        {
+          "name": "usage-detail",
+          "paths": [
+            "src/subllm/usage.py",
+            "src/subllm/poa/http.py"
+          ]
+        },
+        {
+          "name": "usage-ui",
+          "paths": [
+            "src/subllm/assets/usage.js",
+            "tests/test_usage.py",
+            "tests/test_usage_detail_ui.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Add payload_capture state to detail responses and surface typed archive-unavailable failures."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "multi-state",
+        "states": [
+          "loading",
+          "empty",
+          "error",
+          "success"
+        ],
+        "evidence": [
+          "Private offline DOM regression and local read-only HTTP fixture."
+        ]
+      },
+      "rollback": "Revert the material ticket-152 changes; no schema migration or historical archive rewrite."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage.py tests/test_usage_detail_ui.py",
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Private host receipts subllm-usage-audit-20261027; protected exact-head CI and independent publication."
+      }
+    ]
+  }
+}
