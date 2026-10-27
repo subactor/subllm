@@ -266,24 +266,29 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
 def query_interaction_detail(record_id: str, database: str | Path | None = None) -> dict[str, Any] | None:
     from .interaction_store import get_default_interaction_store
 
-    store = get_default_interaction_store()
-    if store is not None:
+    if not isinstance(record_id, str) or not 1 <= len(record_id) <= 128:
+        return None
+    archive_failed = False
+    if re.fullmatch(r"[a-f0-9]{32}", record_id):
         try:
-            detail = store.get_interaction(record_id)
+            store = get_default_interaction_store()
+            detail = store.get_interaction(record_id) if store is not None else None
             if detail is not None:
-                return detail
+                return {**detail, "payload_capture": {"state": "stored", "source": "private-archive"}}
         except Exception:
-            pass
+            archive_failed = True
 
     # Fallback to local SQLite attempt journal for numeric attempt IDs or correlation IDs
     path = journal_path(database)
     if not path.exists():
+        if archive_failed:
+            raise PoaContractError("USAGE-STORAGE-001", "Interaction archive is temporarily unavailable")
         return None
     try:
         with closing(sqlite3.connect(path.as_uri() + "?mode=ro", uri=True, timeout=0.5)) as db:
             db.row_factory = sqlite3.Row
             row = None
-            if record_id.isdigit():
+            if record_id.isascii() and record_id.isdecimal() and len(record_id) <= 19 and int(record_id) < 2**63:
                 row = db.execute(
                     "SELECT id,timestamp,request_id,application,function,provider,model,status,"
                     "diagnostic_code,duration_ms,input_tokens,output_tokens FROM attempts WHERE id = ?",
@@ -296,6 +301,8 @@ def query_interaction_detail(record_id: str, database: str | Path | None = None)
                     (record_id,),
                 ).fetchone()
             if row is None:
+                if archive_failed:
+                    raise PoaContractError("USAGE-STORAGE-001", "Interaction archive is temporarily unavailable")
                 return None
             data = dict(row)
             return {
@@ -312,6 +319,11 @@ def query_interaction_detail(record_id: str, database: str | Path | None = None)
                 "status": data["status"],
                 "request": None,
                 "response": None,
+                # The journal never stores payloads. Their absence here says
+                # nothing about unlinked records in a private proxy archive.
+                "payload_capture": {
+                    "state": "unlinked", "source": "usage-journal", "reason": "no_archive_reference",
+                },
                 "diagnostic": {"code": data["diagnostic_code"]} if data["diagnostic_code"] else None,
                 "metadata": {
                     "application": data["application"],
@@ -322,5 +334,5 @@ def query_interaction_detail(record_id: str, database: str | Path | None = None)
                     "output_tokens": data["output_tokens"],
                 },
             }
-    except Exception:
-        return None
+    except sqlite3.Error as exc:
+        raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
