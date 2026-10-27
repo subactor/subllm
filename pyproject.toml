@@ -21,11 +21,15 @@ classifiers = [
 ]
 
 [project.optional-dependencies]
+cache = [
+  "subactor-procache @ git+https://github.com/dockuri/procache.git@7fe316c9b0ac45d9747ddf90afc7c7969084cbb1",
+]
 gateway = ["mcp==1.28.1", "uvicorn>=0.35,<1", "psycopg[binary]>=3.2,<4"]
 cursor = [
   "cursor-sdk>=1.0.28,<2",
 ]
 test = [
+  "subactor-procache @ git+https://github.com/dockuri/procache.git@7fe316c9b0ac45d9747ddf90afc7c7969084cbb1",
   "mcp==1.28.1",
   "uvicorn>=0.35,<1",
   "psycopg[binary]>=3.2,<4",
