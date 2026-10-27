@@ -19,7 +19,7 @@ from .poa.errors import PoaContractError
 LOG = logging.getLogger(__name__)
 _WRITE_LOCK = threading.Lock()
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
-FILTERS = {"application", "provider", "status", "since", "until", "before", "limit", "search"}
+FILTERS = {"application", "provider", "status", "since", "until", "before", "limit", "search", "source"}
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS attempts (
  id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, request_id TEXT NOT NULL,
@@ -158,6 +158,17 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
     """Read-only projection: querying an empty installation does not create a database."""
     if set(filters) - FILTERS:
         raise _invalid()
+    source = filters.get("source", "auto")
+    if source not in ("auto", "journal", "archive"):
+        raise _invalid()
+    from .interaction_store import archive_cursor, default_postgres_dsn
+
+    postgres_dsn = None
+    if source != "journal":
+        if isinstance(database, str) and database.startswith(("postgresql://", "postgres://")):
+            postgres_dsn = database
+        elif database is None and (source == "archive" or not os.environ.get("SUBLLM_USAGE_DB")):
+            postgres_dsn = default_postgres_dsn()
     where: list[str] = []
     values: list[Any] = []
     for key in ("application", "provider", "status"):
@@ -175,14 +186,24 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         raise _invalid()
     try:
         limit = int(filters.get("limit", 100))
-        before = int(filters["before"]) if "before" in filters else None
-        if isinstance(filters.get("limit"), bool) or not 1 <= limit <= 500 or (before is not None and before < 1):
+        before = filters.get("before")
+        if before is not None:
+            if postgres_dsn or source == "archive":
+                archive_cursor(before)
+            else:
+                if isinstance(before, bool):
+                    raise ValueError
+                before = int(before)
+                if not 1 <= before < 2**63:
+                    raise ValueError
+        if isinstance(filters.get("limit"), bool) or not 1 <= limit <= 500:
             raise ValueError
     except (ValueError, TypeError, OverflowError) as exc:
         raise _invalid() from exc
     result: dict[str, Any] = {
         "schema": "subllm.usage/v1",
         "storage": "empty",
+        "source": "journal",
         "attempts": [],
         "next_before": None,
         "summary": {
@@ -209,13 +230,8 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         if not search:
             search = None
 
-    from .interaction_store import default_postgres_dsn
-
-    postgres_dsn = None
-    if isinstance(database, str) and (database.startswith("postgresql://") or database.startswith("postgres://")):
-        postgres_dsn = database
-    elif database is None and not os.environ.get("SUBLLM_USAGE_DB"):
-        postgres_dsn = default_postgres_dsn()
+    if source == "archive" and not postgres_dsn:
+        raise PoaContractError("USAGE-STORAGE-001", "Private interaction archive is unavailable")
 
     if postgres_dsn:
         try:
@@ -231,13 +247,16 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
                 until=filters.get("until"),
                 before=filters.get("before"),
                 limit=limit,
-                include_payloads=True,
+                include_payloads=source == "auto",
                 search=search,
             )
-            if pg_res["summary"]["attempts"] > 0 or not journal_path(database).exists():
-                return pg_res
+            if (source == "archive" or before is not None or pg_res["summary"]["attempts"] > 0
+                    or not journal_path(database).exists()):
+                return {**pg_res, "source": "archive"}
         except Exception as exc:
-            LOG.warning("PostgreSQL usage query failed; falling back to SQLite: %s", exc)
+            if source == "archive" or before is not None:
+                raise PoaContractError("USAGE-STORAGE-001", "Private interaction archive is unavailable") from exc
+            LOG.warning("Private archive query failed; falling back to usage journal")
 
     path = journal_path(database)
     if not path.exists():
@@ -286,16 +305,23 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
 
 
-def query_interaction_detail(record_id: str, database: str | Path | None = None) -> dict[str, Any] | None:
+def query_interaction_detail(record_id: str, database: str | Path | None = None,
+                             *, day: str | None = None) -> dict[str, Any] | None:
     from .interaction_store import get_default_interaction_store
 
     if not isinstance(record_id, str) or not 1 <= len(record_id) <= 128:
         return None
+    if day is not None:
+        try:
+            archive_reference({"id": record_id, "day": day})
+        except ValueError as exc:
+            raise _invalid() from exc
     archive_failed = False
     if re.fullmatch(r"[a-f0-9]{32}", record_id):
         try:
             store = get_default_interaction_store()
-            detail = store.get_interaction(record_id) if store is not None else None
+            detail = (store.get_interaction(record_id, day=day) if day is not None
+                      else store.get_interaction(record_id)) if store is not None else None
             if detail is not None:
                 return {**detail, "payload_capture": {"state": "stored", "source": "private-archive"}}
         except Exception:

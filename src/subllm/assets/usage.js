@@ -1,8 +1,23 @@
 'use strict';
 const $ = id => document.getElementById(id);
-let next = null, before = null, busy = false, applied = new URLSearchParams();
+let next = null, before = null, busy = false, applied = new URLSearchParams({source:'journal'});
 let currentVisibleAttempts = [];
 const number = value => value == null ? '—' : Number(value).toLocaleString('pl-PL');
+function detailUrl(attempt) {
+  const params = new URLSearchParams({id:attempt.id});
+  if (/^[a-f0-9]{32}$/.test(String(attempt.id)) && attempt.day) params.set('day', attempt.day);
+  return '/v1/usage/detail?' + params;
+}
+function renderTokenSummary(attempt) {
+  const usage = attempt.response?.usage || {};
+  const known = (...values) => values.find(v => Number.isSafeInteger(v) && v >= 0 && v <= 1e12);
+  const input = known(usage.input_tokens, usage.prompt_tokens, attempt.input_tokens);
+  const output = known(usage.output_tokens, usage.completion_tokens, attempt.output_tokens);
+  const cached = known(usage.cached_input_tokens, usage.prompt_tokens_details?.cached_tokens,
+                       attempt.cached_input_tokens);
+  const cache = cached != null && input != null && cached <= input ? ` (w tym ${number(cached)} z cache)` : '';
+  $('detail-token-summary').textContent = `Tokeny wejścia: ${number(input)}${cache}; wyjścia: ${number(output)}.`;
+}
 function choices(id, values) {
   const select = $(id), selected = select.value;
   select.replaceChildren(select.options[0]);
@@ -92,6 +107,8 @@ async function refresh() {
     const data = await response.json();
     if (!response.ok) throw new Error(data.error?.message || 'Nie można odczytać historii');
     const s = data.summary;
+    $('source-current').textContent = data.source === 'archive' ? 'Prywatne archiwum' : 'Dziennik użycia';
+    $('search').placeholder = data.source === 'archive' ? 'Szukaj w zapisanych promptach i odpowiedziach…' : 'Szukaj w aplikacjach, modelach i diagnostyce…';
     $('requests').textContent = number(s.requests); $('attempts').textContent = number(s.attempts);
     $('errors').textContent = number(s.errors);
     $('tokens').textContent = `${number(s.input_tokens)} / ${number(s.output_tokens)}`;
@@ -116,7 +133,7 @@ async function refresh() {
         badge.addEventListener('click', (e) => {
           e.stopPropagation();
           $('search').value = taskInfo.ticketId;
-          applied = new URLSearchParams({ search: taskInfo.ticketId });
+          applied.set('search', taskInfo.ticketId);
           before = null;
           refresh();
         });
@@ -144,7 +161,7 @@ async function refresh() {
       cell(tr, attempt.provider, attempt.model);
       const td = cell(tr, ''); const badge = document.createElement('span');
       badge.className = 'badge' + (attempt.status === 'error' ? ' error' : '');
-      badge.textContent = attempt.status === 'success' ? 'Sukces wywołania' : 'Błąd'; td.append(badge);
+      badge.textContent = attempt.status === 'success' ? 'Sukces wywołania' : attempt.status === 'pending' ? 'W toku' : 'Błąd'; td.append(badge);
       badge.title = 'Wynik wywołania modelu; nie potwierdza ukończenia zadania ani scalenia zmian.';
       if(attempt.diagnostic_code) { const small=document.createElement('small'); small.textContent=attempt.diagnostic_code; td.append(small); }
       const limit = timeoutLimit(attempt);
@@ -221,6 +238,7 @@ function showDetail(attempt, tr) {
   renderDetailPlanfile(attempt);
   $('detail-prompt').textContent = formatMessages(attempt.request);
   $('detail-response').textContent = formatResponse(attempt.response);
+  renderTokenSummary(attempt);
   const metaObj = {
     id: attempt.id,
     timestamp: attempt.timestamp,
@@ -241,7 +259,7 @@ function showDetail(attempt, tr) {
   if ((!attempt.request || !attempt.response) && hasDetailId(attempt)) {
     if (!attempt.request) $('detail-prompt').textContent = 'Wczytywanie szczegółów żądania…';
     if (!attempt.response) $('detail-response').textContent = 'Wczytywanie szczegółów odpowiedzi…';
-    fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id), {cache:'no-store', signal:AbortSignal.timeout(15000)})
+    fetch(detailUrl(attempt), {cache:'no-store', signal:AbortSignal.timeout(15000)})
       .then(r => { if (!r.ok) throw new Error('detail_read_failed'); return r.json(); })
       .then(d => {
         if (generation !== detailGeneration || currentSelectedAttempt !== attempt) return;
@@ -262,8 +280,13 @@ function showDetail(attempt, tr) {
             attempt.response = d.response;
             $('detail-response').textContent = formatResponse(d.response);
           }
+          renderTokenSummary(attempt);
           if (!attempt.request) $('detail-prompt').textContent = payloadNote(capture);
           if (!attempt.response) $('detail-response').textContent = payloadNote(capture);
+          if (d.status === 'pending' && !attempt.response) {
+            $('detail-response').textContent = 'Wywołanie trwa; odpowiedź nie została jeszcze zapisana.';
+          }
+          if (d.status) metaObj.status = d.status;
           $('detail-meta').textContent = JSON.stringify(metaObj, null, 2);
           renderDetailPlanfile(attempt);
         }
@@ -347,7 +370,7 @@ $('copy-table-all')?.addEventListener('click', async () => {
 
       if ((!item.request || !item.response) && hasDetailId(attempt)) {
         try {
-          const res = await fetch('/v1/usage/detail?id=' + encodeURIComponent(attempt.id), {cache:'no-store', signal:AbortSignal.timeout(15000)});
+          const res = await fetch(detailUrl(attempt), {cache:'no-store', signal:AbortSignal.timeout(15000)});
           if (res.ok) {
             const detail = await res.json();
             if (detail) {
@@ -375,9 +398,15 @@ $('filters').addEventListener('submit', event => {
   event.preventDefault(); if (busy) return;
   const params=new URLSearchParams();
   for(const [key,value] of new FormData(event.target)) if(value) params.set(key, ['since','until'].includes(key) ? new Date(value).toISOString() : value);
+  if (params.get('source') === 'archive' && !params.get('since')) {
+    const since = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    params.set('since', since.toISOString());
+    event.target.elements.since.value = new Date(since.getTime() - since.getTimezoneOffset() * 60000).toISOString().slice(0,16);
+  }
+  $('close-detail').click();
   applied=params; before=null; refresh();
 });
-$('clear-filters').addEventListener('click', () => { if(busy)return; $('filters').reset(); applied=new URLSearchParams(); before=null; refresh(); });
+$('clear-filters').addEventListener('click', () => { if(busy)return; $('filters').reset(); $('close-detail').click(); applied=new URLSearchParams({source:'journal'}); before=null; refresh(); });
 $('latest').addEventListener('click', () => { if(busy)return; before=null; refresh(); });
 $('older').addEventListener('click', () => { if(busy||!next)return; before=next; refresh(); });
 setInterval(() => { if($('auto').checked && !before && !document.hidden) refresh(); },5000);

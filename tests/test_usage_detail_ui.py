@@ -1,6 +1,7 @@
 """Execute the shipped browser detail handlers with controlled network ordering."""
 from __future__ import annotations
 
+import json
 import subprocess
 from pathlib import Path
 
@@ -16,6 +17,8 @@ class Element {
     this.classList = {add() {}, remove() {}};
   }
   addEventListener(name, fn) { this.handlers[name] = fn; }
+  click() { return this.handlers.click?.({target:this}); }
+  add(option) { this.options.push(option); }
   append(child) { this.children.push(child); }
   replaceChildren(...children) { this.children = children; }
   scrollIntoView() {}
@@ -26,6 +29,7 @@ globalThis.document = {
   createElement() { return new Element(); }, hidden:false
 };
 globalThis.setInterval = () => 0;
+globalThis.Option = class { constructor(text, value) { this.text=text; this.value=value; } };
 const pending = [], alerts = [], clipboard = [];
 globalThis.alert = text => alerts.push(text);
 Object.defineProperty(globalThis, 'navigator', {value:{clipboard:{async writeText(text) { clipboard.push(text); }}}});
@@ -121,4 +125,65 @@ const exported = JSON.parse(clipboard[0]);
 assert.equal(exported[0].payload_capture.state, 'unlinked');
 assert.equal(exported[0].request, null);
 assert.match(alerts[0], /2 wpisów: 1 z pełną treścią, 1 bez pełnej treści/);
+""")
+
+
+@pytest.mark.parametrize('cached', [11008, 0, None, True, -1, 20000])
+def test_archive_details_use_exact_day_and_render_only_known_cache(cached):
+    run_js('const cached = ' + json.dumps(cached) + ';\n' + r"""
+const attempt = {id:'a'.repeat(32), day:'2026-10-27', input_tokens:14945, output_tokens:177};
+showDetail(attempt);
+const params = new URL(pending[0].url, 'http://localhost').searchParams;
+assert.equal(params.get('day'), '2026-10-27');
+answer(pending[0], {request:{messages:[]}, response:{content:'answer', usage:{prompt_tokens:14945,
+  completion_tokens:177, prompt_tokens_details:{cached_tokens:cached}}}});
+await flush();
+const text = $('detail-token-summary').textContent.replace(/\s/g, '');
+assert.match(text, /14945/); assert.match(text, /177/);
+if (Number.isInteger(cached) && cached >= 0 && cached <=14945) assert.ok(text.includes(`${cached}zcache`));
+else assert.ok(!text.includes('zcache'));
+""")
+
+
+def test_source_selection_preserves_journal_default_and_invalidates_old_details():
+    run_js(r"""
+assert.equal(applied.get('source'), 'journal');
+showDetail({id:1});
+const lists=[];
+globalThis.fetch = url => new Promise(resolve => lists.push({url,resolve}));
+globalThis.FormData = class {
+  constructor(form) { this.values=form.values; }
+  *[Symbol.iterator]() { yield* this.values; }
+};
+const form=$('filters'); form.values=[['source','archive']]; form.elements={since:{value:''}};
+busy=false;
+$('filters').handlers.submit({target:form,preventDefault(){}});
+assert.equal($('detail').hidden, true);
+assert.equal(currentSelectedAttempt, null);
+let params=new URL(lists[0].url, 'http://localhost').searchParams;
+assert.equal(params.get('source'), 'archive'); assert.ok(params.get('since'));
+assert.ok(form.elements.since.value);
+const empty = {source:'archive',summary:{attempts:0,requests:0,errors:0},
+               applications:[],providers:[],attempts:[],next_before:null};
+answer(lists[0], empty); await flush();
+assert.equal($('source-current').textContent, 'Prywatne archiwum');
+answer(pending[0], {request:{messages:[]},response:{content:'late old content'}}); await flush();
+assert.equal($('detail').hidden,true);
+form.reset=()=>{};
+$('clear-filters').handlers.click();
+params=new URL(lists[1].url, 'http://localhost').searchParams;
+assert.equal(params.get('source'),'journal');
+answer(lists[1], {...empty,source:'journal'}); await flush();
+assert.equal($('source-current').textContent,'Dziennik użycia');
+""")
+
+
+def test_pending_archive_capture_is_visible_as_in_progress():
+    run_js(r"""
+showDetail({id:'b'.repeat(32),day:'2026-10-27',status:'pending'});
+answer(pending[0], {status:'pending',request:{messages:[]},response:null,
+                    payload_capture:{state:'stored',source:'private-archive'}});
+await flush();
+assert.match($('detail-response').textContent,/Wywołanie trwa/);
+assert.equal(JSON.parse($('detail-meta').textContent).status,'pending');
 """)

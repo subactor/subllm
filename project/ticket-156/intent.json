@@ -1,0 +1,109 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-156",
+  "summary": "Expose private archive history and preserve cached input accounting",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-156/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/assets/usage.html",
+    "src/subllm/assets/usage.js",
+    "src/subllm/interaction_store.py",
+    "src/subllm/poa/http.py",
+    "src/subllm/proxy.py",
+    "src/subllm/usage.py",
+    "tests/test_proxy.py",
+    "tests/test_usage.py",
+    "tests/test_usage_detail_ui.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "bbdcebe06547bfff2be175117cbf052d3911a662",
+    "targetBranch": "main",
+    "outcome": "Expose journal and private archive as explicit read sources with bounded metadata pages and exact day-bound details; preserve known cached-input usage across the OpenAI-compatible proxy and explain it in detail views.",
+    "nonGoals": [
+      "No heuristic historical joins, provider/model policy edits, weakened checks, raw payloads in public metadata, changes to other writers or unreviewed runtime promotion."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 9,
+      "maxAffectedComponents": 3,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep journal selection explicit and make private archive opt-in per read. Metadata-only archive pages carry day/id references and stable timestamp/id cursors; detail lookup uses the exact partition day. Preserve known cached input as OpenAI prompt_tokens_details.cached_tokens and render counts without inferring unknown cache as zero.",
+      "components": [
+        {
+          "name": "usage-read",
+          "paths": [
+            "src/subllm/usage.py",
+            "src/subllm/interaction_store.py",
+            "src/subllm/poa/http.py",
+            "tests/test_usage.py"
+          ]
+        },
+        {
+          "name": "usage-ui",
+          "paths": [
+            "src/subllm/assets/usage.html",
+            "src/subllm/assets/usage.js",
+            "tests/test_usage_detail_ui.py"
+          ]
+        },
+        {
+          "name": "proxy-accounting",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional usage source/cursor and detail day selectors.",
+        "Add known cached token counts to existing OpenAI usage response."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "multi-state",
+        "states": [
+          "loading",
+          "empty",
+          "error",
+          "success"
+        ],
+        "evidence": [
+          "Actual shipped JavaScript DOM tests and isolated HTTP/PostgreSQL qualification."
+        ]
+      },
+      "rollback": "Revert this material ticket and restore exact previous runtime source selections. No persistent schema migration or historical row rewrite."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "python -m pytest -q tests/test_usage.py tests/test_proxy.py tests/test_usage_detail_ui.py",
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Private subllm-archive-view-20261027 receipts; exact-head protected CI and independent publication; runtime promotion separate."
+      }
+    ]
+  }
+}

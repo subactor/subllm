@@ -62,6 +62,40 @@ def test_proxy_health_and_cors(proxy_server):
     assert "access-control-allow-origin" in [k.lower() for k in headers]
 
 
+@pytest.mark.parametrize("stream", [False, True])
+def test_openai_wire_preserves_cached_input_without_counting_it_twice(proxy_server, monkeypatch, stream):
+    response = CompletionResponse("review", "codex-cli", "gpt-5.6-sol",
+                                  {"input_tokens": 14945, "cached_input_tokens": 11008, "output_tokens": 177})
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", lambda *a: response)
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/chat/completions", {
+        "model": "glm-5.3", "messages": [{"role": "user", "content": "review fixture"}],
+        "stream": stream, "stream_options": {"include_usage": True},
+    })
+    assert status == 200
+    if stream:
+        events = [json.loads(line[6:]) for line in body["raw"].splitlines()
+                  if line.startswith("data: ") and line != "data: [DONE]"]
+        assert events[-1]["choices"] == []
+        body = events[-1]
+    assert body["usage"] == {"prompt_tokens": 14945, "completion_tokens": 177, "total_tokens": 15122,
+                             "prompt_tokens_details": {"cached_tokens": 11008}}
+
+
+@pytest.mark.parametrize("cached", [None, 0, -1, True, "11008", 14946])
+def test_openai_wire_keeps_unknown_or_invalid_cache_unknown(proxy_server, monkeypatch, cached):
+    response = CompletionResponse("ok", "fixture", "fixture",
+                                  {"prompt_tokens": 14945, "cached_input_tokens": cached, "completion_tokens": 1})
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", lambda *a: response)
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/chat/completions", {
+        "model": "glm-5.3", "messages": [{"role": "user", "content": "fixture"}],
+    })
+    assert status == 200
+    if type(cached) is int and cached == 0:
+        assert body["usage"]["prompt_tokens_details"] == {"cached_tokens": 0}
+    else:
+        assert "prompt_tokens_details" not in body["usage"]
+
+
 def test_proxy_options_cors(proxy_server):
     base_url, _ = proxy_server
     status, _, headers = _request("OPTIONS", f"{base_url}/v1/chat/completions")

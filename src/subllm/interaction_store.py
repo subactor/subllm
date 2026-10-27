@@ -94,6 +94,16 @@ def checked_day(day):
     return day
 
 
+def archive_cursor(value: str) -> tuple[str, str | None]:
+    if not isinstance(value, str) or len(value) > 100:
+        raise ValueError("Invalid archive cursor")
+    timestamp, separator, identifier = value.partition("~")
+    parsed = datetime.fromisoformat(timestamp.replace("Z", "+00:00"))
+    if parsed.tzinfo is None or (separator and not IDENT.fullmatch(identifier)):
+        raise ValueError("Invalid archive cursor")
+    return parsed.astimezone(UTC).isoformat(timespec="milliseconds").replace("+00:00", "Z"), identifier or None
+
+
 class _SQLiteWriteGate:
     def __init__(self):
         self.condition = threading.Condition()
@@ -421,6 +431,7 @@ class InteractionStore:
 
             with psycopg.connect(self.dsn, connect_timeout=5, options="-c statement_timeout=5000") as db:
                 db.read_only = True
+                db.isolation_level = psycopg.IsolationLevel.REPEATABLE_READ
                 clauses = ["document::jsonb->>'kind' IN ('llm', 'llm_attempt')"]
                 args: list[Any] = []
                 if application:
@@ -436,18 +447,36 @@ class InteractionStore:
                     args.append(provider)
                     args.append(f"{provider}/%")
                 if since:
+                    since, _ = archive_cursor(since)
+                    clauses.append("day >= %s")
+                    args.append(since[:10])
                     clauses.append("document::jsonb->>'started_at' >= %s")
                     args.append(since)
                 if until:
+                    until, _ = archive_cursor(until)
+                    clauses.append("day <= %s")
+                    args.append(until[:10])
                     clauses.append("document::jsonb->>'started_at' <= %s")
                     args.append(until)
+                summary_clauses, summary_args = list(clauses), list(args)
+                if search:
+                    summary_clauses.append("document::text ILIKE %s")
+                    summary_args.append(f"%{search}%")
                 if before:
-                    clauses.append("document::jsonb->>'started_at' < %s")
-                    args.append(before)
+                    timestamp, identifier = archive_cursor(before)
+                    clauses.append("day <= %s")
+                    args.append(timestamp[:10])
+                    if identifier:
+                        clauses.append("(document::jsonb->>'started_at',id) < (%s,%s)")
+                        args.extend((timestamp, identifier))
+                    else:
+                        clauses.append("document::jsonb->>'started_at' < %s")
+                        args.append(timestamp)
                 if search:
                     clauses.append("document::text ILIKE %s")
                     args.append(f"%{search}%")
                 where_clause = " WHERE " + " AND ".join(clauses)
+                summary_where = " WHERE " + " AND ".join(summary_clauses)
 
                 sum_sql = (
                     "SELECT "
@@ -455,16 +484,22 @@ class InteractionStore:
                     "COUNT(DISTINCT document::jsonb->>'correlation_id') as requests, "
                     "COALESCE(SUM(CASE WHEN document::jsonb->>'status' = 'error' THEN 1 ELSE 0 END), 0) as errors, "
                     "SUM(COALESCE((document::jsonb->'metadata'->>'input_tokens')::numeric, "
-                    "(document::jsonb->'response'->'usage'->>'prompt_tokens')::numeric, 0)) as input_tokens, "
+                    "(document::jsonb->'response'->'usage'->>'prompt_tokens')::numeric, "
+                    "(document::jsonb->'response'->'usage'->>'input_tokens')::numeric)) as input_tokens, "
                     "SUM(COALESCE((document::jsonb->'metadata'->>'output_tokens')::numeric, "
-                    "(document::jsonb->'response'->'usage'->>'completion_tokens')::numeric, 0)) as output_tokens, "
-                    "ROUND(AVG(COALESCE((document::jsonb->>'duration_ms')::numeric, 0))) as average_ms, "
+                    "(document::jsonb->'response'->'usage'->>'completion_tokens')::numeric, "
+                    "(document::jsonb->'response'->'usage'->>'output_tokens')::numeric)) as output_tokens, "
+                    "ROUND(AVG((document::jsonb->>'duration_ms')::numeric)) as average_ms, "
                     "COALESCE(SUM(CASE WHEN (document::jsonb->'metadata'->>'input_tokens' IS NOT NULL "
-                    "OR document::jsonb->'response'->'usage'->>'prompt_tokens' IS NOT NULL) "
+                    "OR document::jsonb->'response'->'usage'->>'prompt_tokens' IS NOT NULL "
+                    "OR document::jsonb->'response'->'usage'->>'input_tokens' IS NOT NULL) "
+                    "AND (document::jsonb->'metadata'->>'output_tokens' IS NOT NULL "
+                    "OR document::jsonb->'response'->'usage'->>'completion_tokens' IS NOT NULL "
+                    "OR document::jsonb->'response'->'usage'->>'output_tokens' IS NOT NULL) "
                     "THEN 1 ELSE 0 END), 0) as usage_known "
-                    f"FROM interactions {where_clause}"
+                    f"FROM interactions {summary_where}"
                 )
-                sum_row = db.execute(sum_sql, args).fetchone()
+                sum_row = db.execute(sum_sql, summary_args).fetchone()
 
                 apps_provs_sql = f"""
                     SELECT DISTINCT
@@ -474,15 +509,24 @@ class InteractionStore:
                             split_part(document::jsonb->>'target', '/', 1)
                         )
                     FROM (
-                        SELECT document FROM interactions {where_clause}
+                        SELECT document FROM interactions {summary_where}
                         ORDER BY (document::jsonb->>'started_at') DESC, id DESC LIMIT 500
                     ) sub
                 """
-                app_prov_rows = db.execute(apps_provs_sql, args).fetchall()
+                app_prov_rows = db.execute(apps_provs_sql, summary_args).fetchall()
                 apps = sorted({r[0] for r in app_prov_rows if r[0]})
                 provs = sorted({r[1] for r in app_prov_rows if r[1]})
 
-                proj = "document" if include_payloads else "(document::jsonb - 'request' - 'response')::text"
+                proj = "document" if include_payloads else (
+                    "((document::jsonb - 'request' - 'response') || jsonb_build_object('usage_counts', "
+                    "jsonb_build_object('input_tokens',document::jsonb#>'{response,usage,input_tokens}', "
+                    "'prompt_tokens',document::jsonb#>'{response,usage,prompt_tokens}', "
+                    "'output_tokens',document::jsonb#>'{response,usage,output_tokens}', "
+                    "'completion_tokens',document::jsonb#>'{response,usage,completion_tokens}', "
+                    "'cached_input_tokens',document::jsonb#>'{response,usage,cached_input_tokens}', "
+                    "'prompt_tokens_details',jsonb_build_object('cached_tokens', "
+                    "document::jsonb#>'{response,usage,prompt_tokens_details,cached_tokens}'))))::text"
+                )
                 rows_sql = (
                     f"SELECT id, day, {proj} FROM interactions {where_clause} "
                     "ORDER BY (document::jsonb->>'started_at') DESC, id DESC LIMIT %s"
@@ -493,17 +537,16 @@ class InteractionStore:
                     doc = json.loads(row[2])
                     meta = doc.get("metadata") or {}
                     resp = doc.get("response") or {}
-                    usage_info = resp.get("usage") or {}
-                    inp_tok = (
-                        meta.get("input_tokens")
-                        or usage_info.get("prompt_tokens")
-                        or usage_info.get("input_tokens")
-                    )
-                    out_tok = (
-                        meta.get("output_tokens")
-                        or usage_info.get("completion_tokens")
-                        or usage_info.get("output_tokens")
-                    )
+                    usage_info = resp.get("usage") or doc.get("usage_counts") or {}
+                    def count(*values):
+                        return next((v for v in values if type(v) is int and 0 <= v <= 10**12), None)
+                    inp_tok = count(meta.get("input_tokens"), usage_info.get("prompt_tokens"),
+                                    usage_info.get("input_tokens"))
+                    out_tok = count(meta.get("output_tokens"), usage_info.get("completion_tokens"),
+                                    usage_info.get("output_tokens"))
+                    details = usage_info.get("prompt_tokens_details") or {}
+                    cached = count(usage_info.get("cached_input_tokens"),
+                                   details.get("cached_tokens") if isinstance(details, dict) else None)
                     target = doc.get("target") or ""
                     prov = meta.get("provider") or (target.split("/")[0] if "/" in target else "unknown")
                     model = meta.get("model") or (target.split("/", 1)[1] if "/" in target else target)
@@ -516,6 +559,7 @@ class InteractionStore:
 
                     item: dict[str, Any] = {
                         "id": doc.get("id", row[0]),
+                        "day": str(row[1]),
                         "timestamp": doc.get("started_at", ""),
                         "request_id": doc.get("correlation_id", doc.get("id", "")),
                         "application": doc.get("caller", "unknown"),
@@ -524,16 +568,20 @@ class InteractionStore:
                         "model": model,
                         "status": doc.get("status", "success"),
                         "diagnostic_code": diag_code,
-                        "duration_ms": doc.get("duration_ms") or 0,
+                        "duration_ms": doc.get("duration_ms"),
                         "input_tokens": int(inp_tok) if inp_tok is not None else None,
                         "output_tokens": int(out_tok) if out_tok is not None else None,
+                        "cached_input_tokens": cached if inp_tok is not None and cached is not None
+                        and cached <= inp_tok else None,
+                        "payload_capture": {"state": "stored", "source": "private-archive"},
                     }
                     if include_payloads:
                         item["request"] = doc.get("request")
                         item["response"] = doc.get("response")
                     attempts_list.append(item)
 
-                next_before = attempts_list[-1]["timestamp"] if len(rows) > limit else None
+                next_before = (attempts_list[-1]["timestamp"] + "~" + attempts_list[-1]["id"]
+                               if len(rows) > limit else None)
                 s_attempts, s_requests, s_errors, s_inp, s_out, s_avg, s_known = sum_row
                 return {
                     "schema": "subllm.usage/v1",
@@ -551,7 +599,8 @@ class InteractionStore:
                     },
                     "applications": [a for a in apps if a],
                     "providers": [p for p in provs if p],
-                    "coverage": "Persisted in PostgreSQL interaction store with full prompt and response payloads.",
+                    "coverage": "Private archive: details contain captured requests and replies. Multiple layers may "
+                    "record the same call; totals count archive records, not consolidated billable usage.",
                 }
         return {
             "schema": "subllm.usage/v1",
