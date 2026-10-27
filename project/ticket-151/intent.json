@@ -1,0 +1,72 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-151",
+  "summary": "Qualify SQLite writer admission without host speed assumptions",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-151/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "tests/test_usage_indexes.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "223c7fc8300282dd74088bcc02d621506038a57a",
+    "targetBranch": "main",
+    "outcome": "Resolve issue153 through deterministic admission regressions, full checks and protected publication.",
+    "nonGoals": [
+      "No production source changes, timeout increase, arbitrary retries, skipped tests or provider calls."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Separate real serialized persistence from controlled admission scheduling, same-inode identity and injected deadlines; assert the remaining budget reaches SQLite.",
+      "components": [
+        {
+          "name": "storage-regressions",
+          "paths": [
+            "tests/test_usage_indexes.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert this test-only change."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Private host receipts subllm-backlog-20261027; independent exact-head OneDev and Validator."
+      }
+    ]
+  }
+}
