@@ -1,0 +1,82 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-155",
+  "summary": "Share Ollama model catalog reads through canonical Procache",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-155/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_catalog_cache.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "f3e2f8d3295eb48d4c635131f33596dacec1c9f6",
+    "targetBranch": "main",
+    "outcome": "Repeated Ollama catalog reads reuse canonical metadata cache while health stays live and failure never duplicates transport",
+    "nonGoals": [
+      "Caching mutations, streaming or authorization decisions",
+      "Dependency version changes or publication of pre-existing unrelated commits"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Optional canonical CachedHTTPReads adapter wraps only successful validated model catalogs; retain live health, explicit freshness and one-call fallback on storage failure",
+      "components": [
+        {
+          "name": "proxy-catalog",
+          "paths": [
+            "src/subllm/proxy.py"
+          ]
+        },
+        {
+          "name": "integration-regressions",
+          "paths": [
+            "tests/test_proxy_catalog_cache.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional fresh keyword on model catalog read"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the exact implementation through protected delivery"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_catalog_cache.py tests/test_proxy.py",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Actual canonical cache: repeated read, concurrency, host separation, expiry, live health/freshness, malformed payload and storage-failure transport count"
+      }
+    ]
+  }
+}

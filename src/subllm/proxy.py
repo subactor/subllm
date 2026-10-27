@@ -3,14 +3,19 @@ from __future__ import annotations
 import datetime
 import json
 import math
+import os
 import re
 import shutil
+import sqlite3
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from threading import Lock
 from typing import Any
+from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
 from urllib.parse import urlparse
 from urllib.request import Request, urlopen
@@ -33,6 +38,7 @@ DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
 DEFAULT_PROXY_PORT = 11435
 SYSTEM_ONE_REQUEST_SCHEMA = "wellmanifest.system-one-request/v1"
 SYSTEM_ONE_RESPONSE_SCHEMA = "wellmanifest.system-one-response/v1"
+_CATALOG_READER_LOCK = Lock()
 SYSTEM_ONE_LOCAL_OLLAMA_MODELS: tuple[str, ...] = (
     "qwen3.5:0.8b",
     "willman-eval:qwen3.5-0.8b",
@@ -327,20 +333,115 @@ def is_upstream_ollama_alive(upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, timeou
         return False
 
 
-def get_upstream_ollama_models(
-    upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, timeout: float = 0.8
-) -> list[dict[str, Any]]:
+@lru_cache(maxsize=2)
+def _catalog_reader(path: str, ttl: float) -> tuple[Any, Any]:
+    from procache.http import CachedHTTPReads, HTTPResponse
+
+    return CachedHTTPReads.shared(path=path, ttl=ttl), HTTPResponse
+
+
+def _optional_catalog_reader() -> tuple[Any, Any] | None:
     try:
-        req = Request(f"{upstream_url.rstrip('/')}/api/tags", headers={"User-Agent": "subllm-proxy"})
-        with urlopen(req, timeout=timeout) as resp:
-            data = json.loads(resp.read().decode("utf-8"))
-            return data.get("models", []) if isinstance(data, dict) else []
+        ttl = float(os.environ.get("SUBLLM_MODEL_CATALOG_CACHE_TTL", "15"))
+        if not math.isfinite(ttl) or not 0 < ttl <= 3600:
+            return None
+        default = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "subactor/provider-http.sqlite3"
+        path = os.environ.get("SUBACTOR_PROCACHE_PATH") or str(default)
+        # lru_cache permits concurrent construction on an initial miss. Keep
+        # SQLite initialization single-flight within this process as well.
+        with _CATALOG_READER_LOCK:
+            return _catalog_reader(path, ttl)
+    except (ImportError, OSError, ValueError, sqlite3.Error):
+        return None
+
+
+def _anonymous_catalog_transport(url: str) -> bool:
+    opener = getattr(urllib_request, "_opener", None)
+    if opener is None:
+        return True
+    # An installed opener can add credentials/cookies outside Request.headers.
+    # Only the standard anonymous handlers and default headers are known here.
+    if any(name.lower() != "user-agent" for name, _ in getattr(opener, "addheaders", ())):
+        return False
+    standard = {"ProxyHandler", "UnknownHandler", "HTTPHandler", "HTTPDefaultErrorHandler",
+                "HTTPRedirectHandler", "FTPHandler", "FileHandler", "DataHandler",
+                "HTTPSHandler", "HTTPErrorProcessor"}
+    for handler in getattr(opener, "handlers", ()):
+        if type(handler).__module__ != "urllib.request" or type(handler).__name__ not in standard:
+            return False
+        # A TLS context can contain a client certificate whose identity is
+        # unavailable here. HTTPS handlers do not affect plain HTTP requests.
+        if urlparse(url).scheme == "https" and getattr(handler, "_context", None) is not None:
+            return False
+        if any(urlparse(url).username is not None for url in getattr(handler, "proxies", {}).values()):
+            return False
+    return True
+
+
+def get_upstream_ollama_models(
+    upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, timeout: float = 0.8, *, fresh: bool = False,
+) -> list[dict[str, Any]]:
+    """Read a validated catalog; install ``.[cache]`` to share repeated reads.
+
+    Health always uses its separate live transport. A zero/invalid
+    SUBLLM_MODEL_CATALOG_CACHE_TTL or explicit freshness preserves live reads.
+    """
+    attempted = False
+    models: list[dict[str, Any]] | None = None
+    url = f"{upstream_url.rstrip('/')}/api/tags"
+    headers = {"User-Agent": "subllm-proxy"}
+
+    def decode(body: bytes) -> list[dict[str, Any]]:
+        data = json.loads(body.decode("utf-8"))
+        if (not isinstance(data, dict) or not isinstance(data.get("models"), list)
+                or any(not isinstance(item, dict) for item in data["models"])):
+            raise ValueError("Invalid Ollama model catalog")
+        return data["models"]
+
+    def read() -> tuple[int, dict[str, str], bytes]:
+        nonlocal attempted, models
+        attempted = True
+        with urlopen(Request(url, headers=headers), timeout=timeout) as resp:
+            body = resp.read()
+            models = decode(body)
+            return resp.status, dict(resp.headers), body
+
+    try:
+        # This transport sends no authentication headers. URL credentials are
+        # not a known anonymous identity and retain the original live path.
+        reader = (None if fresh or urlparse(upstream_url).username is not None
+                  or not _anonymous_catalog_transport(upstream_url)
+                  else _optional_catalog_reader())
+        if reader is None:
+            read()
+            return models or []
+        cache, response_type = reader
+
+        def load():
+            try:
+                return response_type(*read())
+            except HTTPError as error:
+                # Give the canonical adapter the real 429 and Retry-After so
+                # subsequent catalog callers honor the shared cooldown.
+                with error:
+                    return response_type(error.code, dict(error.headers or {}), error.read())
+
+        try:
+            response = cache.request("GET", url, load,
+                                     scope=cache.credential_scope("anonymous"), headers=headers, cacheable=True)
+        except (OSError, ValueError, sqlite3.Error):
+            # A cache write can fail after a successful provider read. Reuse
+            # that response; never issue a second upstream request.
+            if not attempted:
+                read()
+            return models or []
+        return decode(response.body) if 200 <= response.status < 300 else []
     except Exception:
         return []
 
 
 def list_proxy_models(
-    upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, include_upstream: bool = True
+    upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, include_upstream: bool = True, *, fresh: bool = False,
 ) -> list[dict[str, Any]]:
     """Return unified list of available models for OpenAI and Ollama formats."""
     models: list[dict[str, Any]] = []
@@ -379,7 +480,8 @@ def list_proxy_models(
             })
 
     if include_upstream:
-        upstream_models = get_upstream_ollama_models(upstream_url)
+        upstream_models = (get_upstream_ollama_models(upstream_url, fresh=True) if fresh
+                           else get_upstream_ollama_models(upstream_url))
         for m in upstream_models:
             name = m.get("name") or m.get("model") or ""
             base_name = name.split(":")[0] if ":" in name else name
@@ -634,7 +736,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header(
             "Access-Control-Allow-Headers",
-            "Authorization, Content-Type, X-Ticket, X-Subactor-Ticket, "
+            "Authorization, Content-Type, Cache-Control, Pragma, X-Ticket, X-Subactor-Ticket, "
             "X-Application, X-Subactor-Application, X-Function, X-Subactor-Function, X-Request-ID",
         )
         self.send_header("Access-Control-Max-Age", "86400")
@@ -643,6 +745,14 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         self.send_response(204)
         self._send_cors_headers()
         self.end_headers()
+
+    def _catalog_models(self) -> list[dict[str, Any]]:
+        policy = self.headers.get("Cache-Control", "").lower()
+        directives = {part.split("=", 1)[0].strip() for part in policy.split(",")}
+        fresh = bool(directives & {"no-store", "no-cache"}) or bool(
+            re.search(r'(?:^|,)\s*max-age\s*=\s*"?0+"?\s*(?:,|$)', policy)
+        ) or "no-cache" in {part.strip().lower() for part in self.headers.get("Pragma", "").split(",")}
+        return list_proxy_models(self.ollama_upstream, fresh=fresh)
 
     def do_GET(self) -> None:
         if not self._local_host():
@@ -662,7 +772,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/v1/models":
-            models = list_proxy_models(self.ollama_upstream)
+            models = self._catalog_models()
             data = [
                 {
                     "id": m["id"],
@@ -677,7 +787,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return
 
         if path == "/api/tags":
-            models = list_proxy_models(self.ollama_upstream)
+            models = self._catalog_models()
             now_iso = datetime.datetime.now(datetime.UTC).isoformat()
             ollama_models = [
                 {
