@@ -11,9 +11,9 @@ from __future__ import annotations
 import json
 import multiprocessing
 import os
+import sqlite3
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from threading import Thread
 from types import SimpleNamespace
@@ -274,14 +274,25 @@ def test_native_writer_preserves_first_use_without_recurring_index_ddl(monkeypat
     assert len(ddl) == (0 if exists else 1)
 
 
-def test_sqlite_writers_share_a_gate_across_store_instances(monkeypatch, tmp_path):
-    from subllm.interaction_store import InteractionStore
+def test_sqlite_store_instances_persist_records_and_event_sequences(monkeypatch, tmp_path):
+    from subllm import interaction_store
+    InteractionStore = interaction_store.InteractionStore
+    gates = []
+    acquire = interaction_store._SQLiteWriteGate.acquire
+
+    def observed_acquire(gate, timeout):
+        gates.append(gate)  # Retain the gate, just as overlapping slots do.
+        assert timeout == 5
+        return acquire(gate, timeout)
+
+    monkeypatch.setattr(interaction_store._SQLiteWriteGate, 'acquire', observed_acquire)
     monkeypatch.setattr('subllm.interaction_store.utc_now', lambda: '2026-01-01T00:00:00.000Z')
-    def write(n):
-        return InteractionStore(tmp_path / 'private').begin(kind='llm', caller='fixture',
-                                                           target='fixture', request={'number': n})
-    with ThreadPoolExecutor(8) as pool:
-        records = list(pool.map(write, range(24)))
+    # Persistence is real I/O, but must not make 24 fsyncs compete for one
+    # five-second admission window. Admission ordering is qualified below.
+    stores = [InteractionStore(tmp_path / 'private') for _ in range(8)]
+    records = [stores[n % 8].begin(kind='llm', caller='fixture', target='fixture', request={'number': n})
+               for n in range(24)]
+    assert len(gates) == 24 and all(gate is gates[0] for gate in gates)
     store = InteractionStore(tmp_path / 'private')
     assert len(store.query('2026-01-01')) == len({r['id'] for r in records}) == 24
     with store.connect('2026-01-01') as db:
@@ -289,14 +300,94 @@ def test_sqlite_writers_share_a_gate_across_store_instances(monkeypatch, tmp_pat
         assert summary == (24, 1, 24)
 
 
-def test_sqlite_local_queue_shares_the_existing_busy_budget(monkeypatch, tmp_path):
+def test_sqlite_writers_share_a_gate_by_inode(monkeypatch, tmp_path):
+    from subllm import interaction_store
+    original = tmp_path / 'original.sqlite3'
+    original.touch(mode=0o600)
+    alias = tmp_path / 'alias.sqlite3'
+    os.link(original, alias)
+    unrelated = tmp_path / 'unrelated.sqlite3'
+    unrelated.touch(mode=0o600)
+    gates, released = [], []
+
+    def acquire(gate, timeout):
+        assert timeout == 5
+        gates.append(gate)
+        return True
+
+    monkeypatch.setattr(interaction_store._SQLiteWriteGate, 'acquire', acquire)
+    monkeypatch.setattr(interaction_store._SQLiteWriteGate, 'release', lambda gate: released.append(gate))
+    # Overlap the slots to retain strong references, as concurrent writers do.
+    # Gate acquisition is injected so no disk operation or host delay spends
+    # the admission budget while checking registry identity.
+    with interaction_store._sqlite_write_slot(original, True), \
+            interaction_store._sqlite_write_slot(alias, True), \
+            interaction_store._sqlite_write_slot(unrelated, True):
+        assert gates[0] is gates[1]
+        assert gates[0] is not gates[2]
+        with interaction_store._sqlite_write_slot(original, False):
+            assert len(gates) == 3  # Readers bypass writer admission.
+    assert released == list(reversed(gates))
+
+
+def test_sqlite_gate_excludes_busy_writers_and_preserves_fifo(monkeypatch):
+    from subllm import interaction_store
+    gate = interaction_store._SQLiteWriteGate()
+    assert gate.acquire(timeout=5)
+    predecessor = object()
+    gate.queue.append(predecessor)
+
+    def scheduled_wait(predicate, timeout):
+        assert timeout == 5
+        assert len(gate.queue) == 2
+        assert not predicate()  # The current owner is still busy.
+        gate.release()
+        assert not predicate()  # A predecessor must be admitted first.
+        assert gate.queue.popleft() is predecessor
+        assert predicate()  # Only the head may enter an idle gate.
+        return True
+
+    # Execute each scheduling state under the real condition's reentrant lock;
+    # the test never depends on a wall-clock race or on disk throughput.
+    monkeypatch.setattr(gate.condition, 'wait_for', scheduled_wait)
+    assert gate.acquire(timeout=5)
+    assert gate.busy and not gate.queue
+    gate.release()
+    assert not gate.busy
+
+
+def test_sqlite_queue_timeout_cleans_up_and_allows_later_admission(monkeypatch, tmp_path):
     from subllm import interaction_store
     path = tmp_path / 'fixture.sqlite3'
     path.touch(mode=0o600)
-    clock = iter([0, 3])
-    monkeypatch.setattr(interaction_store.time, 'monotonic', lambda: next(clock))
-    with interaction_store._sqlite_write_slot(path, True) as remaining:
-        assert remaining == 2
+
+    def exhausted_wait(predicate, timeout):
+        assert timeout == 5
+        assert not predicate()
+        return False  # Inject deadline exhaustion while another writer owns it.
+
+    with interaction_store._sqlite_write_slot(path, True):
+        identity = path.stat()
+        gate = interaction_store._SQLITE_WRITE_GATES[(identity.st_dev, identity.st_ino)]
+        with monkeypatch.context() as faults:
+            faults.setattr(gate.condition, 'wait_for', exhausted_wait)
+            with pytest.raises(sqlite3.OperationalError, match='^database is locked$'), \
+                    interaction_store._sqlite_write_slot(path, True):
+                pytest.fail('An expired waiter must never enter SQLite')
+        assert gate.busy and not gate.queue
+    assert gate.acquire(timeout=5)
+    gate.release()
+
+
+@pytest.mark.parametrize(('elapsed', 'remaining'), [(0, 5), (3, 2), (5, 0), (7, 0)])
+def test_sqlite_local_queue_shares_the_existing_busy_budget(monkeypatch, tmp_path, elapsed, remaining):
+    from subllm import interaction_store
+    path = tmp_path / 'fixture.sqlite3'
+    path.touch(mode=0o600)
+    clock = iter([0, elapsed])
+    monkeypatch.setattr(interaction_store, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    with interaction_store._sqlite_write_slot(path, True) as observed:
+        assert observed == remaining
 
 
 def _child_sqlite_write(directory):
