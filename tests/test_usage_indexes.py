@@ -390,6 +390,27 @@ def test_sqlite_local_queue_shares_the_existing_busy_budget(monkeypatch, tmp_pat
         assert observed == remaining
 
 
+@pytest.mark.parametrize(('elapsed', 'remaining'), [(3, 2), (7, 0)])
+def test_sqlite_connect_uses_only_the_budget_left_after_admission(monkeypatch, tmp_path, elapsed, remaining):
+    from subllm import interaction_store
+    clock = iter([0, elapsed])
+    monkeypatch.setattr(interaction_store, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    calls = []
+
+    def locked_connect(path, *, uri, timeout):
+        calls.append((path, uri, timeout))
+        raise sqlite3.OperationalError('database is locked')
+
+    monkeypatch.setattr(interaction_store.sqlite3, 'connect', locked_connect)
+    store = interaction_store.InteractionStore(tmp_path / 'private')
+    with pytest.raises(sqlite3.OperationalError, match='^database is locked$'), \
+            store.connect('2026-01-01', True):
+        pytest.fail('An interprocess lock failure must propagate')
+    assert calls == [(store.directory / '2026-01-01.sqlite3', False, remaining)]
+    identity = calls[0][0].stat()
+    assert (identity.st_dev, identity.st_ino) not in interaction_store._SQLITE_WRITE_GATES
+
+
 def _child_sqlite_write(directory):
     from subllm.interaction_store import InteractionStore
     with InteractionStore(Path(directory)).connect('2026-01-01', True) as db:
