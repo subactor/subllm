@@ -40,9 +40,9 @@ class PolicyApiHandler(BaseHTTPRequestHandler):
                     self._error(400, "USAGE-PARAM-001", "Missing id parameter")
                     return
                 try:
-                    detail = query_interaction_detail(record_id)
+                    detail = query_interaction_detail(record_id, day=query.get("day", [None])[0])
                 except PoaContractError as exc:
-                    self._error(503, exc.code, str(exc))
+                    self._error(400 if exc.code == "USAGE-FILTER-001" else 503, exc.code, str(exc))
                     return
                 if detail is None:
                     self._error(404, "USAGE-NOT-FOUND-001", "Interaction detail not found")

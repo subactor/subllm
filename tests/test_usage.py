@@ -308,6 +308,70 @@ def test_query_usage_search_filter(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
     assert caught.value.code == "USAGE-FILTER-001"
 
 
+def test_explicit_archive_selection_never_returns_journal_or_payload_pages(monkeypatch, server):
+    record()
+    calls = []
+    empty = {"schema": "subllm.usage/v1", "storage": "postgres", "attempts": [],
+             "summary": {"attempts": 0}, "next_before": None}
+    class Store:
+        def __init__(self, **kwargs):
+            pass
+        def query_attempts(self, **kwargs):
+            calls.append(kwargs)
+            return empty
+    monkeypatch.setattr("subllm.interaction_store.default_postgres_dsn", lambda: "postgresql://fixture")
+    monkeypatch.setattr("subllm.interaction_store.InteractionStore", Store)
+    with urlopen(server + "/v1/usage?source=archive", timeout=5) as response:
+        archived = json.load(response)
+    assert archived["source"] == "archive" and archived["attempts"] == []
+    assert calls[0]["include_payloads"] is False
+    assert query_usage({"source": "journal"})["summary"]["attempts"] == 1
+    assert len(calls) == 1
+
+
+@pytest.mark.parametrize("mode", ["disabled", "failed"])
+def test_unavailable_selected_archive_is_http_503_not_another_history(monkeypatch, server, mode):
+    record()
+    def failed(**kwargs):
+        raise RuntimeError("PRIVATE_ARCHIVE_DRIVER")
+    monkeypatch.setattr("subllm.interaction_store.default_postgres_dsn",
+                        lambda: None if mode == "disabled" else "postgresql://fixture")
+    monkeypatch.setattr("subllm.interaction_store.InteractionStore", failed)
+    with pytest.raises(HTTPError) as caught:
+        urlopen(server + "/v1/usage?source=archive", timeout=5)
+    assert caught.value.code == 503 and b"PRIVATE_ARCHIVE_DRIVER" not in caught.value.read()
+    assert query_usage({"source": "journal"})["summary"]["attempts"] == 1
+
+
+def test_archive_cursor_and_day_are_strict_and_day_lookup_is_exact(monkeypatch, server, captured_attempt):
+    from subllm.interaction_store import archive_cursor
+    store, captured, ref = captured_attempt
+    cursor = "2026-10-27T23:00:00.000+02:00~" + ref["id"]
+    assert archive_cursor(cursor) == ("2026-10-27T21:00:00.000Z", ref["id"])
+    original = store.get_interaction
+    calls = []
+    def get(identifier, day=None):
+        calls.append((identifier, day))
+        return original(identifier, day)
+    monkeypatch.setattr(store, "get_interaction", get)
+    with urlopen(server + "/v1/usage/detail?" + urlencode({"id": ref["id"], "day": ref["day"]}), timeout=5) as r:
+        assert json.load(r)["request"] == captured["request"]
+    assert calls == [(ref["id"], ref["day"])]
+    for identifier, day in ((ref["id"], "2026-02-30"), ("1", ref["day"]), (ref["id"], "../private")):
+        with pytest.raises(HTTPError) as caught:
+            urlopen(server + "/v1/usage/detail?" + urlencode({"id": identifier, "day": day}), timeout=5)
+        assert caught.value.code == 400
+    for invalid in ("2026-10-27", "2026-10-27T21:00:00Z~missing", "2026-02-30T00:00:00Z", "x" * 101):
+        with pytest.raises(ValueError):
+            archive_cursor(invalid)
+
+
+@pytest.mark.parametrize("source", ["unknown", True, None])
+def test_unknown_history_source_fails_closed(source):
+    with pytest.raises(PoaContractError):
+        query_usage({"source": source})
+
+
 @pytest.fixture
 def captured_attempt(monkeypatch, tmp_path):
     from subllm.interaction_store import InteractionStore

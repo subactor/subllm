@@ -724,6 +724,19 @@ def _write_proxy_receipt(
         pass
 
 
+def _openai_usage(usage: Mapping[str, Any]) -> dict[str, Any]:
+    """Preserve an explicitly reported cache subset; do not add it to totals."""
+    prompt = usage.get("input_tokens", usage.get("prompt_tokens", 0))
+    completion = usage.get("output_tokens", usage.get("completion_tokens", 0))
+    result = {"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion}
+    details = usage.get("prompt_tokens_details")
+    cached = usage.get("cached_input_tokens", details.get("cached_tokens") if isinstance(details, Mapping) else None)
+    reported_prompt = usage.get("input_tokens", usage.get("prompt_tokens"))
+    if type(cached) is int and type(reported_prompt) is int and 0 <= cached <= min(prompt, 10**12):
+        result["prompt_tokens_details"] = {"cached_tokens": cached}
+    return result
+
+
 class SubLLMProxyHandler(BaseHTTPRequestHandler):
     ollama_upstream: str = DEFAULT_OLLAMA_UPSTREAM
     server_version = "subllm-proxy/1.0"
@@ -1068,6 +1081,10 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 "choices": [{"index": 0, "delta": {}, "finish_reason": response.finish_reason or "stop"}],
             }
             self.wfile.write(f"data: {json.dumps(stop_payload)}\n\n".encode())
+            stream_options = payload.get("stream_options")
+            if isinstance(stream_options, Mapping) and stream_options.get("include_usage") is True:
+                usage_payload = {**stop_payload, "choices": [], "usage": _openai_usage(response.usage)}
+                self.wfile.write(f"data: {json.dumps(usage_payload)}\n\n".encode())
             self.wfile.write(b"data: [DONE]\n\n")
             self.wfile.flush()
             return
@@ -1087,14 +1104,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                     "finish_reason": response.finish_reason or "stop",
                 }
             ],
-            "usage": {
-                "prompt_tokens": response.usage.get("input_tokens", response.usage.get("prompt_tokens", 0)),
-                "completion_tokens": response.usage.get("output_tokens", response.usage.get("completion_tokens", 0)),
-                "total_tokens": (
-                    response.usage.get("input_tokens", response.usage.get("prompt_tokens", 0))
-                    + response.usage.get("output_tokens", response.usage.get("completion_tokens", 0))
-                ),
-            },
+            "usage": _openai_usage(response.usage),
         }
         self._json(200, result, extra_headers=extra_headers)
 

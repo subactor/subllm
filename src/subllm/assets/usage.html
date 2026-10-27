@@ -10,6 +10,7 @@
 <article><span>Tokeny wejście / wyjście</span><strong id="tokens">—</strong><small id="coverage">Tylko dane zwrócone przez dostawcę</small></article>
 </section>
 <form id="filters" class="filters">
+<label>Źródło<select name="source" id="source"><option value="journal">Dziennik użycia</option><option value="archive">Prywatne archiwum</option></select></label>
 <label class="search-label">Szukaj w treści<input type="text" name="search" id="search" placeholder="Szukaj w promptach, odpowiedziach, modelach…" autocomplete="off"></label>
 <label>Aplikacja<select name="application" id="application"><option value="">Wszystkie aplikacje</option></select></label>
 <label>Dostawca<select name="provider" id="provider"><option value="">Wszyscy dostawcy</option></select></label>
@@ -19,7 +20,7 @@
 <button type="submit">Filtruj / Szukaj</button><button type="button" id="clear-filters" class="secondary">Wyczyść</button>
 </form>
 <div class="table-heading">
-  <h2>Historia prób</h2>
+  <h2>Historia prób <small id="source-current">Dziennik użycia</small></h2>
   <div class="table-actions">
     <button id="copy-table-all" class="secondary" type="button" title="Kopiuj całą widoczną tabelę wraz ze szczegółami promptów, odpowiedzi i metadanych do JSON"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg> <span>Kopiuj JSON</span></button>
     <button id="copy-table-tsv" class="secondary" type="button" title="Kopiuj widoczne wiersze tabeli jako TSV (dla arkusza / diagnostyki)"><svg class="ui-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line><polyline points="10 9 9 9 8 9"></polyline></svg> <span>Kopiuj TSV</span></button>
@@ -47,6 +48,7 @@
   <p id="detail-planfile-title" class="detail-planfile-title"></p>
   <code id="detail-planfile-cmd" class="detail-planfile-cmd"></code>
 </div>
+<p id="detail-token-summary"></p>
 <div class="detail-grid">
 <div class="detail-block">
 <h3>Wysłany Prompt (Messages)</h3>
@@ -63,5 +65,6 @@
 </details>
 </section>
 <aside><h2>Co obejmuje ten widok?</h2><p>Wywołania przez zaktualizowanego klienta SubLLM i trasy lub modele katalogowe jego proxy. Ruch wysyłany bezpośrednio do innych API, przekazywany do lokalnego Ollama oraz operacje edycji kodu nie są tutaj rejestrowane. Procesy korzystające ze starszej wersji wymagają aktualizacji i restartu.</p><p>Aplikacja jest deklarowana przez klienta. <code>subactor-proxy</code> oznacza brak osobnej identyfikacji aplikacji w proxy. Ten sam identyfikator żądania łączy próby u kolejnych dostawców. „—” oznacza brak danych o tokenach, nie zerowe zużycie. Koszt nie jest szacowany bez wiarygodnego cennika. Dla nieudanych prób zużycie może być nieznane.</p><p>Historia zaczyna się od włączenia rejestracji. Po skonfigurowaniu bazy PostgreSQL rejestrowane są pełne prompty i odpowiedzi z zachowaniem lokalnej prywatności środowiska deweloperskiego.</p></aside>
+<p>Dziennik zachowuje także wywołania bez zapisanej treści. Prywatne archiwum pokazuje osobno zapisane żądania i odpowiedzi; nie przypisuje ich do starszych wpisów dziennika. Może zawierać zapisy tego samego wywołania z klienta i proxy, dlatego jego sumy nie są zestawieniem rozliczeniowym. Znane tokeny z pamięci podręcznej są pokazane w szczegółach i stanowią część wejścia.</p>
 <footer>SubLLM · Lokalny panel użycia API <span id="updated"></span></footer>
 </main></body></html>
