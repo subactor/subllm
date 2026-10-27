@@ -1,0 +1,75 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-154",
+  "summary": "Adopt canonical Procache for optional provider metadata caching",
+  "workstream": "governance",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-154/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "63c94fd6de7896a1684e9092f2e237ca547a65b8",
+    "targetBranch": "main",
+    "outcome": "Provide an optional cache extra and test dependency pinned to independently accepted dockuri/procache source",
+    "nonGoals": [
+      "Caching mutations, streaming or authorization decisions",
+      "Dependency version changes or publication of pre-existing unrelated commits"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 1
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep the base package dependency-free and reuse immutable canonical Procache through an optional cache extra",
+      "components": [
+        {
+          "name": "dependency-declaration",
+          "paths": [
+            "pyproject.toml"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the exact implementation through protected delivery"
+    },
+    "runtimeDependencies": [
+      "subactor-procache from immutable accepted dockuri/procache revision"
+    ],
+    "validation": [
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m build",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Resolve the canonical dependency, verify wheel metadata and existing tests through protected publication"
+      }
+    ]
+  }
+}
