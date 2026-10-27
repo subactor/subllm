@@ -173,14 +173,18 @@ class PolicyBus:
         return {"interaction_ref": ref, "accepted": True}
 
     def _command_record_usage(self, document: dict[str, Any]) -> dict[str, Any]:
-        from subllm.usage import identifier, record_attempt
+        from subllm.usage import archive_reference, identifier, record_attempt
 
         payload = exact(document, {"schema", "process_uri", "subject", "idempotency_key", "attempt"})
         event = exact(
             payload["attempt"],
             {"request_id", "application", "function", "provider", "model", "status", "duration_ms", "usage"},
-            optional={"diagnostic_code"},
+            optional={"diagnostic_code", "archive_ref"},
         )
+        try:
+            archive_reference(event.get("archive_ref"))
+        except ValueError as exc:
+            raise PoaContractError("USAGE-EVENT-001", "Invalid archive reference") from exc
         for key in ("request_id", "application", "function", "provider", "model"):
             if not isinstance(event[key], str) or identifier(event[key]) != event[key]:
                 raise PoaContractError("USAGE-EVENT-001", "Invalid attempt identifier")

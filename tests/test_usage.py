@@ -307,3 +307,106 @@ def test_query_usage_search_filter(monkeypatch: pytest.MonkeyPatch, tmp_path: Pa
         query_usage({"search": "a" * 300})
     assert caught.value.code == "USAGE-FILTER-001"
 
+
+@pytest.fixture
+def captured_attempt(monkeypatch, tmp_path):
+    from subllm.interaction_store import InteractionStore
+
+    store = InteractionStore(directory=tmp_path / "private-capture")
+    captured = store.begin(kind="llm_attempt", caller="todo2code", target="zai/glm-5.3",
+                           request={"messages": [{"role": "user", "content": "PRIVATE-PROMPT"}]},
+                           correlation_id="same-request")
+    captured = store.finish(captured, {"content": "PRIVATE-REPLY"}, duration_ms=14, metadata={
+        "application": "todo2code", "function": "semantic", "provider": "zai", "model": "glm-5.3",
+    })
+    monkeypatch.setattr("subllm.interaction_store.get_default_interaction_store", lambda: store)
+    return store, captured, {"id": captured["id"], "day": captured["day"]}
+
+
+def test_http_ingest_links_exact_capture_without_copying_payloads(server, captured_attempt):
+    _, captured, reference = captured_attempt
+    payload = {
+        "schema": "subllm.command/v1", "process_uri": "subllm://local/policy/command/record-usage",
+        "subject": "service:todo2code", "idempotency_key": "usage.exact-capture",
+        "attempt": {"request_id": "same-request", "application": "todo2code", "function": "semantic",
+                    "provider": "zai", "model": "glm-5.3", "status": "success", "duration_ms": 14,
+                    "usage": {"input_tokens": 12, "output_tokens": 4}, "archive_ref": reference},
+    }
+    for duplicate in (False, True):
+        request = Request(server + "/v1/commands", data=json.dumps(payload).encode(),
+                          headers={"Content-Type": "application/json"})
+        with urlopen(request, timeout=5) as response:
+            assert json.load(response)["duplicate"] is duplicate
+    row = query_usage({})["attempts"][0]
+    for identifier in (str(row["id"]), row["request_id"]):
+        with urlopen(server + "/v1/usage/detail?id=" + identifier, timeout=5) as response:
+            detail = json.load(response)
+        assert detail["id"] == captured["id"] and detail["usage_attempt_id"] == row["id"]
+        assert detail["request"] == captured["request"] and detail["response"] == captured["response"]
+        assert detail["payload_capture"]["state"] == "stored"
+    assert b"PRIVATE-PROMPT" not in journal_path().read_bytes()
+    assert b"PRIVATE-REPLY" not in journal_path().read_bytes()
+    assert "archive_ref" not in row  # List API remains payload-free.
+
+
+@pytest.mark.parametrize("field,value", [("request_id", "other-request"), ("application", "other"),
+    ("function", "other"), ("provider", "other"), ("model", "other"), ("status", "error")])
+def test_mismatched_reference_never_discloses_another_attempt(captured_attempt, field, value):
+    record(archive_ref=captured_attempt[2], **{field: value})
+    with pytest.raises(PoaContractError, match="does not match") as caught:
+        query_interaction_detail("1")
+    assert caught.value.code == "USAGE-DETAIL-001"
+    assert "PRIVATE" not in str(caught.value)
+
+
+def test_missing_or_unavailable_referenced_capture_is_not_unlinked(monkeypatch, captured_attempt):
+    record(archive_ref=captured_attempt[2])
+    monkeypatch.setattr("subllm.interaction_store.get_default_interaction_store", lambda: None)
+    with pytest.raises(PoaContractError, match="Referenced interaction archive is unavailable"):
+        query_interaction_detail("1")
+    def failed():
+        raise RuntimeError("PRIVATE-DRIVER-DETAIL")
+    monkeypatch.setattr("subllm.interaction_store.get_default_interaction_store", failed)
+    with pytest.raises(PoaContractError, match="temporarily unavailable") as caught:
+        query_interaction_detail("1")
+    assert "PRIVATE-DRIVER-DETAIL" not in str(caught.value)
+
+
+def test_legacy_rows_remain_unlinked_and_reads_do_not_migrate():
+    record()
+    with closing(sqlite3.connect(journal_path())) as db, db:
+        db.execute("ALTER TABLE attempts DROP COLUMN archive_id")
+        db.execute("ALTER TABLE attempts DROP COLUMN archive_day")
+    before = journal_path().read_bytes()
+    assert query_usage({})["summary"]["attempts"] == 1
+    assert query_interaction_detail("1")["payload_capture"]["state"] == "unlinked"
+    assert journal_path().read_bytes() == before
+    record(request_id="new-request")
+    assert query_interaction_detail("2")["payload_capture"]["state"] == "unlinked"
+
+
+def test_shared_correlation_requires_an_individual_attempt(captured_attempt):
+    record(archive_ref=captured_attempt[2])
+    record(provider="openrouter", status="error")
+    correlation = query_usage({})["attempts"][0]["request_id"]
+    with pytest.raises(PoaContractError, match="individual usage attempt"):
+        query_interaction_detail(correlation)
+    assert query_interaction_detail("1")["id"] == captured_attempt[1]["id"]
+
+
+@pytest.mark.parametrize("reference", [{"id": "a" * 32}, {"id": "a" * 32, "day": "2026-02-30"},
+    {"id": "a" * 32, "day": "2026-10-27", "request": "PRIVATE"},
+    {"id": "../PRIVATE", "day": "2026-10-27"}, "PRIVATE"])
+def test_ingest_rejects_malformed_archive_references(reference):
+    document = {
+        "schema": "subllm.command/v1", "process_uri": "subllm://local/policy/command/record-usage",
+        "subject": "service:todo2code", "idempotency_key": "usage.invalid-capture",
+        "attempt": {"request_id": "same-request", "application": "todo2code", "function": "semantic",
+                    "provider": "zai", "model": "glm-5.3", "status": "success", "duration_ms": 14,
+                    "usage": {}, "archive_ref": reference},
+    }
+    with pytest.raises(PoaContractError) as caught:
+        PolicyBus().command(document)
+    assert caught.value.code == "USAGE-EVENT-001" and "PRIVATE" not in str(caught.value)
+    assert not journal_path().exists()
+
