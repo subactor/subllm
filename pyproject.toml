@@ -24,13 +24,13 @@ classifiers = [
 cache = [
   "subactor-procache==0.1.0",
 ]
-gateway = ["mcp==1.28.1", "uvicorn>=0.35,<1", "psycopg[binary]>=3.2,<4"]
+gateway = ["mcp==1.30.0", "uvicorn>=0.35,<1", "psycopg[binary]>=3.2,<4"]
 cursor = [
   "cursor-sdk>=1.0.28,<2",
 ]
 test = [
   "subactor-procache==0.1.0",
-  "mcp==1.28.1",
+  "mcp==1.30.0",
   "uvicorn>=0.35,<1",
   "psycopg[binary]>=3.2,<4",
   "build>=1.2,<2",
