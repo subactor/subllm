@@ -86,7 +86,10 @@ def record_attempt(
 ) -> bool:
     """Logging failure must never retry a paid request or replace its result."""
     try:
-        reference = archive_reference(archive_ref)
+        from .interaction_context import _take_usage_archive_reference
+
+        captured = _take_usage_archive_reference(request_id, application, function, provider, model)
+        reference = archive_reference(archive_ref if archive_ref is not None else captured)
         path = journal_path()
         path.parent.mkdir(mode=0o700, parents=True, exist_ok=True)
         # Exclusive creation prevents a window with world-readable default permissions.

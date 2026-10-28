@@ -1,0 +1,88 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-158",
+  "summary": "Link SDK capture and journal through one-shot exact attempt context",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-158/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/interaction_context.py",
+    "src/subllm/usage.py",
+    "tests/test_sdk_archive_link.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "5957986fcd1fa941866ff50fc27354f1a44d004d",
+    "targetBranch": "main",
+    "outcome": "Link each captured direct SDK attempt to its exact journal record through a one-shot context-local identity-bound reference, preserving provider results on telemetry failure.",
+    "nonGoals": [
+      "No route, provider, budget, historical join, reserved router path, or protected policy edits. No raw payloads in journals or progress."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Existing begin/finish capture carries the raw attempt identity on an internal record wrapper. A context-local one-shot reference is consumed by record_attempt only when the entire request/application/function/provider/model identity matches. Explicit archive_ref retains precedence. New attempts and failed capture boundaries clear stale metadata. Preserve the existing two-element capture entry and journal schema.",
+      "components": [
+        {
+          "name": "attempt-capture",
+          "paths": [
+            "src/subllm/interaction_context.py",
+            "tests/test_sdk_archive_link.py"
+          ]
+        },
+        {
+          "name": "usage-journal",
+          "paths": [
+            "src/subllm/usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "usage-journal",
+          "description": "Populate the existing optional archive_id/day fields on the same local attempt journal. No schema change, data migration or responsibility transfer."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert source and select the prior qualified SDK. Existing exact refs remain readable; no database downgrade."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_sdk_archive_link.py tests/test_usage.py tests/test_gateway.py tests/test_native_transports.py tests/test_postgres_interaction_store.py",
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Private subllm-sdk-archive-link-20261028 receipts; affected Testless coverage, protected full CI and independent validation; runtime selection remains separate."
+      }
+    ]
+  }
+}
