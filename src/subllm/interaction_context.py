@@ -30,7 +30,7 @@ def _take_usage_archive_reference(request_id, application, function, provider, m
     return None
 
 
-def begin_attempt(route, messages, response_format, request_id=None, timeout_seconds=None):
+def begin_attempt(route, messages, response_format, request_id=None, timeout_seconds=None, *, native_request=None):
     _NEXT_USAGE_ARCHIVE.set(None)
     try:
         import uuid
@@ -40,7 +40,9 @@ def begin_attempt(route, messages, response_format, request_id=None, timeout_sec
             "response_format": response_format,
             "model_parameters": dict(route.model_parameters),
         }
-        if timeout_seconds is not None:
+        if native_request is not None:
+            req_payload = dict(native_request)
+        if timeout_seconds is not None and native_request is None:
             req_payload["timeout_seconds"] = float(timeout_seconds)
         context = ACTIVE_ARCHIVE.get()
         if context is not None:
@@ -94,8 +96,12 @@ def finish_attempt(entry, route, response, error, duration_ms):
         )
         input_tokens = output_tokens = None
         if response and getattr(response, "usage", None):
-            input_tokens = response.usage.get("input_tokens") or response.usage.get("prompt_tokens")
-            output_tokens = response.usage.get("output_tokens") or response.usage.get("completion_tokens")
+            input_tokens = response.usage.get("input_tokens", response.usage.get("prompt_tokens"))
+            output_tokens = response.usage.get("output_tokens", response.usage.get("completion_tokens"))
+            if input_tokens is None:
+                input_tokens = response.usage.get("prompt_tokens")
+            if output_tokens is None:
+                output_tokens = response.usage.get("completion_tokens")
         metadata = {
             "provider": route.provider, "model": route.wire_model,
             "application": route.application, "function": route.function,

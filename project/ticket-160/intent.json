@@ -1,0 +1,111 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-160",
+  "summary": "SESSION_EXECUTION_AUTHORIZATION: offline Liquid AI d1:3b selected by user; reusable strict native decision SDK, exact private capture and zero-output accounting, proxy offline mode and Willmux/Heyasa reuse.",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-160/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/decisions.py",
+    "src/subllm/interaction_context.py",
+    "src/subllm/proxy.py",
+    "tests/test_decisions.py",
+    "tests/test_proxy.py",
+    "tests/test_sdk_archive_link.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "ce8793ba05122d3f2886a80a6205ee9304764491",
+    "targetBranch": "main",
+    "outcome": "A shared subllm.decisions native client and legacy adapter use only a literal loopback Ollama endpoint. Exact model/schema/probability/token validation, bounded request and response, no proxy or redirects and no cloud/chat fallback. Archive actual native payload and response once and link journal entries, preserving zero tokens. Proxy offers explicit fail-closed offline mode and reuses shared transport. Qualify real d1 and consumer integration.",
+    "nonGoals": [
+      "No edits in active provider145 or fastpath150 scope",
+      "No automatic cloud fallback, model aliasing to d1-ultra, changed default provider policy or uncontrolled live daemon rollout"
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 70,
+    "budgets": {
+      "maxImplementationFiles": 6,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "One stdlib native transport in subllm.decisions; existing proxy codecs adapt the legacy payload. Existing interaction_context owns one-shot archive attribution; consumers retain deterministic authority gates. Opt-in proxy offline mode bypasses provider selection entirely.",
+      "components": [
+        {
+          "name": "native-decision-sdk",
+          "paths": [
+            "src/subllm/decisions.py",
+            "src/subllm/interaction_context.py",
+            "tests/test_decisions.py",
+            "tests/test_sdk_archive_link.py"
+          ]
+        },
+        {
+          "name": "proxy-adapter",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "subllm.decisions.decide and decide_legacy",
+        "Explicit offline:true on /v1/decide"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "native-decision-sdk",
+          "description": "Actual native JSON payload and zero counts use existing opaque private archive and existing nullable usage fields; no persistence schema migration or ownership transfer."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert approved ticket; retain model weights and existing usage history."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "focused native SDK and proxy tests"
+        ],
+        "evidence": "Loopback-only transport, no redirects/proxies/cloud, invalid payload/response rejected, failure never triggers generation or inference replay"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "SDK capture tests and real local model canary"
+        ],
+        "evidence": "Actual state/questions in private archive, exact journal reference and zero output usage preserved"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "native governance",
+          "exact-head OneDev and independent Validator"
+        ],
+        "evidence": "Approved reusable SDK qualifies in Willmux without granting execution authority"
+      }
+    ]
+  }
+}

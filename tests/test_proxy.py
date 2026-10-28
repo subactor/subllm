@@ -538,41 +538,44 @@ def test_ollama_d1_uses_native_system_one_contract_and_normalizes_answers(monkey
         "answers": {
             "operation": {"type": "choice", "choice": "op_0", "probabilities": {"op_0": 0.9, "NO_MATCH": 0.1}},
             "safe": {"type": "noul", "noul": 0.8},
-            "risk": {"type": "score", "score": 1.7, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.7}},
+            "risk": {"type": "score", "score": 1.6, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.7}},
         },
         "usage": {"input_tokens": 42, "output_tokens": 0},
     }
     seen = {}
+    from subllm.decisions import decide_legacy as real_decide_legacy
 
-    class FakeResponse:
-        def __enter__(self):
-            return self
+    def observe_identity(payload, **kwargs):
+        seen["identity"] = {key: kwargs[key] for key in ("application", "function", "request_id")}
+        return real_decide_legacy(payload, **kwargs)
 
-        def __exit__(self, *_args):
-            return False
+    monkeypatch.setattr("subllm.decisions.decide_legacy", observe_identity)
 
-        def read(self):
-            return json.dumps(upstream_data).encode()
-
-    def fake_urlopen(request, timeout):
-        seen["url"] = request.full_url
+    def fake_native_post(url, body, timeout):
+        seen["url"] = url
         seen["timeout"] = timeout
-        seen["body"] = json.loads(request.data.decode())
-        return FakeResponse()
+        seen["body"] = json.loads(body)
+        return upstream_data
 
-    monkeypatch.setattr(proxy, "urlopen", fake_urlopen)
+    monkeypatch.setattr("subllm.decisions._post", fake_native_post)
     response = proxy._complete_ollama_system_one(
         "http://127.0.0.1:11434",
         "d1:3b",
         [],
         request_payload=request_payload,
         timeout_seconds=3.0,
+        application="willmux",
+        function="decision-routing",
+        request_id="proxy-d1-identity",
     )
 
     assert seen["url"] == "http://127.0.0.1:11434/v1/systemone"
     assert seen["timeout"] == 3.0
+    assert seen["identity"] == {"application": "willmux", "function": "decision-routing",
+                                "request_id": "proxy-d1-identity"}
     assert seen["body"] == {
         "model": "d1:3b",
+        "keep_alive": 90,
         "state": {"query": "Zrestartuj worker na staging."},
         "questions": {
             "operation": {
@@ -611,6 +614,69 @@ def test_malformed_d1_response_raises_for_local_fallback():
         )
 
 
+def test_proxy_explicit_offline_mode_uses_shared_sdk_with_cold_start_budget(proxy_server, monkeypatch):
+    base_url, server = proxy_server
+    calls = []
+
+    def local(payload, **kwargs):
+        calls.append((payload, kwargs))
+        return {"model": "d1:3b", "provider": "ollama", "usage": {"input_tokens": 10, "output_tokens": 0},
+                "probabilities": {"safe": {"true": 0.1, "false": 0.9}}, "answers": {"safe": False}}
+
+    monkeypatch.setattr("subllm.decisions.decide_legacy", local)
+    monkeypatch.setattr(proxy, "_select_local_system_one_ollama_model",
+                        lambda *a, **k: pytest.fail("No discovery in offline mode"))
+    status, body, headers = _request("POST", f"{base_url}/v1/decide", {
+        "offline": True, "model": "d1:3b", "state": "Do not restart", "questions": [
+            {"id": "safe", "type": "noul", "question": "May it restart?"}]},
+        headers={"X-Application": "willmux", "X-Function": "decision-routing"})
+    assert status == 200
+    assert body["provider"] == "ollama" and body["usage"]["output_tokens"] == 0
+    assert headers["X-Subactor-Model"] == "d1:3b"
+    assert len(calls) == 1
+    assert calls[0][1] == {"base_url": server.RequestHandlerClass.ollama_upstream, "timeout_seconds": 120.0,
+                           "application": "willmux", "function": "decision-routing", "request_id": body["id"]}
+
+
+def test_proxy_explicit_offline_failure_never_selects_or_invokes_other_models(proxy_server, monkeypatch):
+    from subllm.decisions import DecisionError
+
+    base_url, server = proxy_server
+    calls = []
+
+    def unavailable(*args, **kwargs):
+        calls.append(1)
+        raise DecisionError("PRIVATE NATIVE FAILURE", outcome="timeout")
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("Offline failure must not invoke another inference or provider")
+
+    monkeypatch.setattr("subllm.decisions.decide_legacy", unavailable)
+    monkeypatch.setattr(proxy, "_select_local_system_one_ollama_model", forbidden)
+    monkeypatch.setattr(server.RequestHandlerClass, "_execute_model_or_route", forbidden)
+    status, body, _ = _request("POST", f"{base_url}/v1/decide", {
+        "offline": True, "model": "d1:3b", "questions": [{"id": "safe", "type": "noul"}]})
+    assert status == 503 and calls == [1]
+    assert "OFFLINE_DECISION_UNAVAILABLE" in json.dumps(body)
+    assert "PRIVATE NATIVE FAILURE" not in json.dumps(body)
+
+
+@pytest.mark.parametrize("value", ["false", 1, None])
+def test_proxy_offline_flag_must_be_boolean(proxy_server, value):
+    base_url, _ = proxy_server
+    status, _, _ = _request("POST", f"{base_url}/v1/decide", {
+        "offline": value, "questions": [{"id": "safe", "type": "noul"}]})
+    assert status == 400
+
+
+def test_proxy_offline_mode_rejects_cloud_model_without_inference(proxy_server, monkeypatch):
+    base_url, _ = proxy_server
+    monkeypatch.setattr("subllm.decisions._post", lambda *a: pytest.fail("Cloud alias reached inference"))
+    status, _, _ = _request("POST", f"{base_url}/v1/decide", {
+        "offline": True, "model": "d1:cloud", "questions": [{"id": "safe", "type": "noul"}]})
+    assert status == 400
+
+
 def test_proxy_system_one_retries_qwen_after_local_d1_failure(proxy_server, monkeypatch):
     base_url, _ = proxy_server
     monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: True)
@@ -620,10 +686,12 @@ def test_proxy_system_one_retries_qwen_after_local_d1_failure(proxy_server, monk
         lambda *_: [{"name": "d1:3b", "model": "d1:3b"}, {"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"}],
     )
     seen = []
+    identities = []
 
     def fail_d1_then_return_qwen(upstream_url, model, messages, **kwargs):
         seen.append(model)
         if model.startswith("d1"):
+            identities.append({key: kwargs[key] for key in ("application", "function", "request_id")})
             raise ValueError("malformed d1 response")
         return CompletionResponse(
             content=json.dumps({"answers": {"operation": "op_0"}}),
@@ -645,13 +713,15 @@ def test_proxy_system_one_retries_qwen_after_local_d1_failure(proxy_server, monk
             },
         ],
     }
-    status, body, _ = _request("POST", f"{base_url}/v1/decide", payload)
+    status, body, _ = _request("POST", f"{base_url}/v1/decide", payload,
+                               headers={"X-Application": "willmux", "X-Function": "routing"})
 
     assert status == 200
     assert seen == ["d1:3b", "qwen3.5:0.8b"]
     assert body["requested_model"] == "d1:3b"
     assert body["model"] == "qwen3.5:0.8b"
     assert body["answers"]["operation"] == "op_0"
+    assert identities == [{"application": "willmux", "function": "routing", "request_id": body["id"]}]
 
 
 def test_proxy_system_one_decide_falls_back_to_subllm_route_when_ollama_unavailable(proxy_server, monkeypatch):
