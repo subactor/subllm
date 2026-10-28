@@ -81,11 +81,21 @@ def test_nonlocal_or_ambiguous_origin_rejected_before_transport(candidate_url, m
         decide("state", questions(), base_url=candidate_url)
 
 
-@pytest.mark.parametrize("model", ["d1-ultra", "d1:cloud", "qwen3.5:0.8b", "other/d1:3b"])
+@pytest.mark.parametrize("model", ["d1:cloud", "qwen3.5:0.8b", "other/d1:3b", "d1-ultra:latest"])
 def test_model_is_not_aliased_or_routed_to_other_inference(model, native_server):
-    with pytest.raises(ValueError, match="actual local"):
+    with pytest.raises(ValueError, match="supported names are"):
         decide("state", questions(), model=model, base_url=native_server.base_url)
     assert not native_server.requests
+
+
+@pytest.mark.parametrize("model", ["d1-ultra", "d1:3b"])
+def test_served_local_decision_models_are_accepted_unaliased(model, native_server):
+    native_server.reply = {"model": model, "usage": {"input_tokens": 5, "output_tokens": 0},
+                           "answers": {"q": {"type": "noul", "noul": 0.93}}}
+    result = decide("state", {"q": {"type": "noul", "instructions": "diagnose"}}, model=model,
+                    base_url=native_server.base_url)
+    assert result["model"] == model
+    assert native_server.requests[0][1]["model"] == model
 
 
 def test_environment_config_uses_exact_local_origin_and_normalizes_only_d1_alias(native_server, monkeypatch):
