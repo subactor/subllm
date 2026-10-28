@@ -1,8 +1,8 @@
 """Consumer protocol checks; a synthetic response never qualifies a live model."""
-from dataclasses import replace
-from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 import json
 import threading
+from dataclasses import replace
+from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
 import pytest
 
