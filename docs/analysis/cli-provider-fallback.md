@@ -116,4 +116,3 @@ No limit was waived.
 4. Log in to Cursor (`agent login`) before relying on `cursor-cli`.
 5. Restart `willman-hub` and `c2004-koru-autonomous` when idle and upgrade the
    latter's subllm.
-
