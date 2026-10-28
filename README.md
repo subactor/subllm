@@ -214,7 +214,7 @@ transparently **without client-side credentials or passwords**.
 - **OpenAI-compatible consumers (`koru`, `cursor`, `continue.dev`):**
   ```bash
   export OPENAI_API_BASE=http://127.0.0.1:11435/v1
-  export OPENAI_API_KEY=subllm-local
+  export OPENAI_API_KEY=your-local-proxy-api-key
   ```
 - **Ticket attribution and receipts:**
   Pass `X-Ticket: ticket-NNN` or request model `glm-5.3@ticket-NNN`.
@@ -232,9 +232,16 @@ receipt only; it never changes the process registry or grants execution.
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-python -m pip install -e '.[test]'
+python -m pip install 'pip>=25.1'
+python -m pip install --group dev -e '.[test]'
 ./scripts/verify
 ```
+
+The `dev` dependency group installs Procache from its approved immutable Git
+revision. Published `cache` and `test` extras require `subactor-procache==0.1.0`
+from the configured package index; the development group supports local and CI
+installation while that distribution is awaiting publication. Base installation
+does not require Procache.
 
 See `docs/architecture.md`, `docs/operations.md` and
 `docs/runtime-failover.md`.
