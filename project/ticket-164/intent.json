@@ -1,0 +1,89 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-164",
+  "summary": "Pin patched MCP SDK session lifecycle dependency",
+  "workstream": "governance",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-164/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "b4a0ae6bb4ad16ee3cd08201e5a24fc6ae85bb36",
+    "targetBranch": "main",
+    "outcome": "Pin both optional gateway/test dependency declarations to patched mcp1.30.0 for GHSA-84m7-p3x7-pcfv, preserving existing gateway behavior and qualifying actual SDK integration.",
+    "nonGoals": [
+      "No shared gateway/service restart or runtime rollout",
+      "No transport/session implementation changes",
+      "No PyPI publication or alert dismissal without fixed dependency evidence"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 1
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Use upstream1.30.0 session expiry/reclamation patch on the existing1.x API. Keep exact SDK pin and optional extras. Gateway own admission cap remains independently implemented. Actual fixed SDK gateway tests and hosted fresh-install matrix supplement protected OneDev baseline checks.",
+      "components": [
+        {
+          "name": "gateway-dependency",
+          "paths": [
+            "pyproject.toml"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional gateway/test extras require patched MCP SDK"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Retain source/artifact receipts; do not silently restore an affected dependency for release."
+    },
+    "runtimeDependencies": [
+      "mcp==1.30.0 (existing optional dependency security update)"
+    ],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "parse dependency metadata",
+          "verify actual installed MCP SDK version"
+        ],
+        "evidence": "Both extras pin1.30.0; no affected1.28.1 pin remains."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "actual1.30.0 gateway tests",
+          "native governance",
+          "protected exact-head OneDev",
+          "hosted Python3.11/3.12/3.13 verification",
+          "independent Validator publication"
+        ],
+        "evidence": "Integration passes using real patched SDK, independent current-base source CI and approval; no live rollout claimed."
+      }
+    ]
+  }
+}
