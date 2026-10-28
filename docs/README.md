@@ -23,6 +23,7 @@ Existing documentation retains its historical format.
 - [Supervisor assessment latency](analysis/supervisor-assessment-latency.md)
 
 - [Local Codex CLI integration and verification](analysis/codex-cli-integration.md)
+- [Subscription CLI providers as fallback](analysis/cli-provider-fallback.md)
 
 - [LLM selection over code2dsl context](information/code2dsl-context.md)
 
