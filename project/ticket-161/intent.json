@@ -21,5 +21,69 @@
   "stacks": [],
   "dependsOn": [],
   "conflictsWith": [],
-  "integrationTicket": null
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "01f882aa9a1f6d061b4b67e0abacca01dfa1db06",
+    "targetBranch": "main",
+    "outcome": "Completed inference usage rows commit while panels retain read snapshots. Enable WAL, preserve privacy and existing history, and never replay inference to repair telemetry.",
+    "nonGoals": [
+      "No model replay, fabricated rows or historical backfill",
+      "No change to required checks or foreign worktrees"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 15,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Enable SQLite WAL before the existing write transaction; retain existing best-effort error handling, schema, timeout and privacy boundaries.",
+      "components": [
+        {
+          "name": "usage-journal",
+          "paths": [
+            "src/subllm/usage.py",
+            "tests/test_usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "usage-journal",
+          "description": "WAL journal mode and standard SQLite sidecars; existing rows and schema remain owned by the same journal component."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Approved rollback may restore journal mode only after quiescing active connections; preserve all rows and sidecars until SQLite checkpoints them."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "pytest focused storage/native/capture tests"
+        ],
+        "evidence": "Held-reader regression before/after and reader in a separate process; zero counts/privacy retained"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "native governance",
+          "exact-head OneDev",
+          "independent Validator"
+        ],
+        "evidence": "Exact frozen source, preserved required checks and no metadata backfill"
+      }
+    ]
+  }
 }

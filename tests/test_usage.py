@@ -86,6 +86,25 @@ def test_held_panel_read_does_not_discard_a_new_usage_write():
         assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
 
 
+def test_reader_in_another_process_does_not_block_usage_commit():
+    record(request_id="before-process-reader")
+    code = ("import sqlite3,sys; db=sqlite3.connect(sys.argv[1]); db.execute('BEGIN'); "
+            "db.execute('SELECT COUNT(*) FROM attempts').fetchone(); "
+            "print('ready',flush=True); sys.stdin.readline(); db.rollback(); db.close()")
+    with subprocess.Popen([sys.executable, "-c", code, str(journal_path())], stdin=subprocess.PIPE,
+                          stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True) as reader:
+        try:
+            import select
+
+            assert select.select([reader.stdout], [], [], 10)[0], "Reader did not acquire its snapshot"
+            assert reader.stdout.readline().strip() == "ready"
+            record(request_id="while-process-reader")
+            assert query_usage({})["summary"]["attempts"] == 2
+        finally:
+            reader.communicate("release\n", timeout=10)
+        assert reader.returncode == 0
+
+
 def test_filters_pagination_and_summary_share_selection():
     record(status="error", usage={})
     record(provider="openrouter")
