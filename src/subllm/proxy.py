@@ -295,7 +295,7 @@ def _complete_ollama_system_one(
 ) -> CompletionResponse:
     """Invoke local Ollama `/api/chat` with `think: false` and `format: json` for fast System One scoring."""
     n = ollama_model.strip().lower()
-    if n == "d1" or n.startswith("d1:"):
+    if n in ("d1", "d1-ultra", "liquid-d1-ultra") or n.startswith(("d1:", "d1-", "liquid-", "liquid/")):
         if request_payload is None:
             raise ValueError("native d1 System One requests require the typed request payload")
         return _complete_ollama_d1_system_one(
@@ -360,7 +360,7 @@ def _build_ollama_d1_questions(payload: Mapping[str, Any]) -> dict[str, dict[str
         if qtype == "choice":
             if not options:
                 raise ValueError(f"d1 choice question {qid!r} has no options")
-            criteria: Any = {option: descriptions.get(option) or None for option in options}
+            criteria: Any = {option: descriptions.get(option) or option for option in options}
         elif qtype == "noul":
             criteria = {
                 "true": descriptions.get("true") or "The statement is true.",
