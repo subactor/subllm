@@ -48,6 +48,7 @@ SYSTEM_ONE_LOCAL_OLLAMA_MODELS: tuple[str, ...] = (
     "willman-eval:qwen3.5-4b",
     "qwen2.5:1.5b",
 )
+SYSTEM_ONE_DEFAULT_D1_MODEL = "d1:3b"
 
 _TICKET_PATTERN = re.compile(r"^(ticket-[A-Za-z0-9_.-]+)")
 
@@ -64,8 +65,10 @@ def _resolve_system_one_ollama_upstream(configured_upstream: str) -> str:
 def _select_local_system_one_ollama_model(
     requested_model: str,
     upstream_url: str = DEFAULT_OLLAMA_UPSTREAM,
+    *,
+    exclude_d1: bool = False,
 ) -> str | None:
-    """Select an installed local Ollama model matching the System One profile or Qwen3.5 backbone."""
+    """Select an installed local System One model, preferring d1 when it was requested."""
     installed = get_upstream_ollama_models(upstream_url)
     if not installed:
         return None
@@ -80,10 +83,30 @@ def _select_local_system_one_ollama_model(
     req = requested_model.strip()
     req_low = req.lower()
 
-    if req in installed_set:
+    def is_d1(name: str) -> bool:
+        n = name.strip().lower()
+        return n == "d1" or n.startswith("d1:")
+
+    if req in installed_set and (not exclude_d1 or not is_d1(req)):
         return req
-    if f"{req}:latest" in installed_set:
+    if (
+        f"{req}:latest" in installed_set
+        and (not exclude_d1 or not is_d1(f"{req}:latest"))
+        and not (is_d1(req) and req_low == "d1")
+    ):
         return f"{req}:latest"
+
+    if not exclude_d1 and is_d1(req):
+        d1_candidates = [SYSTEM_ONE_DEFAULT_D1_MODEL] if req_low == "d1" else [req]
+        for candidate in dict.fromkeys(d1_candidates):
+            if candidate in installed_set:
+                return candidate
+        # If the requested d1 tag is unavailable, keep the pre-existing local
+        # small-Qwen fallback before routing to the configured SubLLM provider.
+        return next((candidate for candidate in SYSTEM_ONE_LOCAL_OLLAMA_MODELS if candidate in installed_set), None)
+
+    if exclude_d1:
+        return next((candidate for candidate in SYSTEM_ONE_LOCAL_OLLAMA_MODELS if candidate in installed_set), None)
 
     preferred_candidates: list[str] = []
     if any(k in req_low for k in ("0.8b", "0.6b", "0.5b", "322m", "340m", "270m", "laya", "nanojev", "jevlike")):
@@ -268,8 +291,20 @@ def _complete_ollama_system_one(
     *,
     temperature: float = 0.2,
     timeout_seconds: float = 6.0,
+    request_payload: Mapping[str, Any] | None = None,
 ) -> CompletionResponse:
     """Invoke local Ollama `/api/chat` with `think: false` and `format: json` for fast System One scoring."""
+    n = ollama_model.strip().lower()
+    if n == "d1" or n.startswith("d1:"):
+        if request_payload is None:
+            raise ValueError("native d1 System One requests require the typed request payload")
+        return _complete_ollama_d1_system_one(
+            upstream_url,
+            ollama_model,
+            request_payload,
+            timeout_seconds=timeout_seconds,
+        )
+
     url = f"{upstream_url.rstrip('/')}/api/chat"
     body_payload = {
         "model": ollama_model,
@@ -300,6 +335,157 @@ def _complete_ollama_system_one(
         model=str(data.get("model") or ollama_model),
         usage={"input_tokens": prompt_tokens, "output_tokens": eval_tokens},
         finish_reason=str(data.get("done_reason") or "stop"),
+    )
+
+
+def _build_ollama_d1_questions(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
+    """Translate SubLLM's typed question list to Ollama's native System One format."""
+    raw_questions = payload.get("questions")
+    if not isinstance(raw_questions, Sequence) or isinstance(raw_questions, (str, bytes)):
+        raise ValueError("typed d1 request requires a questions array")
+
+    converted: dict[str, dict[str, Any]] = {}
+    for question in raw_questions:
+        if not isinstance(question, Mapping):
+            continue
+        qid = str(question.get("id") or "").strip()
+        if not qid:
+            continue
+        qtype = str(question.get("type") or "choice").strip().lower()
+        options, descriptions = _normalize_question_options(question.get("options"), qtype)
+        instructions = str(question.get("question") or question.get("instructions") or qid).strip()
+        if not instructions:
+            instructions = qid
+
+        if qtype == "choice":
+            if not options:
+                raise ValueError(f"d1 choice question {qid!r} has no options")
+            criteria: Any = {option: descriptions.get(option) or None for option in options}
+        elif qtype == "noul":
+            criteria = {
+                "true": descriptions.get("true") or "The statement is true.",
+                "false": descriptions.get("false") or "The statement is false.",
+            }
+        elif qtype == "score":
+            if not 2 <= len(options) <= 10:
+                raise ValueError(f"d1 score question {qid!r} must have between 2 and 10 levels")
+            criteria = [descriptions.get(option) or option for option in options]
+        else:
+            raise ValueError(f"unsupported d1 System One question type: {qtype}")
+
+        if qid in converted:
+            raise ValueError(f"duplicate d1 System One question id: {qid}")
+        converted[qid] = {"type": qtype, "instructions": instructions, "criteria": criteria}
+
+    if not converted:
+        raise ValueError("typed d1 request requires at least one valid question")
+    return converted
+
+
+def _normalize_ollama_d1_response(
+    data: Mapping[str, Any],
+    payload: Mapping[str, Any],
+) -> dict[str, Any]:
+    """Convert Ollama's typed answers and positional score levels to SubLLM's common shape."""
+    raw_answers = data.get("answers")
+    if not isinstance(raw_answers, Mapping):
+        raise ValueError("malformed d1 response: answers object is missing")
+
+    normalized_answers: dict[str, Any] = {}
+    normalized_probabilities: dict[str, dict[str, float]] = {}
+    for question in payload.get("questions", []):
+        if not isinstance(question, Mapping):
+            continue
+        qid = str(question.get("id") or "").strip()
+        if not qid:
+            continue
+        qtype = str(question.get("type") or "choice").strip().lower()
+        options, _ = _normalize_question_options(question.get("options"), qtype)
+        answer = raw_answers.get(qid)
+        if not isinstance(answer, Mapping):
+            raise ValueError(f"malformed d1 response: answer for {qid!r} is missing")
+
+        raw_probs = answer.get("probabilities")
+        if qtype == "choice":
+            chosen = answer.get("choice")
+            if not isinstance(chosen, str) or chosen not in options or not isinstance(raw_probs, Mapping):
+                raise ValueError(f"malformed d1 response: choice answer for {qid!r} is invalid")
+            dist = {option: _finite_probability(raw_probs.get(option), qid) for option in options}
+            if sum(dist.values()) <= 0:
+                raise ValueError(f"malformed d1 response: choice probabilities for {qid!r} are empty")
+            normalized_answers[qid] = chosen
+            normalized_probabilities[qid] = dist
+        elif qtype == "noul":
+            probability = _finite_probability(answer.get("noul"), qid)
+            normalized_answers[qid] = probability >= 0.5
+            normalized_probabilities[qid] = {"true": probability, "false": round(1.0 - probability, 6)}
+        elif qtype == "score":
+            if not isinstance(raw_probs, Mapping) or not 2 <= len(options) <= 10:
+                raise ValueError(f"malformed d1 response: score probabilities for {qid!r} are invalid")
+            dist = {
+                option: _finite_probability(raw_probs.get(str(index)), qid)
+                for index, option in enumerate(options)
+            }
+            if sum(dist.values()) <= 0:
+                raise ValueError(f"malformed d1 response: score probabilities for {qid!r} are empty")
+            normalized_answers[qid] = answer.get("score")
+            normalized_probabilities[qid] = dist
+        else:
+            raise ValueError(f"unsupported d1 System One question type: {qtype}")
+
+    return {"answers": normalized_answers, "probabilities": normalized_probabilities}
+
+
+def _finite_probability(value: Any, question_id: str) -> float:
+    if isinstance(value, bool):
+        raise ValueError(f"malformed d1 response: probability for {question_id!r} is not numeric")
+    try:
+        probability = float(value)
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"malformed d1 response: probability for {question_id!r} is not numeric") from exc
+    if not math.isfinite(probability) or probability < 0.0 or probability > 1.0:
+        raise ValueError(f"malformed d1 response: probability for {question_id!r} is outside [0, 1]")
+    return probability
+
+
+def _complete_ollama_d1_system_one(
+    upstream_url: str,
+    ollama_model: str,
+    payload: Mapping[str, Any],
+    *,
+    timeout_seconds: float = 6.0,
+) -> CompletionResponse:
+    """Call Ollama's native `/v1/systemone` endpoint for Liquid AI d1 models."""
+    state = payload.get("state")
+    if state is None:
+        state = {"messages": _build_system_one_messages(payload)}
+    body_payload = {
+        "model": ollama_model,
+        "state": state,
+        "questions": _build_ollama_d1_questions(payload),
+    }
+    url = f"{upstream_url.rstrip('/')}/v1/systemone"
+    req = Request(
+        url,
+        data=json.dumps(body_payload, ensure_ascii=False).encode("utf-8"),
+        headers={"Content-Type": "application/json", "User-Agent": "subllm-proxy"},
+        method="POST",
+    )
+    with urlopen(req, timeout=timeout_seconds) as resp:
+        data = json.loads(resp.read().decode("utf-8"))
+    if not isinstance(data, Mapping):
+        raise ValueError("malformed d1 response: JSON object is required")
+    parsed = _normalize_ollama_d1_response(data, payload)
+    usage = data.get("usage") if isinstance(data.get("usage"), Mapping) else {}
+    return CompletionResponse(
+        content=json.dumps(parsed, ensure_ascii=False),
+        provider="ollama",
+        model=str(data.get("model") or ollama_model),
+        usage={
+            "input_tokens": int(usage.get("input_tokens") or 0),
+            "output_tokens": int(usage.get("output_tokens") or 0),
+        },
+        finish_reason="stop",
     )
 
 
@@ -885,7 +1071,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._error(400, "INVALID_REQUEST", "at least one valid question with id is required")
             return
 
-        raw_model = str(payload.get("model") or "qwen3.5:0.8b")
+        raw_model = str(payload.get("model") or "d1:3b")
         clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
         requested_timeout = payload.get("timeout")
         try:
@@ -911,6 +1097,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         t0 = time.monotonic()
         response: CompletionResponse | None = None
         last_error: Exception | None = None
+        local_model: str | None = None
 
         effective_upstream = _resolve_system_one_ollama_upstream(self.ollama_upstream)
         prefers_explicit_route = (
@@ -927,9 +1114,30 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                         messages,
                         temperature=temperature,
                         timeout_seconds=min(timeout, 6.0),
+                        request_payload=payload,
                     )
                 except Exception as exc:
                     last_error = exc
+
+            if response is None and local_model and (
+                local_model.strip().lower() == "d1" or local_model.strip().lower().startswith("d1:")
+            ):
+                qwen_fallback = _select_local_system_one_ollama_model(
+                    "qwen3.5:0.8b",
+                    effective_upstream,
+                    exclude_d1=True,
+                )
+                if qwen_fallback:
+                    try:
+                        response = _complete_ollama_system_one(
+                            effective_upstream,
+                            qwen_fallback,
+                            messages,
+                            temperature=temperature,
+                            timeout_seconds=min(timeout, 6.0),
+                        )
+                    except Exception as exc:
+                        last_error = exc
 
         if response is None:
             fallback_payload = dict(payload)
