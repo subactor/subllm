@@ -82,6 +82,58 @@ def test_sdk_success_links_exact_private_record_and_keeps_journal_payload_free(c
     assert b"PRIVATE REPLY" not in journal_path().read_bytes()
 
 
+@pytest.mark.parametrize("input_tokens", [0, 12])
+def test_native_decision_captures_exact_wire_body_and_preserves_zero_usage(captured_sdk, monkeypatch, input_tokens):
+    from subllm.decisions import decide
+
+    calls = []
+    native = {"model": "d1:3b", "usage": {"input_tokens": input_tokens, "output_tokens": 0},
+              "answers": {"allowed": {"type": "noul", "noul": 0.05}}}
+
+    def post(url, body, timeout):
+        calls.append(json.loads(body))
+        return native
+
+    monkeypatch.setattr("subllm.decisions._post", post)
+    assert decide({"query": "PRIVATE NATIVE STATE"},
+                  {"allowed": {"type": "noul", "instructions": "PRIVATE NATIVE QUESTION"}},
+                  application="willmux", function="decision-routing", request_id="native-capture") == native
+    found = rows()
+    assert len(calls) == len(found) == 1
+    saved = detail(found[0])
+    assert saved["payload_capture"]["state"] == "stored"
+    assert saved["request"] == calls[0]
+    assert "messages" not in saved["request"]
+    assert saved["response"]["raw"] == native
+    assert saved["response"]["finish_reason"] == ""
+    assert saved["metadata"]["input_tokens"] == found[0]["input_tokens"] == input_tokens
+    assert saved["metadata"]["output_tokens"] == found[0]["output_tokens"] == 0
+    assert b"PRIVATE NATIVE" not in journal_path().read_bytes()
+
+
+@pytest.mark.parametrize("failure", ["begin", "finish"])
+def test_native_capture_failure_never_repeats_inference_or_claims_payload(captured_sdk, monkeypatch, failure):
+    from subllm.decisions import decide
+
+    store, _ = captured_sdk
+    calls = []
+
+    def post(*args):
+        calls.append(1)
+        return {"model": "d1:3b", "usage": {"input_tokens": 12, "output_tokens": 0},
+                "answers": {"allowed": {"type": "noul", "noul": 0.05}}}
+
+    def broken(*args, **kwargs):
+        raise OSError("PRIVATE NATIVE STORAGE ERROR")
+
+    monkeypatch.setattr("subllm.decisions._post", post)
+    monkeypatch.setattr(store, failure, broken)
+    decide("PRIVATE NATIVE STATE", {"allowed": {"type": "noul", "instructions": "May it run?"}})
+    assert calls == [1]
+    assert len(rows()) == 1
+    assert detail(rows()[0])["payload_capture"]["state"] == "unlinked"
+
+
 def test_sdk_error_links_original_attempt_and_does_not_repeat_provider(captured_sdk, monkeypatch):
     _, route = captured_sdk
     calls = []

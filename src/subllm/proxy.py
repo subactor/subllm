@@ -292,6 +292,9 @@ def _complete_ollama_system_one(
     temperature: float = 0.2,
     timeout_seconds: float = 6.0,
     request_payload: Mapping[str, Any] | None = None,
+    application: str = "subllm",
+    function: str = "decision-routing",
+    request_id: str | None = None,
 ) -> CompletionResponse:
     """Invoke local Ollama `/api/chat` with `think: false` and `format: json` for fast System One scoring."""
     n = ollama_model.strip().lower()
@@ -303,6 +306,9 @@ def _complete_ollama_system_one(
             ollama_model,
             request_payload,
             timeout_seconds=timeout_seconds,
+            application=application,
+            function=function,
+            request_id=request_id,
         )
 
     url = f"{upstream_url.rstrip('/')}/api/chat"
@@ -454,38 +460,23 @@ def _complete_ollama_d1_system_one(
     payload: Mapping[str, Any],
     *,
     timeout_seconds: float = 6.0,
+    application: str = "subllm",
+    function: str = "decision-routing",
+    request_id: str | None = None,
 ) -> CompletionResponse:
-    """Call Ollama's native `/v1/systemone` endpoint for Liquid AI d1 models."""
-    state = payload.get("state")
-    if state is None:
-        state = {"messages": _build_system_one_messages(payload)}
-    body_payload = {
-        "model": ollama_model,
-        "state": state,
-        "questions": _build_ollama_d1_questions(payload),
-    }
-    url = f"{upstream_url.rstrip('/')}/v1/systemone"
-    req = Request(
-        url,
-        data=json.dumps(body_payload, ensure_ascii=False).encode("utf-8"),
-        headers={"Content-Type": "application/json", "User-Agent": "subllm-proxy"},
-        method="POST",
-    )
-    with urlopen(req, timeout=timeout_seconds) as resp:
-        data = json.loads(resp.read().decode("utf-8"))
-    if not isinstance(data, Mapping):
-        raise ValueError("malformed d1 response: JSON object is required")
-    parsed = _normalize_ollama_d1_response(data, payload)
-    usage = data.get("usage") if isinstance(data.get("usage"), Mapping) else {}
+    """Reuse the shared local-only SDK, including native capture and usage."""
+    from .decisions import decide_legacy
+
+    native_payload = dict(payload, model=ollama_model)
+    if native_payload.get("state") is None:
+        native_payload["state"] = {"messages": _build_system_one_messages(payload)}
+    parsed = decide_legacy(native_payload, base_url=upstream_url, timeout_seconds=timeout_seconds,
+                           application=application, function=function, request_id=request_id)
     return CompletionResponse(
         content=json.dumps(parsed, ensure_ascii=False),
         provider="ollama",
-        model=str(data.get("model") or ollama_model),
-        usage={
-            "input_tokens": int(usage.get("input_tokens") or 0),
-            "output_tokens": int(usage.get("output_tokens") or 0),
-        },
-        finish_reason="stop",
+        model=parsed["model"],
+        usage=parsed["usage"],
     )
 
 
@@ -1071,11 +1062,16 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._error(400, "INVALID_REQUEST", "at least one valid question with id is required")
             return
 
+        if "offline" in payload and type(payload["offline"]) is not bool:
+            self._error(400, "INVALID_REQUEST", "offline must be a boolean")
+            return
+        offline = payload.get("offline", False)
+
         raw_model = str(payload.get("model") or "d1:3b")
         clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
         requested_timeout = payload.get("timeout")
         try:
-            timeout = 8.0 if requested_timeout is None else float(requested_timeout)
+            timeout = (120.0 if offline else 8.0) if requested_timeout is None else float(requested_timeout)
             if isinstance(requested_timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
                 raise ValueError("invalid timeout")
         except (TypeError, ValueError):
@@ -1092,6 +1088,26 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application") or "heyasa"
         func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function") or "command"
         req_id = f"sysone-{uuid.uuid4().hex[:12]}"
+        if offline:
+            from .decisions import DecisionError, decide_legacy
+
+            started = time.monotonic()
+            try:
+                result = decide_legacy(dict(payload, model=clean_model), base_url=self.ollama_upstream,
+                                       timeout_seconds=timeout, application=app, function=func, request_id=req_id)
+            except ValueError:
+                self._error(400, "INVALID_REQUEST", "Invalid offline decision request")
+                return
+            except DecisionError:
+                self._error(503, "OFFLINE_DECISION_UNAVAILABLE", "Local decision inference unavailable")
+                return
+            duration_ms = round((time.monotonic() - started) * 1000)
+            self._json(200, {**result, "schema": SYSTEM_ONE_RESPONSE_SCHEMA, "id": req_id,
+                             "requested_model": clean_model, "duration_ms": duration_ms}, extra_headers={
+                                 "X-Subactor-Provider": "ollama", "X-Subactor-Model": result["model"],
+                                 "X-Subactor-Duration-Ms": str(duration_ms),
+                             })
+            return
         messages = _build_system_one_messages(payload)
 
         t0 = time.monotonic()
@@ -1115,6 +1131,9 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                         temperature=temperature,
                         timeout_seconds=min(timeout, 6.0),
                         request_payload=payload,
+                        application=app,
+                        function=func,
+                        request_id=req_id,
                     )
                 except Exception as exc:
                     last_error = exc
