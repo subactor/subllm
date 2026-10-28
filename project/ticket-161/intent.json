@@ -1,0 +1,25 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-161",
+  "summary": "SESSION_EXECUTION_AUTHORIZATION: fix observed missing SQLite usage row while panel readers run; retain capture and never replay inference. Enable WAL and reproduce held-reader write contention.",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-161/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/usage.py",
+    "tests/test_usage.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

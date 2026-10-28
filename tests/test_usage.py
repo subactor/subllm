@@ -71,6 +71,21 @@ def test_concurrent_first_writes_are_not_lost():
     assert query_usage({})["summary"]["attempts"] == 40
 
 
+def test_held_panel_read_does_not_discard_a_new_usage_write():
+    record(request_id="before-reader")
+    with closing(sqlite3.connect(journal_path())) as reader:
+        reader.execute("BEGIN")
+        assert reader.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 1
+        record(request_id="during-reader", usage={"input_tokens": 12, "output_tokens": 0})
+        # A panel can retain its read snapshot while another process records a
+        # completed inference. Failure to commit must not silently lose it.
+        assert query_usage({})["summary"]["attempts"] == 2
+        assert reader.execute("SELECT COUNT(*) FROM attempts").fetchone()[0] == 1
+        reader.rollback()
+    with closing(sqlite3.connect(journal_path())) as db:
+        assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+
 def test_filters_pagination_and_summary_share_selection():
     record(status="error", usage={})
     record(provider="openrouter")
