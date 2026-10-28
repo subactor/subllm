@@ -215,3 +215,25 @@ def test_legacy_nonnumeric_score_labels_preserve_finite_native_level(native_serv
         base_url=native_server.base_url)
     assert result["answers"]["risk"] == pytest.approx(0.3)
     assert set(result["probabilities"]["risk"]) == set(labels)
+
+
+def test_d1_ultra_decision_model_resolution_and_exports(monkeypatch):
+    import subllm
+    from subllm.decisions import DECISION_MODELS, DEFAULT_DECISION_MODEL, resolve_decision_model
+
+    assert "d1-ultra" in DECISION_MODELS
+    assert "d1:3b" in DECISION_MODELS
+    assert resolve_decision_model("d1-ultra") == "d1-ultra"
+    assert resolve_decision_model("d1") == DEFAULT_DECISION_MODEL
+    assert resolve_decision_model("d1:latest") == DEFAULT_DECISION_MODEL
+
+    monkeypatch.setenv("SUBLLM_DECISION_MODEL", "d1-ultra")
+    assert resolve_decision_model() == "d1-ultra"
+
+    # Test top-level subllm exports
+    assert subllm.decide is decide
+    assert subllm.decide_legacy is decide_legacy
+    assert subllm.resolve_decision_model is resolve_decision_model
+    assert subllm.DecisionError is DecisionError
+    assert subllm.DECISION_MODELS == DECISION_MODELS
+    assert subllm.DEFAULT_DECISION_MODEL == DEFAULT_DECISION_MODEL
