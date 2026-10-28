@@ -14,6 +14,14 @@ from .credential_env import (
     load_shared_environment,
     merged_environment,
 )
+from .decisions import (
+    DECISION_MODELS,
+    DEFAULT_DECISION_MODEL,
+    DecisionError,
+    decide,
+    decide_legacy,
+    resolve_decision_model,
+)
 from .errors import (
     CURSOR_WORKER_TIMEOUT_CODE,
     PROVIDER_CHAIN_EXHAUSTED_CODE,
@@ -99,6 +107,12 @@ __all__ = [
     "CodeEditResponse",
     "CompletionResponse",
     "CredentialFileError",
+    "DECISION_MODELS",
+    "DEFAULT_DECISION_MODEL",
+    "DecisionError",
+    "decide",
+    "decide_legacy",
+    "resolve_decision_model",
     "InvalidPolicyError",
     "MissingCredentialError",
     "ModelSpec",
