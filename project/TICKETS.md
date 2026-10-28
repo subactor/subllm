@@ -148,3 +148,5 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | ticket-163 | Index-compatible cache dependency metadata (GitHub #20 continuation) | IN_PROGRESS / PUBLICATION | governance |
 
 | ticket-164 | Pin patched MCP session lifecycle dependency | IN_PROGRESS / PUBLICATION | governance |
+
+| ticket-165 | Single-snapshot route policy validation for diagnostic ingestion | IN_PROGRESS / PUBLICATION | application |

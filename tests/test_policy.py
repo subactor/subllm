@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from pathlib import Path
 
 import pytest
@@ -12,6 +13,26 @@ from subllm.types import RouteCandidate, RoutePolicy
 
 def test_builtin_policy_is_valid() -> None:
     validate_policy()
+
+
+def test_validation_reads_one_fresh_snapshot_per_call(monkeypatch: pytest.MonkeyPatch) -> None:
+    runtime = load_policy_config()
+    disabled = replace(runtime, providers={
+        name: replace(settings, enabled=False) for name, settings in runtime.providers.items()
+    }, custom_providers={})
+    observations = iter((runtime, disabled))
+    loads = []
+
+    def observe_policy():
+        loads.append(None)
+        return next(observations)
+
+    monkeypatch.setattr(resolver, "load_policy_config", observe_policy)
+    validate_policy()
+    assert len(loads) == 1
+    with pytest.raises(InvalidPolicyError, match="no enabled candidate"):
+        validate_policy()
+    assert len(loads) == 2
 
 
 def test_forbidden_model_is_catalogued_but_never_routed() -> None:

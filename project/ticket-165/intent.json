@@ -1,0 +1,85 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-165",
+  "summary": "Validate route policy using one consistent configuration snapshot",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-165/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/resolver.py",
+    "tests/test_policy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "ccf0d9c861c19f7690911d7f0b4ced9e97d66dc4",
+    "targetBranch": "main",
+    "outcome": "Validate every route against one freshly loaded runtime policy per operation, retaining all candidate checks while avoiding repeated configuration reads and unused evidence hashing during usage-ingest planning.",
+    "nonGoals": [
+      "No provider or model priority changes",
+      "No persistent policy cache or weaker validation",
+      "No collector timeout changes, provider retry, live usage backfill or service rollout"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 25,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extract private route selection/validation accepting a RuntimePolicyConfig snapshot. Public configured_routes retains fresh reads and evidence digests. validate_policy reuses its fresh snapshot and does not generate unused per-route digests.",
+      "components": [
+        {
+          "name": "route-policy-validation",
+          "paths": [
+            "src/subllm/resolver.py",
+            "tests/test_policy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert exact reviewed source change; preserve diagnostic measurements."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "focused policy/configuration/custom-provider regressions",
+          "one-read resource-bound and fresh-validation tests"
+        ],
+        "evidence": "All routes remain validated, public routing evidence remains unchanged, each validation observes a fresh single configuration snapshot."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "same-source offline benchmark and public route digest comparison",
+          "native governance",
+          "protected current-base OneDev and independent Validator publication"
+        ],
+        "evidence": "Compare exact catalog/snapshot results without provider invocations; independently review and publish the frozen head."
+      }
+    ]
+  }
+}
