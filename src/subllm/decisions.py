@@ -28,6 +28,25 @@ from .usage import identifier, record_attempt
 _MAX_REQUEST = 262144
 _MAX_RESPONSE = 1048576
 
+# Locally served Liquid AI decision models. The set is intentionally exhaustive:
+# an unlisted name must fail closed instead of reaching a chat or remote provider.
+DEFAULT_DECISION_MODEL = "d1:3b"
+DECISION_MODELS = frozenset({"d1:3b", "d1-ultra"})
+_BARE_DECISION_ALIASES = frozenset({"d1", "d1:latest"})
+
+
+def resolve_decision_model(model=None):
+    """Return the reported local decision model name, or raise without inference."""
+    requested = (model or os.environ.get("SUBLLM_DECISION_MODEL") or DEFAULT_DECISION_MODEL).strip()
+    if requested in _BARE_DECISION_ALIASES:
+        return DEFAULT_DECISION_MODEL
+    if requested not in DECISION_MODELS:
+        raise ValueError(
+            "Offline decisions require a served local decision model; "
+            f"supported names are {', '.join(sorted(DECISION_MODELS))}"
+        )
+    return requested
+
 
 class DecisionError(RuntimeError):
     """A local inference failure; no alternate inference has been attempted."""
@@ -175,10 +194,7 @@ def decide(state, questions, *, model=None, base_url=None, timeout_seconds=120.0
     keep-alive amortizes subsequent calls. Neither value is a latency guarantee.
     Request/response capture uses the existing private archive and usage journal.
     """
-    model = model or os.environ.get("SUBLLM_DECISION_MODEL") or "d1:3b"
-    model = "d1:3b" if model == "d1" else model
-    if model != "d1:3b":
-        raise ValueError("Offline decisions require the actual local d1:3b model")
+    model = resolve_decision_model(model)
     url = _local_url(base_url or os.environ.get("SUBLLM_DECISION_BASE_URL") or "http://127.0.0.1:11434")
     if (type(timeout_seconds) not in (int, float) or not 0 < timeout_seconds <= 300
             or not math.isfinite(timeout_seconds) or type(keep_alive) is not int or not 0 <= keep_alive <= 300):
