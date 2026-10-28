@@ -136,6 +136,18 @@ def configured_routes(
     # Explicit routing environments may select a dedicated policy. Preserve the
     # process policy for callers that supply only credential/order overrides.
     runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
+    routes = _configured_routes(policy, runtime_policy, environ=environ)
+    return tuple(replace(route, policy_sha256=effective_digest(runtime_policy, route)) for route in routes)
+
+
+def _configured_routes(
+    policy: RoutePolicy,
+    runtime_policy: RuntimePolicyConfig,
+    *,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[ConfiguredRoute, ...]:
+    """Select and validate candidates against the supplied policy snapshot."""
+    application, function = policy.application, policy.function
     order_environ = environ if environ is not None else os.environ
     order = routing_provider_order(environ=order_environ)
     candidates_list = list(policy.candidates)
@@ -183,7 +195,7 @@ def configured_routes(
         if key not in seen:
             unique.append(route)
             seen.add(key)
-    return tuple(replace(route, policy_sha256=effective_digest(runtime_policy, route)) for route in unique)
+    return tuple(unique)
 
 
 def configured_route(
@@ -290,4 +302,4 @@ def validate_policy() -> None:
                     raise InvalidPolicyError(
                         f"vision route uses non-vision model: {model_id}"
                     )
-        configured_routes(route.application, route.function)
+        _configured_routes(route, runtime_policy)
