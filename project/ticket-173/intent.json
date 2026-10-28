@@ -1,0 +1,24 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-173",
+  "summary": "Guard gateway stdio tests against mcp major drift",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P3",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-173/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "tests/test_gateway_stdio.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

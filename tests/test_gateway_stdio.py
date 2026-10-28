@@ -1,6 +1,8 @@
 """Configured Unix CLI handshakes keep stdin open during transport failure."""
+import importlib.metadata
 import json
 import os
+import re
 import selectors
 import socket
 import subprocess
@@ -12,6 +14,31 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import pytest
+
+
+def _mcp_major_mismatch():
+    """Return a reason when the interpreter's MCP SDK major differs from the pin.
+
+    The bridge is written against the pinned SDK. Under another major (for example a
+    global interpreter with mcp 2.x) the stdio bridge hangs instead of exiting, which
+    shows up as unrelated subprocess timeouts. Run the suite in the project
+    environment; CI uses the locked one.
+    """
+    pyproject = Path(__file__).parents[1] / "pyproject.toml"
+    pin = re.search(r'"mcp==(\d+)\.', pyproject.read_text(encoding="utf-8"))
+    if pin is None:
+        return None
+    try:
+        installed = importlib.metadata.version("mcp")
+    except importlib.metadata.PackageNotFoundError:
+        return None
+    if installed.split(".")[0] != pin.group(1):
+        return f"installed mcp {installed} differs in major version from the pinned mcp=={pin.group(1)}.x"
+    return None
+
+
+_MCP_DRIFT = _mcp_major_mismatch()
+pytestmark = pytest.mark.skipif(_MCP_DRIFT is not None, reason=_MCP_DRIFT or "")
 
 
 @contextmanager
