@@ -1,0 +1,103 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-163",
+  "summary": "Make cache dependency metadata compatible with package indexes",
+  "workstream": "governance",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-163/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    ".github/workflows/ci.yml",
+    "README.md",
+    "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "3bcea88e399784be9306add8fed296ea21c3aa31",
+    "targetBranch": "main",
+    "outcome": "Replace Procache direct Git URL runtime/test extra metadata with its exact existing0.1.0 distribution version. Retain the approved immutable Git source in a PEP735 development dependency group, update developer and CI bootstrap, and qualify real wheel/sdist metadata and isolated cache/base installs. Refs GitHub subactor/subllm#20.",
+    "nonGoals": [
+      "No upload, tag, release or fabricated publisher identity",
+      "No change to cache implementation or removal of optional dependency",
+      "No source edits in other active worktrees; no global environment deployment"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 1
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep published extras index-compatible with subactor-procache==0.1.0. PEP735 development group retains exactly approved Git7fe316c9b0ac45d9747ddf90afc7c7969084cbb1 outside distribution metadata. pip>=25.1 group bootstrap preserves source/CI installation before the dependency is published. PyPI publication remains dependent on protected publisher and actual upstream distribution availability.",
+      "components": [
+        {
+          "name": "distribution",
+          "paths": [
+            "pyproject.toml"
+          ]
+        },
+        {
+          "name": "development-bootstrap",
+          "paths": [
+            "README.md",
+            ".github/workflows/ci.yml"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Index-compatible cache/test extra dependency metadata"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Restore prior metadata and bootstrap together; preserve installed immutable dependency artifacts."
+    },
+    "runtimeDependencies": [
+      "subactor-procache==0.1.0 (existing optional dependency; development Git7fe316c9 pin retained)"
+    ],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "build wheel and sdist; parse all Requires-Dist with packaging.Requirement"
+        ],
+        "evidence": "No direct URL dependencies in either distribution; Procache exact version retained; only development group uses immutable Git pin."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "isolated cache-extra resolution using approved Procache wheel",
+          "fresh base install and all six requested ecosystem route contracts",
+          "development group installation with actual pip resolver"
+        ],
+        "evidence": "Base remains zero-dependency; cache dependency resolves to exact approved artifact; developer source install and native provider cache behavior qualify without paid calls."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "native governance",
+          "exact-head OneDev and independent Validator"
+        ],
+        "evidence": "Protected current-base CI and exact-head approval/merge; issue20 remains open pending actual index publication."
+      }
+    ]
+  }
+}
