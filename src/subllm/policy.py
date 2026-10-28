@@ -176,18 +176,9 @@ _BASE_MODELS = MappingProxyType(
         ),
         "deepseek-v4.1-flash-1017": ModelSpec(
             id="deepseek-v4.1-flash-1017",
-            providers=_provider_models(
-                **{"cline-cli": ProviderModelSpec(litellm_model="", wire_model="cline-pass/deepseek-v4.1-flash-1017")},
-                openrouter=ProviderModelSpec(
-                    litellm_model="openrouter/deepseek/deepseek-v4.1-flash-1017",
-                    wire_model="deepseek/deepseek-v4.1-flash-1017")),
-            vision=True,
-        ),
-        "cline-pass/deepseek-v4.1-flash-1017": ModelSpec(
-            id="cline-pass/deepseek-v4.1-flash-1017",
-            providers=_provider_models(**{
-                "cline-cli": ProviderModelSpec(litellm_model="", wire_model="cline-pass/deepseek-v4.1-flash-1017"),
-            }),
+            providers=_provider_models(openrouter=ProviderModelSpec(
+                litellm_model="openrouter/deepseek/deepseek-v4.1-flash-1017",
+                wire_model="deepseek/deepseek-v4.1-flash-1017")),
             vision=True,
         ),
         "deepseek-v4-pro": ModelSpec(
@@ -460,9 +451,8 @@ _BASE_MODELS = MappingProxyType(
 
 
 class _ProvidersCatalog(Mapping[str, ProviderSpec]):
-    def __init__(self, base: Mapping[str, ProviderSpec], builtin: Mapping[str, ProviderSpec] | None = None) -> None:
+    def __init__(self, base: Mapping[str, ProviderSpec]) -> None:
         self._base = base
-        self._builtin: dict[str, ProviderSpec] = dict(builtin) if builtin else {}
         self._custom: dict[str, ProviderSpec] = {}
 
     def register_custom(self, provider_spec: ProviderSpec) -> None:
@@ -474,30 +464,23 @@ class _ProvidersCatalog(Mapping[str, ProviderSpec]):
     def __getitem__(self, key: str) -> ProviderSpec:
         if key in self._custom:
             return self._custom[key]
-        if key in self._builtin:
-            return self._builtin[key]
         return self._base[key]
 
     def __iter__(self) -> Iterator[str]:
         yield from self._base
-        for k in self._builtin:
-            if k not in self._base:
-                yield k
         for k in self._custom:
-            if k not in self._base and k not in self._builtin:
+            if k not in self._base:
                 yield k
 
     def __len__(self) -> int:
-        return len(set(self._base) | set(self._builtin) | set(self._custom))
+        return len(set(self._base) | set(self._custom))
 
     def __contains__(self, key: object) -> bool:
-        return key in self._custom or key in self._builtin or key in self._base
+        return key in self._custom or key in self._base
 
     def get(self, key: str, default: ProviderSpec | None = None) -> ProviderSpec | None:
         if key in self._custom:
             return self._custom[key]
-        if key in self._builtin:
-            return self._builtin[key]
         return self._base.get(key, default)
 
 
@@ -576,11 +559,7 @@ class _OrderableProviderIds(Sequence[str]):
         return repr(self._all())
 
 
-PROVIDERS = _ProvidersCatalog(_BASE_PROVIDERS, builtin={
-    "cline-cli": ProviderSpec(
-        id="cline-cli", api_base="", api_key_env="", transport="cline-cli",
-    ),
-})
+PROVIDERS = _ProvidersCatalog(_BASE_PROVIDERS)
 CURSOR_API_KEY_ENV = PROVIDERS["cursor"].api_key_env
 EXTRA_CREDENTIAL_ENV: tuple[str, ...] = ()
 SUBLLM_PROVIDER_ORDER = "SUBLLM_PROVIDER_ORDER"
@@ -789,7 +768,6 @@ _DEFAULT = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
-    RouteCandidate(provider="cline-cli", model="cline-pass/deepseek-v4.1-flash-1017"),
     RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter"),
 )
@@ -817,7 +795,6 @@ _REPAIR = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
-    RouteCandidate(provider="cline-cli", model="cline-pass/deepseek-v4.1-flash-1017"),
     RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
@@ -836,7 +813,6 @@ _VALIDATOR = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
-    RouteCandidate(provider="cline-cli", model="cline-pass/deepseek-v4.1-flash-1017"),
     RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
 )
 
@@ -864,7 +840,6 @@ _CODING = (
     RouteCandidate(provider="ollama", model="qwen3-coder:30b", priority_offset=1),
     RouteCandidate(provider="agy-cli", model="claude-sonnet-4-6"),
     RouteCandidate(provider="claude-cli", model="claude-sonnet-5"),
-    RouteCandidate(provider="cline-cli", model="cline-pass/deepseek-v4.1-flash-1017"),
     RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=2),
     RouteCandidate(provider="openrouter", model="glm-5.3"),
 )
