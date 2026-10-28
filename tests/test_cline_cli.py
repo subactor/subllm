@@ -50,7 +50,8 @@ def test_json_object_normalization(fake_cline, content):
 print(json.dumps({{"type":"agent_event","event":{{"type":"content_start","text":{content!r}}}}}))
 print(json.dumps({{"type":"agent_event","event":{{"type":"usage","inputTokens":5,"outputTokens":5}}}}))
 ''')
-    assert json.loads(invoke("cline-pass/deepseek-v4.1-flash-1017", MESSAGES, 5, {"type": "json_object"})[0]) == {"ok": True}
+    result, _ = invoke("cline-pass/deepseek-v4.1-flash-1017", MESSAGES, 5, {"type": "json_object"})
+    assert json.loads(result) == {"ok": True}
 
 
 @pytest.mark.parametrize("content", ["", "   ", "not-json"])

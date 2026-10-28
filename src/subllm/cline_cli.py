@@ -13,7 +13,7 @@ from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 
-from .cli_common import MAX_BYTES, private_root, render_prompt, response_mode, run_cli, token_usage
+from .cli_common import private_root, render_prompt, response_mode, run_cli, token_usage
 from .errors import CompletionError
 
 _CODE = "SUBLLM-CLINE-CLI"
