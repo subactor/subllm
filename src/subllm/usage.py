@@ -102,6 +102,7 @@ def record_attempt(
         else:
             os.close(fd)
         with _WRITE_LOCK, closing(sqlite3.connect(path, timeout=0.5)) as db, db:
+            db.execute("PRAGMA journal_mode=WAL").fetchone()
             db.execute("BEGIN IMMEDIATE")
             for statement in _SCHEMA.split(";"):
                 if statement.strip():
