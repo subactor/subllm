@@ -1,0 +1,27 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-167",
+  "summary": "Integrate Cline Pass CLI transport for fast local task execution",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-167/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/cline_cli.py",
+    "src/subllm/policy.py",
+    "subllm.toml",
+    "tests/test_cline_cli.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
