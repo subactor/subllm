@@ -497,6 +497,163 @@ def test_proxy_system_one_decide_uses_local_qwen3_5_ollama_when_available(proxy_
     assert body["answers"]["execution_allowed"] is True
 
 
+def test_system_one_model_selection_prefers_d1_and_keeps_qwen_fallback(monkeypatch):
+    installed = [
+        {"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"},
+        {"name": "d1:3b", "model": "d1:3b"},
+    ]
+    monkeypatch.setattr(proxy, "get_upstream_ollama_models", lambda *_: installed)
+
+    assert proxy._select_local_system_one_ollama_model("d1") == "d1:3b"
+    assert proxy._select_local_system_one_ollama_model("d1:3b") == "d1:3b"
+    assert proxy._select_local_system_one_ollama_model("d1:3b", exclude_d1=True) == "qwen3.5:0.8b"
+
+    monkeypatch.setattr(proxy, "get_upstream_ollama_models", lambda *_: installed[:1])
+    assert proxy._select_local_system_one_ollama_model("d1:3b") == "qwen3.5:0.8b"
+
+    aliases_only = [
+        {"name": "d1:latest", "model": "d1:latest"},
+        {"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"},
+    ]
+    monkeypatch.setattr(proxy, "get_upstream_ollama_models", lambda *_: aliases_only)
+    assert proxy._select_local_system_one_ollama_model("d1:3b") == "qwen3.5:0.8b"
+
+
+def test_ollama_d1_uses_native_system_one_contract_and_normalizes_answers(monkeypatch):
+    request_payload = {
+        "state": {"query": "Zrestartuj worker na staging."},
+        "questions": [
+            {
+                "id": "operation",
+                "type": "choice",
+                "question": "Which operation?",
+                "options": {"op_0": "Restart", "NO_MATCH": "No match"},
+            },
+            {"id": "safe", "type": "noul", "question": "Is the operation safe?", "options": ["true", "false"]},
+            {"id": "risk", "type": "score", "question": "How risky?", "options": ["1", "2", "3"]},
+        ],
+    }
+    upstream_data = {
+        "model": "d1:3b",
+        "answers": {
+            "operation": {"type": "choice", "choice": "op_0", "probabilities": {"op_0": 0.9, "NO_MATCH": 0.1}},
+            "safe": {"type": "noul", "noul": 0.8},
+            "risk": {"type": "score", "score": 1.7, "probabilities": {"0": 0.1, "1": 0.2, "2": 0.7}},
+        },
+        "usage": {"input_tokens": 42, "output_tokens": 0},
+    }
+    seen = {}
+
+    class FakeResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return json.dumps(upstream_data).encode()
+
+    def fake_urlopen(request, timeout):
+        seen["url"] = request.full_url
+        seen["timeout"] = timeout
+        seen["body"] = json.loads(request.data.decode())
+        return FakeResponse()
+
+    monkeypatch.setattr(proxy, "urlopen", fake_urlopen)
+    response = proxy._complete_ollama_system_one(
+        "http://127.0.0.1:11434",
+        "d1:3b",
+        [],
+        request_payload=request_payload,
+        timeout_seconds=3.0,
+    )
+
+    assert seen["url"] == "http://127.0.0.1:11434/v1/systemone"
+    assert seen["timeout"] == 3.0
+    assert seen["body"] == {
+        "model": "d1:3b",
+        "state": {"query": "Zrestartuj worker na staging."},
+        "questions": {
+            "operation": {
+                "type": "choice",
+                "instructions": "Which operation?",
+                "criteria": {"op_0": "Restart", "NO_MATCH": "No match"},
+            },
+            "safe": {
+                "type": "noul",
+                "instructions": "Is the operation safe?",
+                "criteria": {"true": "The statement is true.", "false": "The statement is false."},
+            },
+            "risk": {"type": "score", "instructions": "How risky?", "criteria": ["1", "2", "3"]},
+        },
+    }
+    parsed = json.loads(response.content)
+    assert response.provider == "ollama"
+    assert response.model == "d1:3b"
+    assert response.usage == {"input_tokens": 42, "output_tokens": 0}
+    assert parsed["answers"]["operation"] == "op_0"
+    assert parsed["probabilities"]["operation"] == {"op_0": 0.9, "NO_MATCH": 0.1}
+    assert parsed["probabilities"]["safe"] == {"true": 0.8, "false": 0.2}
+    assert parsed["probabilities"]["risk"] == {"1": 0.1, "2": 0.2, "3": 0.7}
+
+
+def test_malformed_d1_response_raises_for_local_fallback():
+    payload = {
+        "questions": [
+            {"id": "operation", "type": "choice", "question": "Which operation?", "options": ["op_0", "NO_MATCH"]},
+        ],
+    }
+    with pytest.raises(ValueError, match="malformed d1 response"):
+        proxy._normalize_ollama_d1_response(
+            {"answers": {"operation": {"type": "choice", "choice": "missing", "probabilities": {}}}},
+            payload,
+        )
+
+
+def test_proxy_system_one_retries_qwen_after_local_d1_failure(proxy_server, monkeypatch):
+    base_url, _ = proxy_server
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: True)
+    monkeypatch.setattr(
+        proxy,
+        "get_upstream_ollama_models",
+        lambda *_: [{"name": "d1:3b", "model": "d1:3b"}, {"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"}],
+    )
+    seen = []
+
+    def fail_d1_then_return_qwen(upstream_url, model, messages, **kwargs):
+        seen.append(model)
+        if model.startswith("d1"):
+            raise ValueError("malformed d1 response")
+        return CompletionResponse(
+            content=json.dumps({"answers": {"operation": "op_0"}}),
+            provider="ollama",
+            model=model,
+            usage={},
+            finish_reason="stop",
+        )
+
+    monkeypatch.setattr(proxy, "_complete_ollama_system_one", fail_d1_then_return_qwen)
+    payload = {
+        "schema": "wellmanifest.system-one-request/v1",
+        "questions": [
+            {
+                "id": "operation",
+                "type": "choice",
+                "question": "Which operation?",
+                "options": ["op_0", "NO_MATCH"],
+            },
+        ],
+    }
+    status, body, _ = _request("POST", f"{base_url}/v1/decide", payload)
+
+    assert status == 200
+    assert seen == ["d1:3b", "qwen3.5:0.8b"]
+    assert body["requested_model"] == "d1:3b"
+    assert body["model"] == "qwen3.5:0.8b"
+    assert body["answers"]["operation"] == "op_0"
+
+
 def test_proxy_system_one_decide_falls_back_to_subllm_route_when_ollama_unavailable(proxy_server, monkeypatch):
     base_url, _ = proxy_server
 
