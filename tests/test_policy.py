@@ -152,7 +152,7 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
         ("gpt-5.6-sol", "cursor", "cursor/gpt-5.6-sol", "gpt-5.6-sol"),
         ("gpt-5.6-terra", "codex", "openai/gpt-5.6-terra", "gpt-5.6-terra"),
         ("gpt-5.6-luna", "codex", "openai/gpt-5.6-luna", "gpt-5.6-luna"),
-        ("qwen3-coder:30b", "ollama", "ollama/qwen3-coder:30b", "qwen3-coder:30b"),
+        ("qwen3-coder:30b", "ollama", "openai/qwen3-coder:30b", "qwen3-coder:30b"),
         ("grok-4.6", "cursor", "cursor/grok-4.6", "grok-4.6"),
         ("composer-2.5", "cursor", "cursor/composer-2.5", "composer-2.5"),
     ),

@@ -325,7 +325,8 @@ _BASE_MODELS = MappingProxyType(
             id="qwen3-coder:30b",
             providers=_provider_models(
                 ollama=ProviderModelSpec(
-                    litellm_model="ollama/qwen3-coder:30b",
+                    # The provider exposes /v1, not the native /api/generate API.
+                    litellm_model="openai/qwen3-coder:30b",
                     wire_model="qwen3-coder:30b",
                 ),
             ),
@@ -334,7 +335,7 @@ _BASE_MODELS = MappingProxyType(
             id="qwen2.5:1.5b",
             providers=_provider_models(
                 ollama=ProviderModelSpec(
-                    litellm_model="ollama/qwen2.5:1.5b",
+                    litellm_model="openai/qwen2.5:1.5b",
                     wire_model="qwen2.5:1.5b",
                 ),
             ),
@@ -343,7 +344,7 @@ _BASE_MODELS = MappingProxyType(
             id="qwen2.5",
             providers=_provider_models(
                 ollama=ProviderModelSpec(
-                    litellm_model="ollama/qwen2.5:1.5b",
+                    litellm_model="openai/qwen2.5:1.5b",
                     wire_model="qwen2.5:1.5b",
                 ),
             ),
@@ -426,7 +427,7 @@ _BASE_MODELS = MappingProxyType(
             id="qwen2.5-coder",
             providers=_provider_models(
                 ollama=ProviderModelSpec(
-                    litellm_model="ollama/qwen2.5-coder",
+                    litellm_model="openai/qwen2.5-coder",
                     wire_model="qwen2.5-coder",
                 ),
                 openrouter=ProviderModelSpec(
