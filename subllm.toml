@@ -28,8 +28,9 @@ max_attempts = 6
 #   OPENAI_API_KEY     → codex                  → gpt-6-sol
 #   ANTHROPIC_API_KEY  → claude                 → claude-opus-5
 #   CURSOR_API_KEY     → cursor (cursor-sdk)     → gpt-5.6-sol
-#   OLLAMA_API_KEY     → ollama                 → qwen3-coder:30b
 #   OPENROUTER_API_KEY → openrouter             → role-specific GLM 5.3 fallbacks
+#   (no key)           → minis (custom, tunnel) → qwen3:8b
+#   OLLAMA_API_KEY     → ollama                 → qwen3-coder:30b
 # Direct-provider model IDs are not inferred to be OpenRouter wire IDs.
 [providers.zai]
 enabled = true
@@ -63,15 +64,73 @@ enabled = false
 priority = 20
 default_model = "gpt-5.6-sol"
 
-[providers.ollama]
-enabled = true
-priority = 25
-default_model = "qwen3-coder:30b"
-
+# Cloud providers first; a provider without credentials is skipped. Local
+# models are the last resort: the LAN host minis, then the proxy host's Ollama.
 [providers.openrouter]
 enabled = true
 priority = 30
 default_model = "glm-5.3-flash"
+
+[providers.ollama]
+enabled = true
+priority = 210
+default_model = "qwen3-coder:30b"
+
+# Ollama on the LAN host minis (16 GB). Remote endpoints must be HTTPS, so it
+# is reached through a loopback SSH tunnel kept up on the proxy host, e.g.
+#   ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
+#       -L 127.0.0.1:11436:127.0.0.1:11434 minis
+# Without the tunnel the attempt fails fast and the next candidate is used.
+# routes mirrors every route whose built-in chain already includes ollama.
+[custom_providers.minis]
+api_base = "http://127.0.0.1:11436/v1"
+api_key_env = "OLLAMA_API_KEY"
+default_model = "qwen3:8b"
+priority = 200
+routes = [
+  "autogrammar-curllm",
+  "autogrammar-doql",
+  "autogrammar-gillm",
+  "autogrammar-hillm",
+  "autogrammar-imgl/generate",
+  "autogrammar-intract",
+  "autogrammar-nexu/cinema",
+  "autogrammar-nexu/generate",
+  "autogrammar-nlp2cmd/extract-schema",
+  "autogrammar-nlp2cmd/generate",
+  "autogrammar-nlp2dsl",
+  "autogrammar-redsl",
+  "autogrammar-testql",
+  "autogrammar-tillm",
+  "autogrammar-toonic",
+  "autogrammar-vql/generate",
+  "c2004-system",
+  "doctor-agent",
+  "koru-agent",
+  "onedev-agent",
+  "platform",
+  "prellm",
+  "premesh",
+  "repair-agent",
+  "semcod-algitex",
+  "semcod-code2docs",
+  "semcod-code2logic",
+  "semcod-docval",
+  "semcod-fixos",
+  "semcod-nfo",
+  "semcod-pfix",
+  "semcod-planfile",
+  "semcod-taskill",
+  "semcod-vallm",
+  "skills-agent",
+  "subactor-proxy/chat",
+  "subactor-proxy/completion",
+  "supervisor",
+  "todo2code",
+  "twinstudio",
+  "validator-agent",
+  "wellman",
+]
 
 # The table key is the stable application ID sent as user/user_id. name is the
 # display name used by OpenRouter; url is its attribution identifier.

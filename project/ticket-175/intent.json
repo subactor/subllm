@@ -1,0 +1,28 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-175",
+  "summary": "Prefer available cloud providers, then local Ollama on minis and the proxy host",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-175/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "subllm.toml",
+    "tests/test_adopted_catalog.py",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py",
+    "tests/test_provider_order.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

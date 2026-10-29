@@ -101,6 +101,9 @@ def test_direct_zai_glm53_precedes_cursor_and_openrouter_for_default_routes() ->
     assert configured[0].api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
+LOCAL_PROVIDERS = {"minis", "ollama"}
+
+
 def test_koru_routes_fall_back_to_openrouter_deepseek_last() -> None:
     for function in (
         "planning-assistant",
@@ -113,9 +116,11 @@ def test_koru_routes_fall_back_to_openrouter_deepseek_last() -> None:
         configured = configured_routes("koru-agent", function)
         assert configured[0].provider == "zai"
         assert configured[0].model == "glm-5.3"
-        assert configured[-1].provider == "openrouter"
-        assert configured[-1].model == "deepseek-v4-pro"
-        assert configured[-1].litellm_model == "openrouter/deepseek/deepseek-v4-pro"
+        cloud = [route for route in configured if route.provider not in LOCAL_PROVIDERS]
+        assert cloud[-1].provider == "openrouter"
+        assert cloud[-1].model == "deepseek-v4-pro"
+        assert cloud[-1].litellm_model == "openrouter/deepseek/deepseek-v4-pro"
+        assert [route.provider for route in configured[len(cloud):]] == ["minis", "ollama"]
 
 
 def test_deepseek_stays_off_non_koru_routes() -> None:
