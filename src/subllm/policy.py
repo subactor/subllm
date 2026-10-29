@@ -260,10 +260,12 @@ _BASE_MODELS = MappingProxyType(
             ),
         ),
         # Claude models Antigravity serves through its own login (no Anthropic key).
+        # The logical id is kept for policy compatibility; the installed Antigravity no
+        # longer lists claude-sonnet-4-6 and accepts claude-sonnet-5-5 (verified 2026-10-29).
         "claude-sonnet-4-6": ModelSpec(
             id="claude-sonnet-4-6",
             providers=_provider_models(
-                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="claude-sonnet-4-6")},
+                **{"agy-cli": ProviderModelSpec(litellm_model="", wire_model="claude-sonnet-5-5")},
             ),
         ),
         "claude-opus-4-6-thinking": ModelSpec(

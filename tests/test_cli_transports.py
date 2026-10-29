@@ -193,7 +193,7 @@ def test_non_text_content_is_rejected_not_dropped(fake_cli, invoke):
 
 def test_catalog_maps_sonnet_gemini_and_luna_to_local_logins():
     assert MODELS["claude-sonnet-5"].providers["claude-cli"].wire_model == "claude-sonnet-5"
-    assert MODELS["claude-sonnet-4-6"].providers["agy-cli"].wire_model == "claude-sonnet-4-6"
+    assert MODELS["claude-sonnet-4-6"].providers["agy-cli"].wire_model == "claude-sonnet-5-5"
     assert MODELS["gemini-3.1-pro-high"].providers["agy-cli"].wire_model == "gemini-3.1-pro-high"
     assert MODELS["gpt-5.6-luna"].providers["codex-cli"].wire_model == "gpt-5.6-luna"
     assert all(spec.litellm_model == "" for spec in (
@@ -227,7 +227,7 @@ def test_operator_opt_in_enables_routes_and_provider_order_still_gates(tmp_path,
     monkeypatch.delenv("SUBLLM_PROVIDER_ORDER", raising=False)
     routes = {r.provider: r for r in configured_routes("validator-agent", "direct-pr-review")}
     assert routes["claude-cli"].transport == "claude-cli" and routes["claude-cli"].wire_model == "claude-sonnet-5"
-    assert routes["agy-cli"].transport == "agy-cli" and routes["agy-cli"].wire_model == "claude-sonnet-4-6"
+    assert routes["agy-cli"].transport == "agy-cli" and routes["agy-cli"].wire_model == "claude-sonnet-5-5"
     # Only executors present on PATH become available routes; agy is missing here.
     available = {r.provider for r in available_routes(
         "validator-agent", "direct-pr-review", environ={"PATH": os.environ["PATH"]})}
