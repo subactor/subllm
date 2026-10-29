@@ -151,6 +151,7 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | **ticket-169** | [`README.md`](./ticket-169/README.md) | - | - | - | - | - |
 | **ticket-173** | [`README.md`](./ticket-173/README.md) | - | - | - | - | - |
 | **ticket-175** | [`README.md`](./ticket-175/README.md) | - | - | - | - | - |
+| **ticket-176** | [`README.md`](./ticket-176/README.md) | - | - | - | - | - |
 <!-- AUTO:TICKET_INDEX:END -->
 
 | ticket-163 | Index-compatible cache dependency metadata (GitHub #20 continuation) | IN_PROGRESS / PUBLICATION | governance |

@@ -77,13 +77,15 @@ priority = 210
 default_model = "qwen3-coder:30b"
 
 # Ollama on the LAN host minis (16 GB). Remote endpoints must be HTTPS, so it
-# is reached through a loopback SSH tunnel kept up on the proxy host, e.g.
+# is reached through the loopback SSH tunnel kept up on the proxy host by the
+# user unit minis-ollama-tunnel.service:
 #   ssh -N -o ExitOnForwardFailure=yes -o ServerAliveInterval=30 \
-#       -L 127.0.0.1:11436:127.0.0.1:11434 minis
+#       -L 127.0.0.1:11439:127.0.0.1:11434 minis
+# (11435/11436 are SubLLM proxy listeners, not Ollama.)
 # Without the tunnel the attempt fails fast and the next candidate is used.
 # routes mirrors every route whose built-in chain already includes ollama.
 [custom_providers.minis]
-api_base = "http://127.0.0.1:11436/v1"
+api_base = "http://127.0.0.1:11439/v1"
 api_key_env = "OLLAMA_API_KEY"
 default_model = "qwen3:8b"
 priority = 200
