@@ -547,7 +547,7 @@ def test_root_subllm_toml_minis_covers_exactly_the_ollama_routes() -> None:
     root = Path(__file__).resolve().parents[1]
     policy = load_policy_config(cwd=root)
     minis = policy.custom_providers["minis"]
-    assert minis.api_base == "http://127.0.0.1:11436/v1"
+    assert minis.api_base == "http://127.0.0.1:11439/v1"
     assert minis.priority > max(
         settings.priority for name, settings in policy.providers.items() if name != "ollama"
     ) + 100
