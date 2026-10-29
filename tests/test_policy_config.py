@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from subllm import (
+    ROUTES,
     InvalidPolicyError,
     configured_routes,
     find_policy_file,
@@ -539,7 +540,28 @@ def test_root_subllm_toml_disables_cursor_provider(monkeypatch: pytest.MonkeyPat
     providers = [r.provider for r in routes]
     assert "cursor" not in providers
     assert providers[0] == "zai"
-    assert providers[-1] == "openrouter"
+    assert providers[-3:] == ["openrouter", "minis", "ollama"]
+
+
+def test_root_subllm_toml_minis_covers_exactly_the_ollama_routes() -> None:
+    root = Path(__file__).resolve().parents[1]
+    policy = load_policy_config(cwd=root)
+    minis = policy.custom_providers["minis"]
+    assert minis.api_base == "http://127.0.0.1:11436/v1"
+    assert minis.priority > max(
+        settings.priority for name, settings in policy.providers.items() if name != "ollama"
+    ) + 100
+    assert minis.priority < policy.providers["ollama"].priority
+    covered = {
+        (application, function)
+        for application, function in ROUTES
+        if application in minis.routes or f"{application}/{function}" in minis.routes
+    }
+    with_ollama = {
+        key for key, route in ROUTES.items()
+        if any(candidate.provider == "ollama" for candidate in route.candidates)
+    }
+    assert covered == with_ollama
 
 
 def test_resolve_attempt_timeout_hierarchy() -> None:
