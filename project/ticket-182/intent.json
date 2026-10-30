@@ -1,0 +1,89 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-182",
+  "summary": "Reject task schema mismatches before completion success",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-182/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_cli.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/quality_schema.py",
+    "tests/test_response_schema.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [
+    "ticket-181"
+  ],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "bb60e8e11499dbc51f7ea6b5a7e6cf5147d49221",
+    "outcome": "Allow Python and stdin-JSON CLI callers to declare an optional local JSON Schema 2020-12 acceptance gate. Reject schema-mismatching candidate responses before success so existing model failover and paid usage accounting apply.",
+    "complexity": "S",
+    "estimatedMinutes": 50,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "nonGoals": [
+      "No provider wire format, provider/model ordering, credentials, execution authority, arbitrary validator commands or remote schema retrieval.",
+      "No automatic claim that schema conformance establishes semantic truth. Caller predicates remain available."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Compile and freeze a bounded caller schema before any provider attempt using the separately published runtime validator. Resolve internal references offline, refuse unsupported or broken contracts before paying, and compose schema acceptance with the existing optional task predicate. An optional quality_schema field is local and is never forwarded to providers.",
+      "components": [
+        {
+          "name": "completion-acceptance",
+          "paths": [
+            "src/subllm/client_cli.py",
+            "src/subllm/client_routes.py",
+            "src/subllm/quality_schema.py",
+            "tests/test_response_schema.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional quality_schema keyword and closed stdin request field; response_format remains the provider wire contract."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert this opt-in gate through independent publication; no persisted data migration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_response_schema.py tests/test_response_quality.py"
+        ],
+        "evidence": "Schema mismatch changes model with paid error accounting; caller mistakes fail before provider invocation; offline references and advanced schema rules are verified."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_client.py tests/test_adaptive.py"
+        ],
+        "evidence": "CLI field and adaptive routing retain the local gate; provider wire fields, existing callable validators and explicit-model constraints remain intact."
+      }
+    ]
+  }
+}

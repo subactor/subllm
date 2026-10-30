@@ -29,6 +29,7 @@ from .health import order_by_health, record_failure, record_success
 from .interaction_context import begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
+from .quality_schema import schema_gate
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 from .usage import record_attempt
@@ -167,6 +168,7 @@ def complete(
     cwd: str | Path | None = None,
     model: str | None = None,
     quality_gate: ResponseValidator | None = None,
+    quality_schema: Mapping[str, Any] | bool | None = None,
 ) -> CompletionResponse:
     """Execute configured routes; an explicit model restricts, never expands, them.
 
@@ -178,9 +180,16 @@ def complete(
     supply task-specific acceptance (known IDs, schema, reference answers).
     Only True accepts a result; rejection tries the next permitted candidate.
     A broken validator aborts the request rather than charging other models.
+    An optional quality_schema enforces local JSON Schema 2020-12 assertions
+    before acceptance, including for CLI callers. It never changes provider
+    response_format. Its self-contained contract is checked before any call.
+    Pass the raw schema, for example {"type": "object", "required": ["state"]},
+    rather than a provider's named schema descriptor. Format is an annotation;
+    caller predicates remain responsible for domain meaning.
     """
     if quality_gate is not None and not callable(quality_gate):
         raise CompletionError("quality_gate must be callable")
+    quality_gate = schema_gate(quality_schema, quality_gate)
     if not messages:
         raise CompletionError("chat completion requires at least one message")
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
