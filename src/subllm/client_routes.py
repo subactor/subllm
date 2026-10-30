@@ -29,7 +29,7 @@ from .health import order_by_health, record_failure, record_success
 from .interaction_context import begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
-from .quality_schema import schema_gate
+from .quality_schema import declared_schema_gate, schema_gate
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 from .usage import record_attempt
@@ -115,6 +115,7 @@ def _complete_route(
     policy_file: Path | None = None,
     quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
+    quality_gate = declared_schema_gate(response_format, quality_gate)
     started = time.monotonic()
     response = None
     diagnostic = None
@@ -186,6 +187,8 @@ def complete(
     Pass the raw schema, for example {"type": "object", "required": ["state"]},
     rather than a provider's named schema descriptor. Format is an annotation;
     caller predicates remain responsible for domain meaning.
+    A schema declared in response_format=json_schema is also enforced locally,
+    in addition to any explicit quality_schema or task predicate.
     """
     if quality_gate is not None and not callable(quality_gate):
         raise CompletionError("quality_gate must be callable")

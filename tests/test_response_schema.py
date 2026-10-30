@@ -177,3 +177,91 @@ def test_adaptive_completion_preserves_local_schema(monkeypatch, tmp_path):
     result = complete("todo2code", "semantic", MESSAGES, environ=ENV, quality_schema=SCHEMA)
     assert result.content == GOOD and len(calls) == 2
     assert ("zai", "glm-5.3") not in adaptive._observations(config, "text")
+
+
+def wire_schema(schema=SCHEMA):
+    return {"type": "json_schema", "json_schema": {"name": "assessment", "strict": True, "schema": schema}}
+
+
+def test_declared_wire_schema_causes_failover_without_new_caller_fields(monkeypatch):
+    wire = wire_schema()
+    calls = install_answers(monkeypatch, ['{}', GOOD])
+    monkeypatch.setattr(client_routes, "record_failure", lambda *a, **kw: pytest.fail("account quarantined"))
+    result = complete("todo2code", "semantic", MESSAGES, environ=ENV, response_format=wire)
+    assert calls == [("glm-5.3", wire), ("glm-5.3-flash", wire)]
+    assert [a.outcome for a in result.attempts] == ["quality_rejected", "success"]
+    with sqlite3.connect(os.environ["SUBLLM_USAGE_DB"]) as db:
+        rows = db.execute("select status,input_tokens,output_tokens from attempts order by id").fetchall()
+    assert rows == [("error", 40, 10), ("success", 40, 10)]
+
+
+@pytest.mark.parametrize("descriptor", [
+    None, [], {}, {"schema": None}, {"schema": {"type": "invalid-private"}},
+    {"schema": {"$ref": "https://private.invalid/schema"}},
+])
+def test_bad_wire_contract_fails_before_invocation_and_paid_accounting(monkeypatch, descriptor):
+    calls = install_answers(monkeypatch, [])
+    with pytest.raises(CompletionError) as error:
+        complete("todo2code", "semantic", MESSAGES, environ=ENV,
+                 response_format={"type": "json_schema", "json_schema": descriptor})
+    assert error.value.diagnostic_code == "SUBLLM-QUALITY-VALIDATOR-ERROR"
+    assert "private" not in str(error.value)
+    assert calls == []
+    with sqlite3.connect(os.environ["SUBLLM_USAGE_DB"]) as db:
+        tables = db.execute("select name from sqlite_master where name='attempts'").fetchall()
+        assert not tables or db.execute("select count(*) from attempts").fetchone()[0] == 0
+
+
+@pytest.mark.parametrize("wire", [[], "json_schema", True, 42])
+def test_nonobject_response_format_is_a_prepaid_caller_error(monkeypatch, wire):
+    calls = install_answers(monkeypatch, [])
+    with pytest.raises(CompletionError, match="response_format must be an object"):
+        complete("todo2code", "semantic", MESSAGES, environ=ENV, response_format=wire)
+    assert calls == []
+
+
+@pytest.mark.parametrize("first", [
+    '{"state":"healthy","confidence":0.3}', '{"state":"unknown","confidence":0.9}',
+])
+def test_wire_and_local_schemas_are_both_required(monkeypatch, first):
+    calls = install_answers(monkeypatch, [first, GOOD])
+    local = {"properties": {"confidence": {"minimum": 0.8}}}
+    result = complete("todo2code", "semantic", MESSAGES, environ=ENV,
+                      response_format=wire_schema(), quality_schema=local)
+    assert result.content == GOOD and len(calls) == 2
+
+
+def test_declared_schema_does_not_replace_task_predicate(monkeypatch):
+    calls = install_answers(monkeypatch, [GOOD, GOOD])
+    seen = []
+
+    def predicate(response):
+        seen.append(response)
+        return len(seen) == 2
+
+    complete("todo2code", "semantic", MESSAGES, environ=ENV,
+             response_format=wire_schema(), quality_gate=predicate)
+    assert len(calls) == len(seen) == 2
+
+
+def test_explicit_model_cannot_escape_its_wire_schema(monkeypatch):
+    calls = install_answers(monkeypatch, ['{}'])
+    with pytest.raises(CompletionError):
+        complete("todo2code", "semantic", MESSAGES, environ=ENV,
+                 response_format=wire_schema(), model="glm-5.3")
+    assert len(calls) == 1
+
+
+def test_adaptive_completion_enforces_declared_schema(monkeypatch, tmp_path):
+    from subllm import adaptive
+    config = {
+        "classes": {"strong": ["glm-5.3", "glm-5.3-flash"]}, "aliases": {},
+        "routes": {"todo2code/semantic": "strong"}, "state": str(tmp_path / "availability.sqlite"),
+        "ttl": 900, "probe_timeout": 2, "sweep_budget": 0, "sweep_interval": 60,
+    }
+    monkeypatch.setattr(adaptive, "policy", lambda _: config)
+    calls = install_answers(monkeypatch, ['{}', GOOD])
+    wire = wire_schema()
+    result = complete("todo2code", "semantic", MESSAGES, environ=ENV, response_format=wire)
+    assert result.content == GOOD and len(calls) == 2
+    assert ("zai", "glm-5.3") not in adaptive._observations(config, "json_schema")

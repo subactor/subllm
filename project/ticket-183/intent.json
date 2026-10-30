@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-183",
+  "summary": "Enforce provider-declared JSON Schema before response acceptance",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-183/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "src/subllm/quality_schema.py",
+    "tests/test_response_schema.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "7f405b899db730fc4c50dd729cf51e9d6d28cec2",
+    "outcome": "Enforce the schema already declared by response_format=json_schema before accepting a model answer, across ordinary and adaptive execution. Existing clients should receive schema-based failover without adding quality_schema.",
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "nonGoals": [
+      "No provider wire changes, automatic schema inference, model order, credentials, arbitrary execution or remote schema retrieval.",
+      "No Supervisor source change; its current json_object request remains a separate consumer integration dependency."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Derive a local acceptance gate from the raw schema in an existing json_schema descriptor at the common route attempt boundary, before provider invocation. Compose it with any explicit quality_schema/task predicate so neither contract can silently replace the other. Reuse the independently published bounded offline 2020-12 validator.",
+      "components": [
+        {
+          "name": "completion-acceptance",
+          "paths": [
+            "src/subllm/client_routes.py",
+            "src/subllm/quality_schema.py",
+            "tests/test_response_schema.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert this acceptance wiring through independent publication; no data migration."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_response_schema.py tests/test_response_quality.py"
+        ],
+        "evidence": "Valid JSON violating the declared wire schema causes model-scoped rejection and bounded fallback, with original wire fields preserved."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_client.py tests/test_adaptive.py tests/test_openai_worker.py"
+        ],
+        "evidence": "Invalid descriptors fail before provider invocation; explicit local and wire schemas both apply; ordinary, explicit-model and adaptive paths retain their constraints."
+      }
+    ]
+  }
+}
