@@ -1,0 +1,100 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-177",
+  "summary": "Route bounded LLM tasks to direct ZAI Flash",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-177/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy.py",
+    "tests/test_task_model_routing.py",
+    "tests/test_policy.py",
+    "tests/test_client.py",
+    "tests/test_resolver.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "664734a09a52dbc2c41902ec372aa3f7999ea08e",
+    "targetBranch": "main",
+    "outcome": "Publish task-specific direct ZAI Flash defaults with preserved explicit model selection and independent verification.",
+    "nonGoals": [
+      "Changing the global provider order or production service deployments.",
+      "Changing coding, planning, repair or review model defaults."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse existing immutable route candidates, swapping only the two ZAI model assignments for bounded roles and supplying low reasoning.",
+      "components": [
+        {
+          "name": "routing-policy",
+          "paths": [
+            "src/subllm/policy.py"
+          ]
+        },
+        {
+          "name": "routing-regressions",
+          "paths": [
+            "tests/test_policy.py",
+            "tests/test_client.py",
+            "tests/test_resolver.py",
+            "tests/test_task_model_routing.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the bounded route mapping through the same independently validated publication process."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest tests/test_policy.py tests/test_resolver.py tests/test_task_model_routing.py -q"
+        ],
+        "evidence": "Local policy and resolver regression output; testless coverage receipt."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest tests/test_client.py tests/test_model_selection.py tests/test_provider_order.py tests/test_policy_config.py -q"
+        ],
+        "evidence": "Completion request, explicit selection and provider order regression output."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m ruff check src/subllm/policy.py tests/test_policy.py tests/test_client.py tests/test_resolver.py tests/test_task_model_routing.py",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Local checks and paired synthetic canary receipt f763d1265a263d1e47b2f89852e657162a3ac0e8f4becdfa3a1b544df4363490; independent publication remains pending."
+      }
+    ]
+  }
+}

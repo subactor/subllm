@@ -98,7 +98,7 @@ def _process_is_running(pid: int) -> bool:
     return state not in {"X", "Z"}
 
 
-def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
+def test_complete_executes_direct_zai_flash_semantic_route(monkeypatch) -> None:
     observed: dict[str, object] = {}
 
     def run_worker(request, **kwargs):
@@ -117,12 +117,13 @@ def test_complete_executes_direct_zai_glm53_route(monkeypatch) -> None:
 
     assert result.content == '{"ok":true}'
     assert result.provider == "zai"
-    assert result.model == "glm-5.3"
+    assert result.model == "glm-5.3-flash"
     assert result.usage == {"total_tokens": 9}
     assert observed["timeout_seconds"] == pytest.approx(12, abs=0.01)
     request = observed["request"]
     assert request["api_base"] == "https://api.z.ai/api/coding/paas/v4"
-    assert request["wire_model"] == "glm-5.3"
+    assert request["wire_model"] == "glm-5.3-flash"
+    assert request["model_parameters"]["reasoning_effort"] == "low"
     assert request["messages"] == [{"role": "user", "content": "Classify this change"}]
     assert request["request_fields"] == {"request_id": "todo2code-test-0001", "user_id": "todo2code"}
     assert "id.secret" not in repr(result)

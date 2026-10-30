@@ -115,7 +115,8 @@ def test_koru_routes_fall_back_to_openrouter_deepseek_last() -> None:
     ):
         configured = configured_routes("koru-agent", function)
         assert configured[0].provider == "zai"
-        assert configured[0].model == "glm-5.3"
+        expected = "glm-5.3-flash" if function in {"nl-to-koru-dsl", "nl-to-coru-dsl"} else "glm-5.3"
+        assert configured[0].model == expected
         cloud = [route for route in configured if route.provider not in LOCAL_PROVIDERS]
         assert cloud[-1].provider == "openrouter"
         assert cloud[-1].model == "deepseek-v4-pro"
@@ -272,16 +273,16 @@ def test_validator_routes_pin_direct_zai_glm_5_3(function: str) -> None:
 
 
 @pytest.mark.parametrize("function", ("assessment", "delegation", "review"))
-def test_supervisor_routes_pin_direct_zai_glm_5_3(function: str) -> None:
+def test_supervisor_routes_choose_models_by_role(function: str) -> None:
     route = next(item for item in configured_routes("supervisor", function) if item.provider == "zai")
-    assert route.model == "glm-5.3"
-    assert route.litellm_model == "zai/glm-5.3"
-    assert route.wire_model == "glm-5.3"
+    expected = "glm-5.3-flash" if function == "assessment" else "glm-5.3"
+    assert route.model == route.wire_model == expected
+    assert route.litellm_model == f"zai/{expected}"
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
 @pytest.mark.parametrize(("application", "function"), sorted(ROUTES))
-def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, function: str) -> None:
+def test_every_registered_route_prefers_its_declared_model_role(application: str, function: str) -> None:
     policy = ROUTES[(application, function)]
     if (application, function) == ("subactor-proxy", "deepseek-flash"):
         route = configured_routes(application, function)[0]
@@ -303,8 +304,13 @@ def test_every_registered_route_prefers_direct_zai_glm_5_3(application: str, fun
         return
     route = configured_routes(application, function)[0]
     assert route.provider == "zai"
-    assert route.model == "glm-5.3"
-    assert route.wire_model == "glm-5.3"
+    bounded = (application, function) in {
+        ("todo2code", "semantic"), ("supervisor", "assessment"),
+        ("koru-agent", "nl-to-koru-dsl"), ("koru-agent", "nl-to-coru-dsl"),
+        ("subactor-proxy", "completion"),
+    }
+    expected = "glm-5.3-flash" if bounded else "glm-5.3"
+    assert route.model == route.wire_model == expected
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
 
 
@@ -319,10 +325,12 @@ def test_twinstudio_declares_every_runtime_route() -> None:
 def test_supervisor_assessment_bounds_only_direct_zai_reasoning() -> None:
     assessment = configured_routes("supervisor", "assessment")
     delegation = configured_routes("supervisor", "delegation")
-    assert [(r.provider, r.model, r.wire_model) for r in assessment] == [
+    assert sorted((r.provider, r.model, r.wire_model) for r in assessment) == sorted(
         (r.provider, r.model, r.wire_model) for r in delegation
-    ]
-    for current, previous in zip(assessment, delegation, strict=True):
+    )
+    previous_by_model = {(r.provider, r.model): r for r in delegation}
+    for current in assessment:
+        previous = previous_by_model[(current.provider, current.model)]
         assert dict(current.model_parameters) == (
             {"reasoning_effort": "low"}
             if current.provider == "zai" else dict(previous.model_parameters)
