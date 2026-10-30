@@ -10,7 +10,7 @@ import pytest
 from subllm import CompletionError, client_routes, complete
 from subllm.client_cli import completion_main
 from subllm.client_types import CompletionResponse
-from subllm.errors import RESPONSE_QUALITY_CODE
+from subllm.errors import RESPONSE_QUALITY_CODE, InvalidResponseContractError
 from subllm.quality_schema import schema_gate
 
 ENV = {"ZAI_API_KEY": "id.secret", "SUBLLM_PROVIDER_ORDER": "zai"}
@@ -76,6 +76,7 @@ def test_invalid_contract_fails_before_any_paid_request(monkeypatch, schema):
     with pytest.raises(CompletionError, match="bounded self-contained") as error:
         complete("todo2code", "semantic", MESSAGES, environ=ENV, quality_schema=schema)
     assert error.value.diagnostic_code == "SUBLLM-QUALITY-VALIDATOR-ERROR"
+    assert isinstance(error.value, InvalidResponseContractError)
     assert "private" not in str(error.value)
 
 
@@ -91,6 +92,23 @@ def test_recursive_and_oversized_contracts_fail_without_recursing_or_paying(monk
     for schema in (cyclic, deep, many):
         with pytest.raises(CompletionError, match="bounded self-contained"):
             complete("todo2code", "semantic", MESSAGES, environ=ENV, quality_schema=schema)
+
+
+def test_missing_schema_dependency_is_a_backend_error_not_bad_caller_input(monkeypatch):
+    import builtins
+    original_import = builtins.__import__
+
+    def unavailable(name, *args, **kwargs):
+        if name == "jsonschema":
+            raise ImportError("private dependency path")
+        return original_import(name, *args, **kwargs)
+
+    monkeypatch.setattr(builtins, "__import__", unavailable)
+    calls = install_answers(monkeypatch, [])
+    with pytest.raises(CompletionError, match="response schema validator is unavailable") as error:
+        complete("todo2code", "semantic", MESSAGES, environ=ENV, quality_schema=SCHEMA)
+    assert not isinstance(error.value, InvalidResponseContractError)
+    assert calls == [] and "private" not in str(error.value)
 
 
 def test_full_schema_assertions_internal_refs_and_frozen_caller_input():

@@ -9,14 +9,14 @@ import json
 from collections.abc import Mapping
 from typing import Any
 
-from .errors import CompletionError
+from .errors import QUALITY_VALIDATOR_ERROR_CODE, CompletionError, InvalidResponseContractError
 from .quality import ResponseValidator
 
 
-def _invalid_schema() -> CompletionError:
-    return CompletionError(
+def _invalid_schema() -> InvalidResponseContractError:
+    return InvalidResponseContractError(
         "quality_schema must be a bounded self-contained JSON Schema 2020-12",
-        diagnostic_code="SUBLLM-QUALITY-VALIDATOR-ERROR",
+        diagnostic_code=QUALITY_VALIDATOR_ERROR_CODE,
     )
 
 
@@ -41,17 +41,17 @@ def declared_schema_gate(
     if response_format is None:
         return predicate
     if not isinstance(response_format, Mapping):
-        raise CompletionError(
+        raise InvalidResponseContractError(
             "response_format must be an object",
-            diagnostic_code="SUBLLM-QUALITY-VALIDATOR-ERROR",
+            diagnostic_code=QUALITY_VALIDATOR_ERROR_CODE,
         )
     if response_format.get("type") != "json_schema":
         return predicate
     descriptor = response_format.get("json_schema")
     if not isinstance(descriptor, Mapping) or descriptor.get("schema") is None:
-        raise CompletionError(
+        raise InvalidResponseContractError(
             "response_format.json_schema requires a raw schema",
-            diagnostic_code="SUBLLM-QUALITY-VALIDATOR-ERROR",
+            diagnostic_code=QUALITY_VALIDATOR_ERROR_CODE,
         )
     return schema_gate(descriptor["schema"], predicate)
 
@@ -68,7 +68,11 @@ def schema_gate(
         from referencing import Registry, Resource
         from referencing.exceptions import NoSuchResource
         from referencing.jsonschema import DRAFT202012
-
+    except ImportError:
+        raise CompletionError(
+            "response schema validator is unavailable", diagnostic_code=QUALITY_VALIDATOR_ERROR_CODE,
+        ) from None
+    try:
         if not isinstance(schema, (Mapping, bool)):
             raise _invalid_schema()
         # Bound traversal before serialization/metaschema recursion. This also

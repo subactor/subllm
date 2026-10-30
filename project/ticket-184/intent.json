@@ -1,0 +1,89 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-184",
+  "summary": "Return client errors for invalid response contracts",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-184/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/errors.py",
+    "src/subllm/proxy.py",
+    "src/subllm/quality_schema.py",
+    "tests/test_proxy.py",
+    "tests/test_response_schema.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "851a850031c8f05736a954cb72efa20ac6ba4fbc",
+    "outcome": "Return HTTP 400 for an invalid caller response contract, before provider or passthrough execution. Keep missing validator dependencies and broken server predicates as HTTP 500 without bypassing the quality gate through raw upstream fallback.",
+    "complexity": "S",
+    "estimatedMinutes": 35,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "nonGoals": [
+      "No model/routing policy, provider wire data, credential or execution authority changes.",
+      "No conversion of genuine server/validator dependency failures to caller errors."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Use a typed CompletionError subclass for invalid caller contracts, with the existing diagnostic. Preflight declared schemas at completion HTTP ingress before passthrough and handle contract failures before fallback. Missing runtime dependencies remain ordinary backend validation errors.",
+      "components": [
+        {
+          "name": "response-contract-http",
+          "paths": [
+            "src/subllm/errors.py",
+            "src/subllm/quality_schema.py",
+            "src/subllm/proxy.py",
+            "tests/test_proxy.py",
+            "tests/test_response_schema.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Malformed response contracts return HTTP 400 INVALID_REQUEST rather than a retryable server status."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert through protected publication and qualified runtime promotion; retain previous runtime artifact."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy.py tests/test_response_schema.py"
+        ],
+        "evidence": "Malformed and unsupported contracts are HTTP 400 before provider/passthrough execution, including streaming requests."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_response_quality.py tests/test_client.py tests/test_adaptive.py"
+        ],
+        "evidence": "Missing validator dependencies and failed server predicates remain backend errors and do not trigger raw upstream fallback."
+      }
+    ]
+  }
+}

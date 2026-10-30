@@ -25,12 +25,13 @@ from .cli_common import CLI_EXECUTABLES
 from .client_routes import _complete_route, complete
 from .client_types import CompletionResponse, _RetryableAttemptError
 from .credential_env import credential_is_valid, merged_environment
-from .errors import CompletionError, SubLLMError
+from .errors import QUALITY_VALIDATOR_ERROR_CODE, CompletionError, InvalidResponseContractError, SubLLMError
 from .health import order_by_health, record_failure, record_success
 from .openrouter_routing import apply_parameters
 from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .provider_order import routing_provider_order
+from .quality_schema import declared_schema_gate
 from .types import ResolvedRoute
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
@@ -1022,6 +1023,14 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         if payload is None:
             return
 
+        if path in {"/v1/decide", "/v1/system-one/decide", "/v1/chat/completions", "/api/chat", "/api/generate"}:
+            try:
+                declared_schema_gate(payload.get("response_format"), None)
+            except CompletionError as exc:
+                if not self._handle_contract_error(exc):
+                    self._error(500, "COMPLETION_FAILED", str(exc))
+                return
+
         if path in {"/v1/decide", "/v1/system-one/decide"}:
             self._handle_system_one_decide(payload)
             return
@@ -1177,6 +1186,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 )
             except Exception as exc:
                 last_error = exc
+                if self._handle_contract_error(exc):
+                    return
                 self._error(500, "COMPLETION_FAILED", str(last_error))
                 return
 
@@ -1246,6 +1257,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, req_id, payload)
         except Exception as exc:
+            if self._handle_contract_error(exc):
+                return
             if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/v1/chat/completions", payload)
                 return
@@ -1361,6 +1374,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
         except Exception as exc:
+            if self._handle_contract_error(exc):
+                return
             if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/api/chat", payload)
                 return
@@ -1465,6 +1480,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
         except Exception as exc:
+            if self._handle_contract_error(exc):
+                return
             if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
                 self._forward_upstream("POST", "/api/generate", payload)
                 return
@@ -1672,6 +1689,16 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
 
     def _error(self, status: int, code: str, message: str) -> None:
         self._json(status, {"error": {"code": code, "message": message}})
+
+    def _handle_contract_error(self, error: Exception) -> bool:
+        """Never send an invalid or unavailable acceptance gate to raw upstream."""
+        if isinstance(error, InvalidResponseContractError):
+            self._error(400, "INVALID_REQUEST", str(error))
+        elif getattr(error, "diagnostic_code", None) == QUALITY_VALIDATOR_ERROR_CODE:
+            self._error(500, "COMPLETION_FAILED", str(error))
+        else:
+            return False
+        return True
 
 
 def make_proxy_server(
