@@ -33,6 +33,29 @@ def _nonfinite(_value):
     raise ValueError("nonfinite JSON")
 
 
+def declared_schema_gate(
+    response_format: Mapping[str, Any] | None,
+    predicate: ResponseValidator | None,
+) -> ResponseValidator | None:
+    """Enforce an existing wire schema as well as any explicit local contract."""
+    if response_format is None:
+        return predicate
+    if not isinstance(response_format, Mapping):
+        raise CompletionError(
+            "response_format must be an object",
+            diagnostic_code="SUBLLM-QUALITY-VALIDATOR-ERROR",
+        )
+    if response_format.get("type") != "json_schema":
+        return predicate
+    descriptor = response_format.get("json_schema")
+    if not isinstance(descriptor, Mapping) or descriptor.get("schema") is None:
+        raise CompletionError(
+            "response_format.json_schema requires a raw schema",
+            diagnostic_code="SUBLLM-QUALITY-VALIDATOR-ERROR",
+        )
+    return schema_gate(descriptor["schema"], predicate)
+
+
 def schema_gate(
     schema: Mapping[str, Any] | bool | None,
     predicate: ResponseValidator | None,
