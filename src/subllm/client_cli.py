@@ -23,9 +23,11 @@ def _completion_timeout(value: str) -> float:
     return timeout
 
 
-def _completion_request(source: Any) -> tuple[list[Mapping[str, Any]], str | None, Mapping[str, Any] | None]:
+def _completion_request(source: Any) -> tuple[
+    list[Mapping[str, Any]], str | None, Mapping[str, Any] | None, Mapping[str, Any] | bool | None,
+]:
     if not isinstance(source, Mapping) or set(source) - {
-        "schema", "messages", "request_id", "response_format",
+        "schema", "messages", "request_id", "response_format", "quality_schema",
     }:
         raise CompletionError("completion request must be a closed JSON object")
     if source.get("schema") != "subllm.completion-request/v1":
@@ -47,11 +49,16 @@ def _completion_request(source: Any) -> tuple[list[Mapping[str, Any]], str | Non
     response_format = source.get("response_format")
     if response_format is not None and not isinstance(response_format, Mapping):
         raise CompletionError("completion response_format must be an object")
-    return messages, request_id, response_format
+    return messages, request_id, response_format, source.get("quality_schema")
 
 
 def completion_main(argv: Sequence[str] | None = None) -> int:
-    """Closed stdin-JSON adapter for policy-owned completion and failover."""
+    """Closed stdin-JSON adapter for policy-owned completion and failover.
+
+    Optional quality_schema is a local raw JSON Schema acceptance contract.
+    Provider output instructions remain in response_format; no schema gate
+    field is sent to the provider.
+    """
     parser = argparse.ArgumentParser(prog="subllm-complete")
     parser.add_argument("application")
     parser.add_argument("function")
@@ -62,7 +69,7 @@ def completion_main(argv: Sequence[str] | None = None) -> int:
         if len(encoded) > MAX_COMPLETION_REQUEST_BYTES:
             raise CompletionError("completion request exceeds 1000000 bytes")
         request = json.loads(encoded.decode("utf-8"))
-        messages, request_id, response_format = _completion_request(request)
+        messages, request_id, response_format, quality_schema = _completion_request(request)
         result = complete(
             args.application,
             args.function,
@@ -70,6 +77,7 @@ def completion_main(argv: Sequence[str] | None = None) -> int:
             timeout_seconds=args.timeout,
             request_id=request_id,
             response_format=response_format,
+            **({"quality_schema": quality_schema} if quality_schema is not None else {}),
         )
     except (UnicodeError, json.JSONDecodeError, CompletionError) as exc:
         print(f"subllm-complete: {exc}", file=sys.stderr)
