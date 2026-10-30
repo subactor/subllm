@@ -755,7 +755,7 @@ APPLICATIONS = MappingProxyType(
     }
 )
 
-# Prefer direct Z.AI GLM 5.3 for every registered LLM route. Cursor and
+# Shared planning and execution defaults prefer direct Z.AI GLM 5.3. Cursor and
 # OpenRouter remain declared fallbacks. The runtime executor may advance only
 # through this exact list after a bounded retryable attempt failure.
 _DEFAULT = (
@@ -774,11 +774,13 @@ _DEFAULT = (
     RouteCandidate(provider="openrouter"),
 )
 
-# Periodic assessment is bounded triage; GLM-5.3 defaults to max effort.
-# Preserve the shared candidates and other routes, changing only this role's
-# direct ZAI parameter. Planning, coding and repair retain their defaults.
-_SUPERVISOR_ASSESSMENT = tuple(
-    replace(candidate, model_parameters=MappingProxyType({"reasoning_effort": "low"}))
+# Bounded selection and structured conversion use direct Flash at low effort.
+# Swap the two ZAI model assignments, preserving provider priorities and the
+# full model as a declared fallback. Planning, coding and review keep _DEFAULT.
+_BOUNDED = tuple(
+    replace(candidate,
+            model="glm-5.3" if candidate.model == "glm-5.3-flash" else "glm-5.3-flash",
+            model_parameters=MappingProxyType({"reasoning_effort": "low"}))
     if candidate.provider == "zai" else candidate
     for candidate in _DEFAULT
 )
@@ -826,6 +828,7 @@ _VALIDATOR = (
 _KORU = _DEFAULT + (
     RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=30),
 )
+_KORU_DSL = _BOUNDED + _KORU[len(_DEFAULT):]
 
 _CODING = (
     # Explicit operator routing can select the CLI without changing API routes.
@@ -887,7 +890,7 @@ _ROUTE_VALUES = (
     # Host coding-agent invokes this canonical route through subllm-code-edit.
     RoutePolicy("onedev-agent", "code-edit", _CODING),
     RoutePolicy("onedev-agent", "code-context", _CODE_CONTEXT),
-    RoutePolicy("todo2code", "semantic", _DEFAULT),
+    RoutePolicy("todo2code", "semantic", _BOUNDED),
     RoutePolicy("szeptnik-one", "program-generation", _SZEPTNIK),
     RoutePolicy("szeptnik-one", "voice-programming", _SZEPTNIK),
     RoutePolicy(
@@ -905,8 +908,8 @@ _ROUTE_VALUES = (
         "reflection",
         _KORU,
     ),
-    RoutePolicy("koru-agent", "nl-to-koru-dsl", _KORU),
-    RoutePolicy("koru-agent", "nl-to-coru-dsl", _KORU),
+    RoutePolicy("koru-agent", "nl-to-koru-dsl", _KORU_DSL),
+    RoutePolicy("koru-agent", "nl-to-coru-dsl", _KORU_DSL),
     RoutePolicy("koru-agent", "strategy-review", _KORU),
     RoutePolicy("c2004-system", "oql-generation", _DEFAULT),
     RoutePolicy("c2004-system", "doctor-recommendation", _DEFAULT),
@@ -966,14 +969,14 @@ _ROUTE_VALUES = (
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
-    RoutePolicy("supervisor", "assessment", _SUPERVISOR_ASSESSMENT),
+    RoutePolicy("supervisor", "assessment", _BOUNDED),
     RoutePolicy("supervisor", "delegation", _DEFAULT),
     RoutePolicy("supervisor", "review", _DEFAULT),
     RoutePolicy("subactor-proxy", "chat", _DEFAULT),
     RoutePolicy("subactor-proxy", "deepseek-flash", (
         RouteCandidate("openrouter", "deepseek-v4.1-flash"),
     )),
-    RoutePolicy("subactor-proxy", "completion", _DEFAULT),
+    RoutePolicy("subactor-proxy", "completion", _BOUNDED),
     RoutePolicy("premesh", "chat", _DEFAULT),
     RoutePolicy("autogrammar-gillm", "invoke", _DEFAULT),
 )
