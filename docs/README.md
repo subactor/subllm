@@ -32,4 +32,4 @@ Existing documentation retains its historical format.
 - [Unified LLM and MCP proxy](information/unified-proxy.md)
 
 - [DeepSeek V4.1 cost, latency and backlog audit](analysis/deepseek-v41-routing.md)
-- [Dobór modeli do zadań i bezpośredni ZAI Flash](analysis/task-model-routing.md)
+- [Dobór modeli do zadań i bramka jakości odpowiedzi](analysis/task-model-routing.md)
