@@ -8,6 +8,7 @@ version = "1.14.0"
 description = "Central provider, model and application routing policy for Subactor LLM consumers."
 readme = "README.md"
 requires-python = ">=3.11"
+dependencies = ["jsonschema==4.26.0"]
 license = "Apache-2.0"
 authors = [{name = "Subactor"}]
 classifiers = [
@@ -34,7 +35,6 @@ test = [
   "uvicorn>=0.35,<1",
   "psycopg[binary]>=3.2,<4",
   "build>=1.2,<2",
-  "jsonschema==4.26.0",
   "pytest>=9.0.3,<10",
   "ruff>=0.12,<1",
 ]
