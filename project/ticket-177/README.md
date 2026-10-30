@@ -12,14 +12,14 @@ SESSION_EXECUTION_AUTHORIZATION: the operator requested investigation of task/mo
 selection in subactor/subllm, specifically direct ZAI GLM 5.3 Flash versus GLM 5.3.
 Prefer direct Flash with low reasoning for bounded assessment, NL-to-DSL, semantic
 selection and completion. Preserve planning, coding, repair and review behavior.
-Scope amendment: update existing policy expectations in tests/test_policy.py and tests/test_client.py in
+Scope amendment: update existing policy expectations in tests/test_policy.py, tests/test_client.py and tests/test_resolver.py in
 addition to the new execution regression tests; this is the same application scope.
 
 ## Acceptance criteria
 
 - [x] AC-01: Bounded roles prefer direct ZAI Flash with low reasoning, preserving both ZAI models and other providers.
 - [x] AC-02: Planning, code editing, repair and review retain full GLM 5.3; explicit model and provider selection remains authoritative.
-- [x] AC-03: 218 resolver/executor regressions, lint, docs/log checks and managed governance checks pass. Six paired live canaries returned correct results (3/3 per model); direct Flash availability also confirmed through the deployed proxy. Deployment is pending independent publication.
+- [x] AC-03: 248 resolver/executor regressions and 161 scoped policy tests with coverage pass, along with lint, docs/log and governance checks. Six paired live canaries returned correct results (3/3 per model); direct Flash availability also confirmed through the deployed proxy. Deployment is pending independent publication.
 
 ## Tracking boundary
 
