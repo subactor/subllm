@@ -1,0 +1,146 @@
+{
+  "schema": "wellmanifest.report/manifest/v1",
+  "id": "task-model-routing",
+  "version": 1,
+  "title": "Task model routing and direct ZAI Flash audit",
+  "owner": "subactor/subllm",
+  "kind": "analysis",
+  "created": "2026-10-30",
+  "updated": "2026-10-30",
+  "review_after": "2026-11-06",
+  "status": "final",
+  "authority": "none",
+  "document": {
+    "path": "docs/analysis/task-model-routing.md",
+    "index_path": "docs/README.md",
+    "sha256": "0edd6d4e74277f0e8a10acd9db0e13400b27799666932d99fdfd85cc44e60dd4"
+  },
+  "scope": {
+    "repositories": [
+      "subactor/subllm"
+    ],
+    "subjects": [
+      {
+        "id": "subllm-source",
+        "repository": "subactor/subllm",
+        "revision": "664734a09a52dbc2c41902ec372aa3f7999ea08e"
+      }
+    ],
+    "exclusions": [
+      "No production deployment or broad task-quality benchmark is claimed."
+    ]
+  },
+  "coverage": {
+    "state": "complete",
+    "unit": "applications in operator audit",
+    "expected": 4,
+    "observed": 4
+  },
+  "assessment": "incomplete",
+  "findings": [
+    {
+      "id": "shared-full-default",
+      "kind": "fact",
+      "text": "Bounded tasks shared a full GLM 5.3 default; explicitly modelled candidates ignore a changed provider default_model.",
+      "evidence_ids": [
+        "policy-source"
+      ]
+    },
+    {
+      "id": "direct-flash-works",
+      "kind": "fact",
+      "text": "Both direct ZAI models returned semantically correct JSON on all three paired synthetic tasks. Flash mean latency was 5.281s versus 4.824s for full GLM at low effort.",
+      "evidence_ids": [
+        "canaries"
+      ]
+    },
+    {
+      "id": "quota-improvement",
+      "kind": "hypothesis",
+      "text": "Direct Flash can reduce Coding Plan use for bounded roles; the documented multipliers applied to observed tokens imply about 58% fewer points in this sample.",
+      "evidence_ids": [
+        "canaries"
+      ]
+    },
+    {
+      "id": "production-validation",
+      "kind": "recommendation",
+      "text": "Validate large-context assessment quality and task success after independent publication and deployment.",
+      "evidence_ids": [
+        "usage-summary"
+      ]
+    }
+  ],
+  "evidence": [
+    {
+      "id": "canaries",
+      "kind": "test",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:f763d1265a263d1e47b2f89852e657162a3ac0e8f4becdfa3a1b544df4363490",
+      "sha256": "f763d1265a263d1e47b2f89852e657162a3ac0e8f4becdfa3a1b544df4363490"
+    },
+    {
+      "id": "usage-summary",
+      "kind": "observation",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:e59e3c0c3850d6090cf24f8b6466b46eb204d49c6b17768e5e07f1562b51829c",
+      "sha256": "e59e3c0c3850d6090cf24f8b6466b46eb204d49c6b17768e5e07f1562b51829c"
+    },
+    {
+      "id": "redaction",
+      "kind": "redaction",
+      "subject_id": "subllm-source",
+      "reference": "receipt:sha256:9990ee9f8e5d174ccb8af6bb8095bd9cf6f7d1cd6a497c2986f5d526343f5a51",
+      "sha256": "9990ee9f8e5d174ccb8af6bb8095bd9cf6f7d1cd6a497c2986f5d526343f5a51"
+    },
+    {
+      "id": "policy-source",
+      "kind": "source",
+      "subject_id": "subllm-source",
+      "reference": "repo://subactor/subllm@664734a09a52dbc2c41902ec372aa3f7999ea08e/src/subllm/policy.py",
+      "sha256": "b009fc9bea9595fb8b9ebdfe45a82cb1f4dcd3e1834519dc0f8b816ea23c2a36"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Paired synthetic task correctness",
+      "subject_id": "subllm-source",
+      "result": "PASS",
+      "reason": "Task IDs, action, lane, IDE and install=false checked for three examples per model.",
+      "evidence_ids": [
+        "canaries"
+      ]
+    },
+    {
+      "name": "Production quality and deployed candidate",
+      "subject_id": "subllm-source",
+      "result": "NOT_RUN",
+      "reason": "No production replay or candidate deployment; source change is owned by ticket-177.",
+      "evidence_ids": []
+    }
+  ],
+  "limitations": [
+    "Three tiny canaries cannot establish production quality or latency percentiles.",
+    "The larger Supervisor context has not been replayed.",
+    "Provider success does not establish task success; historical attempts used different contexts."
+  ],
+  "next_actions": [
+    {
+      "description": "Independently validate ticket-177 and observe task success, timeout rate and Coding Plan points after an approved deployment.",
+      "owner": "subactor/subllm",
+      "resume_when": "The exact source candidate is approved and selected by consumer deployment owners."
+    }
+  ],
+  "redaction": {
+    "state": "checked",
+    "evidence_ids": [
+      "redaction"
+    ]
+  },
+  "publication": {
+    "state": "local",
+    "revision": null,
+    "pull_request": null,
+    "evidence_ids": []
+  }
+}

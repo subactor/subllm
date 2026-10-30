@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 7,
+  "version": 8,
   "status": "current",
-  "updated": "2026-10-24"
+  "updated": "2026-10-30"
 }
 ---
 
@@ -32,3 +32,4 @@ Existing documentation retains its historical format.
 - [Unified LLM and MCP proxy](information/unified-proxy.md)
 
 - [DeepSeek V4.1 cost, latency and backlog audit](analysis/deepseek-v41-routing.md)
+- [Dobór modeli do zadań i bezpośredni ZAI Flash](analysis/task-model-routing.md)
