@@ -12,6 +12,7 @@ import uuid
 from collections.abc import Mapping, Sequence
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from importlib import metadata
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -52,6 +53,13 @@ SYSTEM_ONE_LOCAL_OLLAMA_MODELS: tuple[str, ...] = (
 SYSTEM_ONE_DEFAULT_D1_MODEL = "d1:3b"
 
 _TICKET_PATTERN = re.compile(r"^(ticket-[A-Za-z0-9_.-]+)")
+
+
+def _package_version() -> str:
+    try:
+        return metadata.version("subactor-subllm")
+    except metadata.PackageNotFoundError:
+        return "unknown"
 
 
 def _resolve_system_one_ollama_upstream(configured_upstream: str) -> str:
@@ -957,7 +965,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._json(200, {
                 "status": "ok",
                 "service": "subllm-proxy",
-                "version": "1.10.3",
+                "version": _package_version(),
                 "upstream_ollama": is_upstream_ollama_alive(self.ollama_upstream),
             })
             return

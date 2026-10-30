@@ -120,7 +120,20 @@ def test_proxy_health_and_cors(proxy_server):
     assert status == 200
     assert body["status"] == "ok"
     assert body["service"] == "subllm-proxy"
+    assert body["version"] == proxy.metadata.version("subactor-subllm")
     assert "access-control-allow-origin" in [k.lower() for k in headers]
+
+
+def test_proxy_health_uses_unknown_when_distribution_metadata_is_missing(proxy_server, monkeypatch):
+    base_url, _ = proxy_server
+
+    def missing_distribution(_name):
+        raise proxy.metadata.PackageNotFoundError("subactor-subllm")
+
+    monkeypatch.setattr(proxy.metadata, "version", missing_distribution)
+    status, body, _ = _request("GET", f"{base_url}/health")
+    assert status == 200
+    assert body["version"] == "unknown"
 
 
 @pytest.mark.parametrize("stream", [False, True])
