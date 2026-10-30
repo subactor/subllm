@@ -53,6 +53,67 @@ def _request(method: str, url: str, payload: dict | None = None, headers: dict |
         return exc.code, parsed, resp_headers
 
 
+@pytest.mark.parametrize("path", ["/v1/chat/completions", "/api/chat", "/api/generate"])
+@pytest.mark.parametrize("stream", [False, True])
+@pytest.mark.parametrize("descriptor", [{}, {"schema": {"type": "invalid"}},
+                                       {"schema": {"$ref": "https://private.invalid/schema"}}])
+def test_bad_contract_is_client_error_before_provider_or_passthrough(
+    proxy_server, monkeypatch, path, stream, descriptor,
+):
+    def forbidden(*args, **kwargs):
+        pytest.fail("invalid contract invoked generation or raw upstream")
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", forbidden)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_forward_upstream", forbidden)
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *a: True)
+    status, body, _ = _request("POST", proxy_server[0] + path, {
+        "model": "unregistered-local:1b", "messages": [{"role": "user", "content": "fixture"}],
+        "prompt": "fixture", "stream": stream,
+        "response_format": {"type": "json_schema", "json_schema": descriptor},
+    })
+    assert status == 400 and body["error"]["code"] == "INVALID_REQUEST"
+    assert "private" not in body["error"]["message"]
+
+
+def test_runtime_validator_failure_remains_server_error_without_upstream(proxy_server, monkeypatch):
+    from subllm.errors import QUALITY_VALIDATOR_ERROR_CODE, CompletionError
+
+    def unavailable(*args):
+        raise CompletionError("response schema validator is unavailable", diagnostic_code=QUALITY_VALIDATOR_ERROR_CODE)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("backend validation failure invoked generation or raw upstream")
+
+    monkeypatch.setattr(proxy, "declared_schema_gate", unavailable)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", forbidden)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_forward_upstream", forbidden)
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/chat/completions", {
+        "model": "glm-5.3", "messages": [{"role": "user", "content": "fixture"}],
+        "response_format": {"type": "json_schema", "json_schema": {"schema": {}}},
+    })
+    assert status == 500 and body["error"]["code"] == "COMPLETION_FAILED"
+
+
+@pytest.mark.parametrize("path", ["/v1/chat/completions", "/api/chat", "/api/generate"])
+def test_server_predicate_failure_does_not_bypass_acceptance_via_upstream(proxy_server, monkeypatch, path):
+    from subllm.errors import QUALITY_VALIDATOR_ERROR_CODE, CompletionError
+
+    def broken(*args):
+        raise CompletionError("task quality validator failed", diagnostic_code=QUALITY_VALIDATOR_ERROR_CODE)
+
+    def forbidden(*args, **kwargs):
+        pytest.fail("broken acceptance predicate fell through to raw upstream")
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", broken)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_forward_upstream", forbidden)
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *a: True)
+    status, body, _ = _request("POST", proxy_server[0] + path, {
+        "model": "glm-5.3", "messages": [{"role": "user", "content": "fixture"}],
+        "prompt": "fixture",
+    })
+    assert status == 500 and body["error"]["code"] == "COMPLETION_FAILED"
+
+
 def test_proxy_health_and_cors(proxy_server):
     base_url, _ = proxy_server
     status, body, headers = _request("GET", f"{base_url}/health")
