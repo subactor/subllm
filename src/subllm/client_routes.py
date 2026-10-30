@@ -5,6 +5,7 @@ import os
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import replace
+from functools import partial
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
@@ -27,6 +28,7 @@ from .errors import (
 from .health import order_by_health, record_failure, record_success
 from .interaction_context import begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
+from .quality import ResponseValidator, validate_response
 from .resolver import available_routes, configured_routes
 from .types import ResolvedRoute
 from .usage import record_attempt
@@ -110,6 +112,7 @@ def _complete_route(
     response_format: Mapping[str, Any] | None,
     cwd: Path,
     policy_file: Path | None = None,
+    quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
     started = time.monotonic()
     response = None
@@ -120,21 +123,22 @@ def _complete_route(
         response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
                                  request_id=request_id, response_format=response_format, cwd=cwd,
                                  policy_file=policy_file)
+        validate_response(response, response_format, quality_gate)
         return response
     except Exception as exc:
         attempt_error = exc
         # Never persist exception messages, raw provider errors or headers.
         if isinstance(exc, _RetryableAttemptError):
-            diagnostic = _attempt_diagnostic_code(exc.outcome)
+            diagnostic = exc.diagnostic_code or _attempt_diagnostic_code(exc.outcome)
         else:
-            diagnostic = "SUBLLM-ATTEMPT-FAILED"
+            diagnostic = getattr(exc, "diagnostic_code", None) or "SUBLLM-ATTEMPT-FAILED"
         raise
     finally:
         finish_attempt(archive, route, response, attempt_error, round((time.monotonic() - started) * 1000))
         record_attempt(request_id=request_id or uuid4().hex,
                        application=route.application, function=route.function,
                        provider=route.provider, model=route.wire_model,
-                       status="success" if response is not None else "error",
+                       status="success" if response is not None and attempt_error is None else "error",
                        diagnostic_code=diagnostic, duration_ms=round((time.monotonic() - started) * 1000),
                        usage=response.usage if response is not None else {})
 
@@ -162,13 +166,21 @@ def complete(
     credentials: Mapping[str, str] | None = None,
     cwd: str | Path | None = None,
     model: str | None = None,
+    quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
     """Execute configured routes; an explicit model restricts, never expands, them.
 
     Failover remains within matching routes. The application/function alias
     retains automatic selection. Explicit models on adaptive routes currently
     fail closed instead of silently ignoring the caller's choice.
+
+    Structural response checks run before success. A bounded quality_gate may
+    supply task-specific acceptance (known IDs, schema, reference answers).
+    Only True accepts a result; rejection tries the next permitted candidate.
+    A broken validator aborts the request rather than charging other models.
     """
+    if quality_gate is not None and not callable(quality_gate):
+        raise CompletionError("quality_gate must be callable")
     if not messages:
         raise CompletionError("chat completion requires at least one message")
     if not math.isfinite(timeout_seconds) or timeout_seconds <= 0:
@@ -195,7 +207,8 @@ def complete(
                 environment[PROVIDERS[provider].api_key_env] = credential
         return adaptive.execute(config, "__route__", messages,
             build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environment),
-            invoke=_complete_route, timeout_seconds=timeout_seconds,
+            invoke=partial(_complete_route, quality_gate=quality_gate) if quality_gate is not None else _complete_route,
+            timeout_seconds=timeout_seconds,
             response_format=response_format, request_id=request_id, cwd=Path(cwd) if cwd else None, environ=environment)
     routes = available_routes(application, function, environ=environ, credentials=credentials)
     if not routes:
@@ -245,6 +258,7 @@ def complete(
                 response_format=response_format,
                 cwd=Path(cwd) if cwd is not None else Path.cwd(),
                 policy_file=runtime_policy.source,
+                **({"quality_gate": quality_gate} if quality_gate is not None else {}),
             )
         except _RetryableAttemptError as exc:
             duration = time.monotonic() - attempt_started

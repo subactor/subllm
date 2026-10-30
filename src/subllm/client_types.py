@@ -7,6 +7,7 @@ from typing import Any
 from .errors import (
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
+    RESPONSE_QUALITY_CODE,
     CompletionError,
 )
 
@@ -53,6 +54,8 @@ class _RetryableAttemptError(CompletionError):
 
 
 def _attempt_diagnostic_code(outcome: str) -> str:
+    if outcome in {"invalid_response", "quality_rejected"}:
+        return RESPONSE_QUALITY_CODE
     if outcome == "http_429":
         return PROVIDER_RATE_LIMIT_CODE
     return PROVIDER_UNAVAILABLE_CODE

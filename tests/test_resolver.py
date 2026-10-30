@@ -133,7 +133,7 @@ def test_todo2code_semantic_route_prefers_zai_without_cursor() -> None:
     fields = route.provider_request_fields()
 
     assert route.provider == "zai"
-    assert route.wire_model == "glm-5.3-flash"
+    assert route.wire_model == "glm-5.3"
     assert route.application_url == "https://github.com/autogrammar/todo2code"
     assert fields["user_id"] == "todo2code"
 
@@ -161,7 +161,7 @@ def test_koru_routes_prefer_direct_zai_model_by_role(function: str) -> None:
     )
 
     assert route.provider == "zai"
-    expected = "glm-5.3-flash" if function in {"nl-to-koru-dsl", "nl-to-coru-dsl"} else "glm-5.3"
+    expected = "glm-5.3"
     assert route.model == expected
     assert route.transport == "openai-compatible"
     assert route.application_name == "Koru"

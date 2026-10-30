@@ -115,7 +115,7 @@ def test_koru_routes_fall_back_to_openrouter_deepseek_last() -> None:
     ):
         configured = configured_routes("koru-agent", function)
         assert configured[0].provider == "zai"
-        expected = "glm-5.3-flash" if function in {"nl-to-koru-dsl", "nl-to-coru-dsl"} else "glm-5.3"
+        expected = "glm-5.3"
         assert configured[0].model == expected
         cloud = [route for route in configured if route.provider not in LOCAL_PROVIDERS]
         assert cloud[-1].provider == "openrouter"
@@ -275,7 +275,7 @@ def test_validator_routes_pin_direct_zai_glm_5_3(function: str) -> None:
 @pytest.mark.parametrize("function", ("assessment", "delegation", "review"))
 def test_supervisor_routes_choose_models_by_role(function: str) -> None:
     route = next(item for item in configured_routes("supervisor", function) if item.provider == "zai")
-    expected = "glm-5.3-flash" if function == "assessment" else "glm-5.3"
+    expected = "glm-5.3"
     assert route.model == route.wire_model == expected
     assert route.litellm_model == f"zai/{expected}"
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
@@ -309,7 +309,9 @@ def test_every_registered_route_prefers_its_declared_model_role(application: str
         ("koru-agent", "nl-to-koru-dsl"), ("koru-agent", "nl-to-coru-dsl"),
         ("subactor-proxy", "completion"),
     }
-    expected = "glm-5.3-flash" if bounded else "glm-5.3"
+    expected = "glm-5.3"
+    if bounded:
+        assert route.model_parameters["reasoning_effort"] == "low"
     assert route.model == route.wire_model == expected
     assert route.api_base == "https://api.z.ai/api/coding/paas/v4"
 
