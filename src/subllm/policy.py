@@ -774,12 +774,10 @@ _DEFAULT = (
     RouteCandidate(provider="openrouter"),
 )
 
-# Bounded selection and structured conversion use direct Flash at low effort.
-# Swap the two ZAI model assignments, preserving provider priorities and the
-# full model as a declared fallback. Planning, coding and review keep _DEFAULT.
+# Keep the full model baseline until representative task-quality evidence
+# supports promotion of Flash. Bounded roles still use low reasoning effort.
 _BOUNDED = tuple(
     replace(candidate,
-            model="glm-5.3" if candidate.model == "glm-5.3-flash" else "glm-5.3-flash",
             model_parameters=MappingProxyType({"reasoning_effort": "low"}))
     if candidate.provider == "zai" else candidate
     for candidate in _DEFAULT

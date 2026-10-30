@@ -1,0 +1,116 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-179",
+  "summary": "Validate task response quality with model-scoped failover and full GLM baseline",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-179/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_types.py",
+    "src/subllm/errors.py",
+    "src/subllm/policy.py",
+    "src/subllm/quality.py",
+    "tests/test_client.py",
+    "tests/test_policy.py",
+    "tests/test_resolver.py",
+    "tests/test_response_quality.py",
+    "tests/test_task_model_routing.py",
+    "src/subllm/adaptive.py",
+    "tests/test_adaptive.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "87a7cb0e28fb69df488c10667bfb55ad539e183e",
+    "targetBranch": "main",
+    "outcome": "Validate task response quality with model-scoped failover and full GLM baseline",
+    "nonGoals": [
+      "Changing the global provider order or production service deployments.",
+      "Changing coding, planning, repair or review model defaults."
+    ],
+    "complexity": "L",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 15,
+      "maxAffectedComponents": 3,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Validate response completeness and declared structure before success; allow a task-owned semantic predicate and model-scoped rejection without provider-wide cooldown.",
+      "components": [
+        {
+          "name": "routing-quality",
+          "paths": [
+            "src/subllm/policy.py",
+            "src/subllm/client_routes.py",
+            "src/subllm/quality.py",
+            "src/subllm/client_types.py",
+            "src/subllm/errors.py",
+            "src/subllm/adaptive.py"
+          ]
+        },
+        {
+          "name": "regressions",
+          "paths": [
+            "tests/test_response_quality.py",
+            "tests/test_task_model_routing.py",
+            "tests/test_policy.py",
+            "tests/test_resolver.py",
+            "tests/test_client.py",
+            "tests/test_adaptive.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional complete(..., quality_gate=predicate); accepts only explicit True."
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the quality gate and role mapping through protected publication, preserving paid attempt history."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest tests/test_policy.py tests/test_resolver.py tests/test_task_model_routing.py -q"
+        ],
+        "evidence": "Focused routing test results."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest tests/test_response_quality.py tests/test_client.py -q"
+        ],
+        "evidence": "Rejected attempts retain usage and error status; later accepted model returns success."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest tests/test_adaptive.py tests/test_model_selection.py -q",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Task rejection does not poison shared availability; explicit model requests remain authoritative."
+      }
+    ]
+  }
+}

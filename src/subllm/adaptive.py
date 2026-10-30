@@ -270,7 +270,10 @@ def execute(
             if kind is None:
                 raise
             duration = time.monotonic() - started
-            _save(config, route, fmt, kind, duration)
+            # Task-specific rejection is not a global availability observation:
+            # another prompt on this model may satisfy its own contract.
+            if kind != "quality_rejected":
+                _save(config, route, fmt, kind, duration)
             attempts.append(CompletionAttempt(route.provider, route.wire_model, kind, round(duration * 1000)))
             if getattr(exc, "provider_level", kind in {"http_401", "http_402", "http_403"}):
                 record_failure(route.provider, reason=kind, latency_seconds=duration,

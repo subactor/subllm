@@ -90,6 +90,35 @@ def test_strong_never_uses_fast_or_unknown_auto(config):
     assert called == ["pro-a"]
 
 
+def test_task_rejection_does_not_quarantine_model_for_unrelated_prompts(config):
+    calls = []
+
+    def invoke(r, *args, **kwargs):
+        calls.append(r.model)
+        if r.model == "pro-a":
+            raise _RetryableAttemptError("task acceptance", outcome="quality_rejected", provider_level=False)
+        return CompletionResponse("ok", r.provider, r.model)
+
+    routes = [route("a", "pro-a"), route("b", "pro-b", 2)]
+    assert run(config, "pro-a", invoke, routes).model == "pro-b"
+    assert ("a", "pro-a") not in adaptive._observations(config, "text")
+    assert run(config, "pro-a", invoke, routes).model == "pro-b"
+    assert calls == ["pro-a", "pro-b", "pro-a", "pro-b"]
+
+
+def test_broken_task_validator_is_not_a_provider_failure(config):
+    calls = []
+
+    def invoke(r, *args, **kwargs):
+        calls.append(r.model)
+        raise CompletionError("validator failed", diagnostic_code="SUBLLM-QUALITY-VALIDATOR-ERROR")
+
+    with pytest.raises(CompletionError, match="validator failed"):
+        run(config, "pro-a", invoke, [route("a", "pro-a"), route("b", "pro-b", 2)])
+    assert calls == ["pro-a"]
+    assert not adaptive._observations(config, "text")
+
+
 def test_fast_prefers_its_class_before_stronger(config):
     def invoke(r, *args, **kwargs):
         return CompletionResponse("ok", r.provider, r.model)

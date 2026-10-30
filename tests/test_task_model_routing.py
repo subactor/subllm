@@ -15,7 +15,7 @@ MESSAGES = [{"role": "user", "content": "Select the matching task ID."}]
 
 
 @pytest.mark.parametrize(("application", "function"), BOUNDED_ROLES)
-def test_bounded_completion_sends_direct_flash_at_low_effort(monkeypatch, application, function):
+def test_bounded_completion_sends_full_baseline_at_low_effort(monkeypatch, application, function):
     calls = []
 
     def invoke(route, messages, **kwargs):
@@ -28,26 +28,26 @@ def test_bounded_completion_sends_direct_flash_at_low_effort(monkeypatch, applic
     response = complete(application, function, MESSAGES,
                         environ={"ZAI_API_KEY": "id.secret", "SUBLLM_PROVIDER_ORDER": "zai"},
                         response_format={"type": "json_object"})
-    assert response.model == "glm-5.3-flash"
+    assert response.model == "glm-5.3"
     assert len(calls) == 1
     assert calls[0].api_base == "https://api.z.ai/api/coding/paas/v4"
     assert dict(calls[0].model_parameters) == {"reasoning_effort": "low"}
 
 
-def test_model_scoped_flash_failure_can_use_full_zai_model(monkeypatch):
+def test_model_scoped_full_failure_can_use_flash_model(monkeypatch):
     calls = []
 
     def invoke(route, *args, **kwargs):
         calls.append(route.wire_model)
-        if route.wire_model == "glm-5.3-flash":
+        if route.wire_model == "glm-5.3":
             raise _RetryableAttemptError("model unavailable", outcome="model_unavailable", provider_level=False)
         return CompletionResponse("ok", route.provider, route.wire_model)
 
     monkeypatch.setattr(client_routes, "_complete_route", invoke)
     response = complete("todo2code", "semantic", MESSAGES,
                         environ={"ZAI_API_KEY": "id.secret", "SUBLLM_PROVIDER_ORDER": "zai"})
-    assert response.model == "glm-5.3"
-    assert calls == ["glm-5.3-flash", "glm-5.3"]
+    assert response.model == "glm-5.3-flash"
+    assert calls == ["glm-5.3", "glm-5.3-flash"]
 
 
 def test_explicit_full_model_stays_authoritative(monkeypatch):
@@ -73,14 +73,14 @@ def test_account_rate_limit_skips_second_zai_model(monkeypatch):
         "SUBLLM_PROVIDER_ORDER": "zai,openrouter",
     })
     assert response.provider == "openrouter"
-    assert calls == [("zai", "glm-5.3-flash"), ("openrouter", "z-ai/glm-5.3-flash")]
+    assert calls == [("zai", "glm-5.3"), ("openrouter", "z-ai/glm-5.3-flash")]
 
 
 @pytest.mark.parametrize(("application", "function"), BOUNDED_ROLES)
 def test_provider_order_can_prefer_local_inference(application, function):
     routes = configured_routes(application, function, environ={"SUBLLM_PROVIDER_ORDER": "ollama,zai"})
     assert routes[0].provider == "ollama"
-    assert [r.model for r in routes if r.provider == "zai"] == ["glm-5.3-flash", "glm-5.3"]
+    assert [r.model for r in routes if r.provider == "zai"] == ["glm-5.3", "glm-5.3-flash"]
 
 
 @pytest.mark.parametrize(("application", "function"), (
