@@ -1,0 +1,74 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-181",
+  "summary": "Declare JSON Schema validation as a runtime dependency",
+  "workstream": "integration",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-181/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "pyproject.toml"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "11eeab7cda88ba8b637fdb5d5bb218ee63c69bef",
+    "outcome": "Make the pinned JSON Schema validator available in ordinary wheel installations before adding schema-aware response acceptance to SubLLM. Test extras must not be the source of a runtime capability.",
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 1
+    },
+    "nonGoals": [
+      "No response routing, provider, credential, model or validation behavior changes in this dependency slice."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Promote the already tested jsonschema 4.26.0 pin from the test extra to the project runtime dependencies; qualify built wheel installation without test extras.",
+      "components": [
+        {
+          "name": "package-runtime",
+          "paths": [
+            "pyproject.toml"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the metadata through protected publication before removing any consumer that requires schema validation."
+    },
+    "runtimeDependencies": [
+      "jsonschema==4.26.0"
+    ],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "uv build --wheel",
+          "uv pip install --python <isolated-runtime> <built-wheel>"
+        ],
+        "evidence": "Private wheel metadata and clean installation qualification; jsonschema imported without test extras."
+      }
+    ]
+  }
+}
