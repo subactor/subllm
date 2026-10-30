@@ -1,8 +1,8 @@
 {
   "schema": "wellmanifest.report/manifest/v1",
   "id": "task-model-routing",
-  "version": 1,
-  "title": "Task model routing and direct ZAI Flash audit",
+  "version": 2,
+  "title": "Task model routing, full GLM baseline and response quality",
   "owner": "subactor/subllm",
   "kind": "analysis",
   "created": "2026-10-30",
@@ -13,7 +13,7 @@
   "document": {
     "path": "docs/analysis/task-model-routing.md",
     "index_path": "docs/README.md",
-    "sha256": "0edd6d4e74277f0e8a10acd9db0e13400b27799666932d99fdfd85cc44e60dd4"
+    "sha256": "2cfe24e22dc2816f754c04c064580f251fefcdb8d9aa8206babfc6986676f23d"
   },
   "scope": {
     "repositories": [
@@ -24,6 +24,11 @@
         "id": "subllm-source",
         "repository": "subactor/subllm",
         "revision": "664734a09a52dbc2c41902ec372aa3f7999ea08e"
+      },
+      {
+        "id": "quality-source",
+        "repository": "subactor/subllm",
+        "revision": "024b4fe5dd8bfd474ef09f3f7f663c59fa7a9bd1"
       }
     ],
     "exclusions": [
@@ -69,6 +74,24 @@
       "evidence_ids": [
         "usage-summary"
       ]
+    },
+    {
+      "id": "full-baseline-restored",
+      "kind": "fact",
+      "text": "Reviewed ticket-179 restores full GLM-5.3 first with low reasoning for bounded roles; Flash is a later candidate. Existing paired canaries do not establish production equivalence.",
+      "evidence_ids": [
+        "quality-policy",
+        "canaries"
+      ]
+    },
+    {
+      "id": "quality-before-success",
+      "kind": "fact",
+      "text": "Structural and task-owned predicate acceptance run before success. Model-scoped rejection retains usage and allows permitted failover; broken predicates abort. This is not arbitrary semantic judging or full JSON Schema validation.",
+      "evidence_ids": [
+        "quality-gate",
+        "quality-failover"
+      ]
     }
   ],
   "evidence": [
@@ -99,6 +122,27 @@
       "subject_id": "subllm-source",
       "reference": "repo://subactor/subllm@664734a09a52dbc2c41902ec372aa3f7999ea08e/src/subllm/policy.py",
       "sha256": "b009fc9bea9595fb8b9ebdfe45a82cb1f4dcd3e1834519dc0f8b816ea23c2a36"
+    },
+    {
+      "id": "quality-policy",
+      "kind": "source",
+      "subject_id": "quality-source",
+      "reference": "repo://subactor/subllm@024b4fe5dd8bfd474ef09f3f7f663c59fa7a9bd1/src/subllm/policy.py",
+      "sha256": "fe300cb11b66d10fc6df95b3348d5a51ff0feb06eb15dd0eea154dec326bae84"
+    },
+    {
+      "id": "quality-gate",
+      "kind": "source",
+      "subject_id": "quality-source",
+      "reference": "repo://subactor/subllm@024b4fe5dd8bfd474ef09f3f7f663c59fa7a9bd1/src/subllm/quality.py",
+      "sha256": "5cb9f1f78c8538f20873adf17d3b0148bffc05ed467d50b6da95a71713b5e409"
+    },
+    {
+      "id": "quality-failover",
+      "kind": "source",
+      "subject_id": "quality-source",
+      "reference": "repo://subactor/subllm@024b4fe5dd8bfd474ef09f3f7f663c59fa7a9bd1/src/subllm/client_routes.py",
+      "sha256": "6508f43176bc709f7c34bb4d3c577f01db69c1d0efe29e1a18dddb0a74cc49e9"
     }
   ],
   "checks": [
@@ -115,20 +159,21 @@
       "name": "Production quality and deployed candidate",
       "subject_id": "subllm-source",
       "result": "NOT_RUN",
-      "reason": "No production replay or candidate deployment; source change is owned by ticket-177.",
+      "reason": "Representative production replay and all-consumer rollout remain unverified; reviewed quality source is ticket-179, independently merged through PR 183.",
       "evidence_ids": []
     }
   ],
   "limitations": [
     "Three tiny canaries cannot establish production quality or latency percentiles.",
     "The larger Supervisor context has not been replayed.",
-    "Provider success does not establish task success; historical attempts used different contexts."
+    "Provider success does not establish task success; historical attempts used different contexts.",
+    "Library structural acceptance does not establish semantic correctness; consumer predicates must enforce their declared schema and task criteria."
   ],
   "next_actions": [
     {
-      "description": "Independently validate ticket-177 and observe task success, timeout rate and Coding Plan points after an approved deployment.",
+      "description": "Retain the full baseline; forward response formats and task-owned predicates, then replay representative contexts before choosing Flash defaults.",
       "owner": "subactor/subllm",
-      "resume_when": "The exact source candidate is approved and selected by consumer deployment owners."
+      "resume_when": "Consumers supply exact acceptance criteria and comparable task-quality evidence."
     }
   ],
   "redaction": {
