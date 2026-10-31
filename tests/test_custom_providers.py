@@ -112,6 +112,9 @@ def test_custom_provider_valid_loading(tmp_path: Path):
         "priority = 40",
         "enabled = true",
         "",
+        "[custom_providers.vllm-local.model_parameters]",
+        'reasoning_effort = "none"',
+        "",
         "[custom_providers.fast-remote]",
         'api_base = "https://llm.example.com/v1"',
         'default_model = "deepseek-ai/DeepSeek-V3"',
@@ -132,6 +135,7 @@ def test_custom_provider_valid_loading(tmp_path: Path):
     assert "mistralai/Mistral-Small-24B-Instruct-2501" in vllm.models
     assert vllm.priority == 40
     assert vllm.enabled is True
+    assert dict(vllm.model_parameters) == {"reasoning_effort": "none"}
 
     # Check dynamic registration in PROVIDERS and MODELS
     assert "vllm-local" in PROVIDERS
@@ -144,6 +148,57 @@ def test_custom_provider_valid_loading(tmp_path: Path):
     assert model_spec.providers["vllm-local"].wire_model == "meta-llama/Llama-3.3-70B-Instruct"
 
     assert "vllm-local" in ORDERABLE_PROVIDER_IDS
+
+
+def test_custom_provider_reasoning_parameter_is_limited_to_declared_route(tmp_path: Path):
+    lines = _base_policy_lines() + [
+        "",
+        "[custom_providers.minis]",
+        'api_base = "http://127.0.0.1:11439/v1"',
+        'default_model = "qwen3.5:9b"',
+        'models = ["qwen3.5:9b"]',
+        "priority = 23",
+        'routes = ["onedev-agent/code-edit"]',
+        "",
+        "[custom_providers.minis.model_parameters]",
+        'reasoning_effort = "none"',
+    ]
+    policy_file = tmp_path / "subllm.toml"
+    policy_file.write_text("\n".join(lines))
+    environ = {"SUBLLM_POLICY_FILE": str(policy_file)}
+
+    code_routes = configured_routes("onedev-agent", "code-edit", environ=environ)
+    minis = next(route for route in code_routes if route.provider == "minis")
+    assert minis.model == "qwen3.5:9b"
+    assert dict(minis.model_parameters) == {"reasoning_effort": "none"}
+
+    validator_routes = configured_routes("validator-agent", "direct-pr-review", environ=environ)
+    assert all(route.provider != "minis" for route in validator_routes)
+
+
+@pytest.mark.parametrize(
+    "parameter_lines",
+    [
+        ['reasoning_effort = "disabled"'],
+        ["reasoning_effort = 0"],
+        ['temperature = "0"'],
+    ],
+)
+def test_custom_provider_rejects_unbounded_model_parameters(tmp_path: Path, parameter_lines):
+    lines = _base_policy_lines() + [
+        "",
+        "[custom_providers.local]",
+        'api_base = "http://127.0.0.1:8000/v1"',
+        'default_model = "local-code-model"',
+        "",
+        "[custom_providers.local.model_parameters]",
+        *parameter_lines,
+    ]
+    policy_file = tmp_path / "subllm.toml"
+    policy_file.write_text("\n".join(lines))
+
+    with pytest.raises(InvalidPolicyError, match="model_parameters|reasoning_effort"):
+        load_policy_config(cwd=tmp_path)
 
 
 def test_custom_provider_conflicts_with_builtin(tmp_path: Path):
