@@ -27,7 +27,7 @@ from .client_routes import _complete_route, complete
 from .client_types import CompletionResponse, _RetryableAttemptError
 from .credential_env import credential_is_valid, merged_environment
 from .errors import QUALITY_VALIDATOR_ERROR_CODE, CompletionError, InvalidResponseContractError, SubLLMError
-from .health import order_by_health, record_failure, record_success
+from .health import order_with_last_resort, record_failure, record_success
 from .openrouter_routing import apply_parameters
 from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
@@ -818,7 +818,7 @@ def _complete_model_direct(
 
     runtime_policy = load_policy_config(environ=environ)
     execution = runtime_policy.execution
-    routes = order_by_health(routes) if execution.failover_enabled else routes[:1]
+    routes = order_with_last_resort(routes) if execution.failover_enabled else routes[:1]
     if not routes:
         raise CompletionError(f"all providers cooling down for model '{model_id}'")
 

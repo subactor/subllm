@@ -12,7 +12,7 @@ from subllm import (
     provider_health,
     reset_provider_health,
 )
-from subllm.health import order_by_health, record_failure, record_success
+from subllm.health import order_by_health, order_with_last_resort, record_failure, record_success
 
 _POLICY = ExecutionPolicyConfig(
     failover_enabled=True,
@@ -251,3 +251,31 @@ record_failure(
 
     payload = json.loads(state_file.read_text(encoding="utf-8"))
     assert payload["providers"]["zai"]["consecutive_failures"] == 6
+
+
+def test_last_resort_keeps_breaker_while_a_healthy_provider_exists() -> None:
+    routes = _routes()
+    record_failure("zai", reason="timeout", latency_seconds=12.0, policy=_POLICY, now=100.0)
+
+    assert {route.provider for route in order_with_last_resort(routes, now=101.0)} == {"openrouter"}
+
+
+def test_last_resort_probes_transient_cooldowns_in_priority_order() -> None:
+    routes = _routes()
+    for provider in ("zai", "openrouter"):
+        record_failure(provider, reason="timeout", latency_seconds=12.0, policy=_POLICY, now=100.0)
+
+    assert order_by_health(routes, now=101.0) == ()
+    assert order_with_last_resort(routes, now=101.0) == routes
+
+
+def test_last_resort_never_probes_credit_or_credential_refusals() -> None:
+    routes = _routes()
+    record_failure("zai", reason="timeout", latency_seconds=12.0, policy=_POLICY, now=100.0)
+    record_failure("openrouter", reason="http_402", latency_seconds=0.5, policy=_POLICY, now=100.0)
+
+    probed = order_with_last_resort(routes, now=101.0)
+    assert probed and {route.provider for route in probed} == {"zai"}
+
+    record_failure("zai", reason="http_401", latency_seconds=0.5, policy=_POLICY, now=102.0)
+    assert order_with_last_resort(routes, now=103.0) == ()
