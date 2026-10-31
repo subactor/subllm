@@ -25,7 +25,7 @@ from .errors import (
     CompletionError,
     CursorRunError,
 )
-from .health import order_by_health, record_failure, record_success
+from .health import order_with_last_resort, record_failure, record_success
 from .interaction_context import begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
@@ -231,7 +231,7 @@ def complete(
     runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
     execution = runtime_policy.execution
     timeout_environment = merged_environment(environ=environ)
-    routes = order_by_health(routes, environ=timeout_environment) if execution.failover_enabled else routes[:1]
+    routes = order_with_last_resort(routes, environ=timeout_environment) if execution.failover_enabled else routes[:1]
     if not routes:
         raise CompletionError(
             f"all providers cooling down for {application}/{function}",

@@ -629,7 +629,9 @@ def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
     assert raised.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
     assert calls == 2
 
-    with pytest.raises(CompletionError, match="all providers cooling down") as deferred:
+    # Every provider is cooling for a transient reason, so the next request is
+    # still served by a bounded last-resort probe instead of failing unattempted.
+    with pytest.raises(CompletionError, match="all bounded candidates failed") as probed:
         complete(
             "todo2code",
             "semantic",
@@ -641,8 +643,8 @@ def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
             },
         )
 
-    assert deferred.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
-    assert calls == 2
+    assert probed.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
+    assert calls == 4
 
 
 def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:

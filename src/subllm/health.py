@@ -206,6 +206,37 @@ def order_by_health(
     return tuple(route for route in routes if not cooling.get(route.provider, False))
 
 
+def order_with_last_resort(
+    routes: tuple[ResolvedRoute, ...],
+    *,
+    now: float | None = None,
+    environ: Mapping[str, str] | None = None,
+) -> tuple[ResolvedRoute, ...]:
+    """Prefer healthy providers; when none remain, probe transiently cooling ones.
+
+    The circuit breaker still hides a cooling provider while any healthy
+    candidate exists, so short-lived processes do not recreate a timeout chain.
+    When every candidate is cooling, failing the request without contacting
+    anything would turn a transient fault into an outage.  Providers cooling
+    for a transient reason (timeout, 5xx, rate limit) are then probed in the
+    declared priority order.  Providers whose cooldown records an
+    authentication, payment or permission refusal stay excluded: they cannot
+    serve until credentials or credit change, and the attempt itself is bounded
+    by the caller's ``max_attempts`` and deadline.
+    """
+    healthy = order_by_health(routes, now=now, environ=environ)
+    if healthy or not routes:
+        return healthy
+    with _LOCK:
+        _replace_memory(_with_persisted_state(environ=environ))
+        refused = {
+            provider
+            for provider, state in _HEALTH.items()
+            if state.reason in UNCREDITED_REASONS
+        }
+    return tuple(route for route in routes if route.provider not in refused)
+
+
 def record_failure(
     provider: str,
     *,

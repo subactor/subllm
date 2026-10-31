@@ -28,7 +28,7 @@ from pathlib import Path
 
 from .client_types import CompletionAttempt, _RetryableAttemptError
 from .errors import PROVIDER_CHAIN_EXHAUSTED_CODE, CompletionError
-from .health import order_by_health, record_failure, record_success
+from .health import order_with_last_resort, record_failure, record_success
 
 LEVELS = {"any": 0, "fast": 1, "balanced": 2, "strong": 3}
 
@@ -232,7 +232,7 @@ def execute(
             for r in eligible
             if (r.provider, r.model) not in attempted and observed.get((r.provider, r.model), ("ok", 0))[0] == "ok"
         ]
-        candidates = list(order_by_health(tuple(candidates), environ=environ))
+        candidates = list(order_with_last_resort(tuple(candidates), environ=environ))
 
         def rank(r, observed=observed):
             status = observed.get((r.provider, r.model))
