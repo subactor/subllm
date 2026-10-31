@@ -4,6 +4,7 @@ import os
 import shutil
 from collections.abc import Mapping
 from dataclasses import replace
+from types import MappingProxyType
 
 from .catalog import effective_digest
 from .cli_common import CLI_EXECUTABLES
@@ -161,7 +162,12 @@ def _configured_routes(
             or f"{application}/{function}" in custom.routes
         ):
             candidates_list.append(
-                RouteCandidate(provider=custom.id, model=custom.default_model, priority_offset=0)
+                RouteCandidate(
+                    provider=custom.id,
+                    model=custom.default_model,
+                    priority_offset=0,
+                    model_parameters=MappingProxyType(dict(custom.model_parameters)),
+                )
             )
     # Provider order is authoritative; offsets only rank models within a provider.
     offsets = [item.priority_offset for item in candidates_list]

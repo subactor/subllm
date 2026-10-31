@@ -48,6 +48,7 @@ class CustomProviderConfig:
     priority: int = 50
     enabled: bool = True
     routes: tuple[str, ...] = ("all",)
+    model_parameters: tuple[tuple[str, str], ...] = ()
 
 
 @dataclass(frozen=True)
@@ -443,7 +444,10 @@ def _validate_custom_provider(name: str, raw: object, *, source: Path) -> Custom
         raise InvalidPolicyError(f"custom provider '{name}' conflicts with built-in provider in {source}")
     if not isinstance(raw, dict):
         raise InvalidPolicyError(f"custom provider '{name}' must be a table in {source}")
-    allowed_fields = {"api_base", "api_key_env", "default_model", "models", "priority", "enabled", "routes"}
+    allowed_fields = {
+        "api_base", "api_key_env", "default_model", "models", "priority", "enabled", "routes",
+        "model_parameters",
+    }
     unknown = set(raw) - allowed_fields
     if unknown:
         raise InvalidPolicyError(f"unknown fields {unknown} for custom provider '{name}' in {source}")
@@ -513,6 +517,20 @@ def _validate_custom_provider(name: str, raw: object, *, source: Path) -> Custom
     else:
         routes = ("all",)
 
+    raw_parameters = raw.get("model_parameters", {})
+    if not isinstance(raw_parameters, dict) or set(raw_parameters) - {"reasoning_effort"}:
+        raise InvalidPolicyError(
+            f"custom provider '{name}' model_parameters must contain only reasoning_effort in {source}"
+        )
+    model_parameters: dict[str, str] = {}
+    if "reasoning_effort" in raw_parameters:
+        reasoning_effort = raw_parameters["reasoning_effort"]
+        if not isinstance(reasoning_effort, str) or reasoning_effort not in {"low", "medium", "high", "none"}:
+            raise InvalidPolicyError(
+                f"custom provider '{name}' reasoning_effort must be low, medium, high or none in {source}"
+            )
+        model_parameters["reasoning_effort"] = reasoning_effort
+
     return CustomProviderConfig(
         id=name,
         api_base=api_base.rstrip("/"),
@@ -522,6 +540,7 @@ def _validate_custom_provider(name: str, raw: object, *, source: Path) -> Custom
         priority=priority,
         enabled=enabled,
         routes=routes,
+        model_parameters=tuple(sorted(model_parameters.items())),
     )
 
 
