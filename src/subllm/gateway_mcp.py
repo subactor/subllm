@@ -18,6 +18,16 @@ from .gateway_diagnostics import diagnostic, rpc_diagnostic, transport_diagnosti
 LOG = logging.getLogger(__name__)
 
 
+class _AuditAdmissionError(Exception):
+    """The request was not dispatched because gateway audit admission failed."""
+
+
+def _audit_admission_failed(error):
+    if isinstance(error, _AuditAdmissionError):
+        return True
+    return isinstance(error, BaseExceptionGroup) and any(_audit_admission_failed(e) for e in error.exceptions)
+
+
 class MCPBridge:
     def __init__(self, name, config, store, caller, bus):
         self.name, self.config, self.store, self.caller, self.bus = name, config, store, caller, bus
@@ -54,12 +64,17 @@ class MCPBridge:
                 record = self.store.begin(
                     kind="mcp", caller=self.caller, target=self.name, request=obj, direction=direction
                 )
-                self.bus.record_gateway_exchange(record)
                 if request_id is not None:
                     if key in pending:
                         raise ValueError("Duplicate pending JSON-RPC id")
                     pending[key] = (record, time.monotonic())
-                else:
+                # Track the request before audit admission so a rejection can be
+                # returned to the caller without dispatching it upstream.
+                try:
+                    self.bus.record_gateway_exchange(record)
+                except Exception as error:
+                    raise _AuditAdmissionError from error
+                if request_id is None:
                     self.store.finish(record, None, metadata={"notification": True})
             else:
                 reverse = "server_to_client" if direction == "client_to_server" else "client_to_server"
@@ -110,16 +125,17 @@ class MCPBridge:
         first = await downstream_read.receive()
         if isinstance(first, Exception):
             return
-        await anyio.to_thread.run_sync(observe, first, "client_to_server")
         failure = None
         try:
+            await anyio.to_thread.run_sync(observe, first, "client_to_server")
             with anyio.fail_after(self.config.get("session_lifetime_seconds", 3600)):
                 async with self.upstream() as (up_read, up_write), anyio.create_task_group() as group:
                     await up_write.send(first)
                     group.start_soon(pump, downstream_read, up_write, "client_to_server", group)
                     group.start_soon(pump, up_read, downstream_write, "server_to_client", group)
         except Exception as error:
-            failure = transport_diagnostic(error)
+            failure = (diagnostic("SUBLLM-MCP-INTERRUPTED") if _audit_admission_failed(error)
+                       else transport_diagnostic(error))
             # Never let the SDK print arbitrary provider exception text or payloads.
             LOG.error("%s: MCP session failed", failure["code"])
             for record, _ in pending.values():
@@ -153,7 +169,8 @@ class MCPBridge:
                         await anyio.to_thread.run_sync(observe, message, "client_to_server")
                     except Exception:
                         LOG.error("SUBLLM-ARCHIVE-WRITE: rejected request could not be archived")
-                        break
+                        if not pending:
+                            break
                     for record, started in pending.values():
                         response = await reject(record, failure)
                         elapsed = int((time.monotonic() - started) * 1000)
