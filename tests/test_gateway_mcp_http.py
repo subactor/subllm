@@ -5,6 +5,7 @@ import socket
 import sys
 import time
 from contextlib import contextmanager
+from pathlib import Path
 
 import anyio
 from mcp import ClientSession, types
@@ -130,7 +131,6 @@ for line in sys.stdin:
 
 def test_pinned_logs_adoption_and_runtime_catalog():
     import subprocess
-    from pathlib import Path
 
     from subllm.gateway_diagnostics import CATALOG
 
@@ -178,8 +178,6 @@ def test_failed_upstream_returns_rpc_error_before_http_session_closes(tmp_path, 
 
 def test_invalid_policy_rejects_initialization_without_starting_upstream(tmp_path, monkeypatch):
     import httpx
-    from pathlib import Path
-
     credential = "audit-test-" + "x" * 32
     monkeypatch.setenv("AUDIT_GATEWAY_CREDENTIAL", credential)
     policy = (Path(__file__).parents[1] / "subllm.toml").read_text()
@@ -214,8 +212,6 @@ def test_invalid_policy_rejects_initialization_without_starting_upstream(tmp_pat
 
 def test_policy_change_rejects_later_request_without_upstream_dispatch(tmp_path, monkeypatch):
     import httpx
-    from pathlib import Path
-
     credential = "test-audit-" + "x" * 32
     monkeypatch.setenv("AUDIT_GATEWAY_CREDENTIAL", credential)
     valid = (Path(__file__).parents[1] / "subllm.toml").read_text()
@@ -230,10 +226,12 @@ from pathlib import Path
 for line in sys.stdin:
  msg=json.loads(line)
  if 'id' not in msg: continue
- if msg['method']=='tools/list': Path(%r).write_text('dispatched')
- result={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'fixture','version':'1'}} if msg['method']=='initialize' else {'tools':[]}
+ if msg['method']=='tools/list': Path(__MARKER__).write_text('dispatched')
+ if msg['method']=='initialize':
+  result={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'fixture','version':'1'}}
+ else: result={'tools':[]}
  print(json.dumps({'jsonrpc':'2.0','id':msg['id'],'result':result}),flush=True)
-""" % str(marker))
+""".replace('__MARKER__', repr(str(marker))))
     store = InteractionStore(tmp_path / "audit-later")
     config = {
         "clients": {"test": {"token_env": "AUDIT_GATEWAY_CREDENTIAL", "mcp": ["audit"]}},

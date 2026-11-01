@@ -134,7 +134,8 @@ class MCPBridge:
                     group.start_soon(pump, downstream_read, up_write, "client_to_server", group)
                     group.start_soon(pump, up_read, downstream_write, "server_to_client", group)
         except Exception as error:
-            failure = diagnostic("SUBLLM-MCP-INTERRUPTED") if _audit_admission_failed(error) else transport_diagnostic(error)
+            failure = (diagnostic("SUBLLM-MCP-INTERRUPTED") if _audit_admission_failed(error)
+                       else transport_diagnostic(error))
             # Never let the SDK print arbitrary provider exception text or payloads.
             LOG.error("%s: MCP session failed", failure["code"])
             for record, _ in pending.values():
