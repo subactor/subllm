@@ -63,7 +63,7 @@ uvicorn.run(app,host='127.0.0.1',port=source['port'],log_level='critical')
 
 
 def test_http_upstream_preserves_server_request_and_caller_response(tmp_path, monkeypatch):
-    token = "transport-test-" + "x" * 32
+    token = "test-transport-" + "x" * 32
     monkeypatch.setenv("GATEWAY_TEST_TOKEN", token)
     monkeypatch.setenv("GATEWAY_TEST_HEADER", "Bearer " + token)
     fixture = tmp_path / "roots_server.py"
@@ -174,3 +174,88 @@ def test_failed_upstream_returns_rpc_error_before_http_session_closes(tmp_path, 
         assert detail["response"]["error"]["message"] == "SUBLLM-UPSTREAM-TRANSPORT"
         assert detail["metadata"]["response_origin"] == "gateway"
         assert detail["duration_ms"] == detail["diagnostic"]["durationMs"]
+
+
+def test_invalid_policy_rejects_initialization_without_starting_upstream(tmp_path, monkeypatch):
+    import httpx
+    from pathlib import Path
+
+    credential = "audit-test-" + "x" * 32
+    monkeypatch.setenv("AUDIT_GATEWAY_CREDENTIAL", credential)
+    policy = (Path(__file__).parents[1] / "subllm.toml").read_text()
+    assert 'default_model = "gpt-6-luna"' in policy
+    invalid_policy = tmp_path / "invalid.toml"
+    invalid_policy.write_text(policy.replace('default_model = "gpt-6-luna"',
+                                             'default_model = "invalid-model-for-audit-test"', 1))
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(invalid_policy))
+    marker = tmp_path / "started"
+    upstream = tmp_path / "upstream.py"
+    upstream.write_text(f"from pathlib import Path\nPath({str(marker)!r}).write_text('started')\n")
+    store = InteractionStore(tmp_path / "audit")
+    config = {
+        "clients": {"test": {"token_env": "AUDIT_GATEWAY_CREDENTIAL", "mcp": ["audit"]}},
+        "mcp": {"audit": {"command": sys.executable, "args": [str(upstream)]}},
+    }
+    with running(config, store) as gateway, httpx.Client(timeout=5, trust_env=False) as client:
+        headers = {"Authorization": "Bearer " + credential, "Accept": "application/json, text/event-stream"}
+        response = client.post(gateway + "/mcp/audit", headers=headers, json={
+            "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "test", "version": "1"}}})
+        assert response.status_code == 200
+        assert '"message":"SUBLLM-MCP-INTERRUPTED"' in response.text
+        assert "invalid-model-for-audit-test" not in response.text
+        assert not marker.exists()
+    rows = store.query(utc_now()[:10])
+    assert len(rows) == 1
+    detail = store.query(rows[0]["day"], rows[0]["id"])
+    assert detail["response"]["error"]["message"] == "SUBLLM-MCP-INTERRUPTED"
+
+
+def test_policy_change_rejects_later_request_without_upstream_dispatch(tmp_path, monkeypatch):
+    import httpx
+    from pathlib import Path
+
+    credential = "test-audit-" + "x" * 32
+    monkeypatch.setenv("AUDIT_GATEWAY_CREDENTIAL", credential)
+    valid = (Path(__file__).parents[1] / "subllm.toml").read_text()
+    assert 'default_model = "gpt-6-luna"' in valid
+    policy = tmp_path / "policy.toml"
+    policy.write_text(valid)
+    monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
+    marker = tmp_path / "dispatched"
+    upstream = tmp_path / "upstream.py"
+    upstream.write_text("""import json,sys
+from pathlib import Path
+for line in sys.stdin:
+ msg=json.loads(line)
+ if 'id' not in msg: continue
+ if msg['method']=='tools/list': Path(%r).write_text('dispatched')
+ result={'protocolVersion':'2025-06-18','capabilities':{'tools':{}},'serverInfo':{'name':'fixture','version':'1'}} if msg['method']=='initialize' else {'tools':[]}
+ print(json.dumps({'jsonrpc':'2.0','id':msg['id'],'result':result}),flush=True)
+""" % str(marker))
+    store = InteractionStore(tmp_path / "audit-later")
+    config = {
+        "clients": {"test": {"token_env": "AUDIT_GATEWAY_CREDENTIAL", "mcp": ["audit"]}},
+        "mcp": {"audit": {"command": sys.executable, "args": [str(upstream)]}},
+    }
+    with running(config, store) as gateway, httpx.Client(timeout=5, trust_env=False) as client:
+        headers = {"Authorization": "Bearer " + credential, "Accept": "application/json, text/event-stream"}
+        response = client.post(gateway + "/mcp/audit", headers=headers, json={
+            "jsonrpc": "2.0", "id": 1, "method": "initialize", "params": {
+                "protocolVersion": "2025-06-18", "capabilities": {},
+                "clientInfo": {"name": "test", "version": "1"}}})
+        assert response.status_code == 200 and '"serverInfo"' in response.text
+        headers["Mcp-Session-Id"] = response.headers["mcp-session-id"]
+        headers["Mcp-Protocol-Version"] = "2025-06-18"
+        client.post(gateway + "/mcp/audit", headers=headers,
+                    json={"jsonrpc": "2.0", "method": "notifications/initialized"})
+        policy.write_text(valid.replace('default_model = "gpt-6-luna"',
+                                        'default_model = "invalid-model-for-audit-test"', 1))
+        response = client.post(gateway + "/mcp/audit", headers=headers,
+                               json={"jsonrpc": "2.0", "id": 2, "method": "tools/list"})
+        assert response.status_code == 200
+        assert '"message":"SUBLLM-MCP-INTERRUPTED"' in response.text
+        assert "invalid-model-for-audit-test" not in response.text
+        assert not marker.exists()
+        client.delete(gateway + "/mcp/audit", headers=headers)

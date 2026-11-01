@@ -1,0 +1,92 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-190",
+  "summary": "Return bounded MCP failure when gateway audit policy is invalid",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-190/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/gateway_mcp.py",
+    "tests/test_gateway_mcp_http.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [
+    "python"
+  ],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "b2f3dcc055435ead0a0c90ae4b095c864ee930ad",
+    "outcome": "Return an explicit bounded MCP error when policy or audit admission fails, without dispatching the upstream action.",
+    "complexity": "S",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "runtimeDependencies": [],
+    "nonGoals": [
+      "Do not bypass policy or archive requirements.",
+      "Do not retry side effects or expose private exception details.",
+      "Do not change configured models or live deployment."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "components": [
+        {
+          "name": "MCP gateway transport",
+          "paths": [
+            "src/subllm/gateway_mcp.py",
+            "tests/test_gateway_mcp_http.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "decision": "Handle pre-dispatch audit failures using an explicit sanitized JSON-RPC error and preserve fail-closed execution and existing response semantics.",
+      "rollback": "Revert via protected publication.",
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      }
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_gateway_mcp_http.py"
+        ],
+        "evidence": "A failure in audit admission during initialize and a later request receives bounded sanitized error and does not dispatch."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_gateway_mcp_http.py tests/test_gateway_stdio.py"
+        ],
+        "evidence": "Normal MCP responses and side-effect protections remain intact."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "./project/governance-check.sh",
+          "git diff --check"
+        ],
+        "evidence": "Protected OneDev and independent Validator required for publication."
+      }
+    ]
+  }
+}
