@@ -399,4 +399,3 @@ def test_complex_task_routes_prefer_gpt_6_luna_for_codex() -> None:
     )
     assert res.provider == "codex"
     assert res.wire_model == "gpt-6-luna"
-
