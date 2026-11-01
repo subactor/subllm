@@ -144,7 +144,7 @@ def test_repository_defaults_bind_strategies_to_keys() -> None:
     } == {
         "zai": "glm-5.3",
         "agy": "gemini-3.8-flash",
-        "codex": "gpt-6-sol",
+        "codex": "gpt-6-luna",
         "codex-cli": "gpt-6-sol",
         "agy-cli": "claude-sonnet-4-6",
         "claude-cli": "claude-sonnet-5",
@@ -258,6 +258,8 @@ def test_szeptnik_routes_use_only_openai_compatible_transports(function: str) ->
     assert [(route.provider, route.model) for route in routes] == [
         ("zai", "glm-5.3"),
         ("zai", "glm-5.3-flash"),
+        ("codex", "gpt-6-luna"),
+        ("codex", "gpt-6.1-terra"),
         ("openrouter", "glm-5.3-flash"),
     ]
     assert all(route.transport == "openai-compatible" for route in routes)

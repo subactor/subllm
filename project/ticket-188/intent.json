@@ -1,0 +1,26 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-188",
+  "summary": "Admit gpt-6-luna and 6.1-terra for OpenAI codex provider and default in szeptnik voice routes",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-188/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy.py",
+    "src/subllm/credential_template.py",
+    "subllm.toml",
+    "tests/test_policy.py",
+    "tests/test_policy_config.py"
+  ],
+  "forbiddenPaths": ["project/ticket-*/user-*.md"],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

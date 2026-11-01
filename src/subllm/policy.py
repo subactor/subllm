@@ -311,6 +311,19 @@ _BASE_MODELS = MappingProxyType(
             id="gpt-6-luna",
             providers=_provider_models(
                 **{"codex-cli": ProviderModelSpec(litellm_model="", wire_model="gpt-6-luna")},
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-6-luna",
+                    wire_model="gpt-6-luna",
+                ),
+            ),
+        ),
+        "gpt-6.1-terra": ModelSpec(
+            id="gpt-6.1-terra",
+            providers=_provider_models(
+                codex=ProviderModelSpec(
+                    litellm_model="openai/gpt-6.1-terra",
+                    wire_model="gpt-6.1-terra",
+                ),
             ),
         ),
         "gpt-5.6-luna": ModelSpec(
@@ -866,9 +879,11 @@ _VISION = (
 # Completions directly. Cursor SDK candidates stay out of these two routes
 # until that transport is implemented by the consumer.
 _SZEPTNIK = (
-    RouteCandidate(provider="zai", model="glm-5.3"),
-    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=2),
-    RouteCandidate(provider="openrouter", model="glm-5.3-flash"),
+    RouteCandidate(provider="codex", model="gpt-6-luna"),
+    RouteCandidate(provider="codex", model="gpt-6.1-terra", priority_offset=2),
+    RouteCandidate(provider="zai", model="glm-5.3", priority_offset=10),
+    RouteCandidate(provider="zai", model="glm-5.3-flash", priority_offset=12),
+    RouteCandidate(provider="openrouter", model="glm-5.3-flash", priority_offset=20),
 )
 
 _ROUTE_VALUES = (

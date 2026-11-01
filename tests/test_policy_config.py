@@ -33,11 +33,11 @@ def test_luna_codex_cli_policy_routes_exact_model(tmp_path, monkeypatch, functio
         configured_routes("onedev-agent", function)
 
 
-def test_luna_not_implicitly_admitted_for_api_provider(tmp_path, monkeypatch):
+def test_luna_and_terra_admitted_for_api_provider(tmp_path, monkeypatch):
     policy = _policy_file(tmp_path / "subllm.toml", codex_model="gpt-6-luna")
     monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy))
-    with pytest.raises(InvalidPolicyError, match="unavailable through provider codex"):
-        load_policy_config()
+    cfg = load_policy_config()
+    assert cfg.providers["codex"].default_model == "gpt-6-luna"
 
 
 def _policy_file(
@@ -264,7 +264,7 @@ def test_repository_policy_file_is_discovered() -> None:
     assert policy.providers["zai"].priority == 0
     assert policy.providers["zai"].default_model == "glm-5.3"
     assert policy.providers["agy"].default_model == "gemini-3.8-flash"
-    assert policy.providers["codex"].default_model == "gpt-6-sol"
+    assert policy.providers["codex"].default_model == "gpt-6-luna"
     assert policy.providers["codex-cli"].default_model == "gpt-6-sol"
     assert policy.providers["claude"].default_model == "claude-opus-5"
     assert policy.providers["cursor"].priority == 20

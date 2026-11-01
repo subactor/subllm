@@ -50,7 +50,7 @@ default_model = "gpt-6-sol"
 [providers.codex]
 enabled = true
 priority = 15
-default_model = "gpt-6-sol"
+default_model = "gpt-6-luna"
 
 [providers.claude]
 enabled = true
