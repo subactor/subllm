@@ -371,3 +371,33 @@ def test_wellman_standard_selection_has_own_identity_and_default_candidates() ->
     assert [(item.provider, item.model) for item in advice] == [(item.provider, item.model) for item in defaults]
     assert all(item.application == 'wellman' and item.function == 'standard-selection' for item in advice)
     validate_policy()
+
+
+def test_complex_task_routes_prefer_gpt_6_luna_for_codex() -> None:
+    """Ensure complex task routes across koru, repair, validator, and onedev prefer gpt-6-luna for codex."""
+    from subllm.resolver import configured_route, resolve
+    for app, func in [
+        ("koru-agent", "queue-executor"),
+        ("koru-agent", "planning-assistant"),
+        ("koru-agent", "reflection"),
+        ("koru-agent", "strategy-review"),
+        ("repair-agent", "repair-plan"),
+        ("validator-agent", "patch-review"),
+        ("validator-agent", "direct-pr-review"),
+        ("onedev-agent", "code-edit"),
+    ]:
+        route = configured_route(app, func, provider="codex")
+        assert route.model == "gpt-6-luna", f"{app}/{func} codex model should be gpt-6-luna, got {route.model}"
+        assert route.wire_model == "gpt-6-luna"
+
+    # With codex preferred in provider order, resolve picks gpt-6-luna
+    from subllm.resolver import resolve
+    token_val = "sk-test-mock-token"
+    res = resolve(
+        "koru-agent",
+        "queue-executor",
+        environ={"SUBLLM_PROVIDER_ORDER": "codex,zai", "OPENAI_API_KEY": token_val},
+    )
+    assert res.provider == "codex"
+    assert res.wire_model == "gpt-6-luna"
+
