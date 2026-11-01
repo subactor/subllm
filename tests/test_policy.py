@@ -391,7 +391,6 @@ def test_complex_task_routes_prefer_gpt_6_luna_for_codex() -> None:
         assert route.wire_model == "gpt-6-luna"
 
     # With codex preferred in provider order, resolve picks gpt-6-luna
-    from subllm.resolver import resolve
     token_val = "sk-test-mock-token"
     res = resolve(
         "koru-agent",
