@@ -22,7 +22,7 @@ _DOCS: dict[str, tuple[str, str, str]] = {
     "zai": ("Z.AI Coding Plan", "{API Key ID}.{signature secret} from https://z.ai", "glm-5.3"),
     "agy": ("Google AI Studio (Gemini API)", "https://aistudio.google.com/api-keys",
             "gemini-3.8-flash (Pro models need billing on the Google project)"),
-    "codex": ("OpenAI API", "https://platform.openai.com/api-keys", "gpt-6-sol"),
+    "codex": ("OpenAI API", "https://platform.openai.com/api-keys", "gpt-6-luna"),
     "claude": ("Anthropic API", "https://console.anthropic.com/settings/keys", "claude-sonnet-5"),
     "cursor": ("Cursor SDK", "https://cursor.com/dashboard", "gpt-5.6-sol, grok-4.6"),
     "ollama": ("Ollama (local or remote OpenAI-compatible server)", "any non-empty token; server at 127.0.0.1:11434",
