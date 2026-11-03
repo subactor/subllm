@@ -108,6 +108,7 @@ routes = [
   "autogrammar-vql/generate",
   "c2004-system",
   "doctor-agent",
+  "heyasa",
   "koru-agent",
   "onedev-agent",
   "platform",
@@ -296,3 +297,7 @@ url = "https://github.com/subactor/premesh"
 [applications.autogrammar-gillm]
 name = "gillm"
 url = "https://github.com/autogrammar/gillm"
+
+[applications.heyasa]
+name = "Heyasa Autonomy"
+url = "https://github.com/paxlet-com/heyasa"

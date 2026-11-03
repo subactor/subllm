@@ -597,7 +597,7 @@ def load_policy_config(
         application_rows = {**{name: asdict(value) for name, value in _APPLICATION_DEFAULTS.items()
                                if name not in LEGACY_APPLICATION_IDS}, **application_rows}
     if isinstance(application_rows, dict):
-        for app_name in ("organism-guard", "subactor-proxy", "premesh", "autogrammar-gillm", "wellman"):
+        for app_name in ("organism-guard", "subactor-proxy", "premesh", "autogrammar-gillm", "wellman", "heyasa"):
             if app_name not in application_rows and app_name in _APPLICATION_DEFAULTS:
                 application_rows = {**application_rows, app_name: asdict(_APPLICATION_DEFAULTS[app_name])}
     if not isinstance(application_rows, dict) or set(application_rows) != set(APPLICATIONS):

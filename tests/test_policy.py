@@ -373,6 +373,17 @@ def test_wellman_standard_selection_has_own_identity_and_default_candidates() ->
     validate_policy()
 
 
+def test_heyasa_autonomy_routes_have_own_identity_and_default_candidates() -> None:
+    from subllm.policy import APPLICATIONS
+    assert APPLICATIONS["heyasa"].url == "https://github.com/paxlet-com/heyasa"
+    for function in ("command", "decision-routing"):
+        routes = configured_routes("heyasa", function)
+        defaults = configured_routes("doctor-agent", "repair-proposal")
+        assert [(item.provider, item.model) for item in routes] == [(item.provider, item.model) for item in defaults]
+        assert all(item.application == "heyasa" and item.function == function for item in routes)
+    validate_policy()
+
+
 def test_complex_task_routes_prefer_gpt_6_luna_for_codex() -> None:
     """Ensure complex task routes across koru, repair, validator, and onedev prefer gpt-6-luna for codex."""
     from subllm.resolver import configured_route, resolve
