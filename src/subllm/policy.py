@@ -765,6 +765,11 @@ APPLICATIONS = MappingProxyType(
             title="gillm",
             url="https://github.com/autogrammar/gillm",
         ),
+        "heyasa": ApplicationSpec(
+            id="heyasa",
+            title="Heyasa Autonomy",
+            url="https://github.com/paxlet-com/heyasa",
+        ),
     }
 )
 
@@ -992,6 +997,8 @@ _ROUTE_VALUES = (
     RoutePolicy("subactor-proxy", "completion", _BOUNDED),
     RoutePolicy("premesh", "chat", _DEFAULT),
     RoutePolicy("autogrammar-gillm", "invoke", _DEFAULT),
+    RoutePolicy("heyasa", "command", _DEFAULT),
+    RoutePolicy("heyasa", "decision-routing", _DEFAULT),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})
