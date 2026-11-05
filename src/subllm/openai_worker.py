@@ -177,6 +177,7 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         if status == 429 and isinstance(error, Mapping) and (
             (isinstance(error.get("code"), str) and error["code"] in quota_codes)
             or error.get("type") == "insufficient_quota"
+            or (source.get("provider") == "zai" and error.get("code") == "1310")
         ):
             return finish(_error("quota_exhausted", provider_level=True, retryable=True), error_body)
         if status == 404:

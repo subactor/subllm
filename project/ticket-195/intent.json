@@ -1,0 +1,102 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-195",
+  "summary": "Classify Anthropic billing refusals and ZAI exhausted plan limits",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-195/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/anthropic_api.py",
+    "src/subllm/native_http.py",
+    "src/subllm/openai_worker.py",
+    "tests/test_native_transports.py",
+    "tests/test_openai_worker.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "273968c7e579831ed8190d1e7f83aba4b3c25fb0",
+    "targetBranch": "main",
+    "outcome": "Central SubLLM correctly cools exhausted Anthropic credit and ZAI weekly/monthly quota while continuing permitted fallback; invalid requests remain fail-closed",
+    "nonGoals": [
+      "No key change, credit purchase, quota evasion, allowlist expansion or cooldown reset",
+      "No changes to consumer repositories or active owner194 host deployment",
+      "No public interface, dependency or catalog change"
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extend the independently merged ticket194 exhausted-quota vocabulary using bounded provider-specific evidence: ZAI code1310 under HTTP429, and the verified Anthropic HTTP400 low-credit error only in its explicit native transport context. Reuse existing quota cooldown and failover.",
+      "components": [
+        {
+          "name": "Anthropic native HTTP error classification",
+          "paths": [
+            "src/subllm/native_http.py",
+            "src/subllm/anthropic_api.py",
+            "tests/test_native_transports.py"
+          ]
+        },
+        {
+          "name": "ZAI compatible worker quota classification",
+          "paths": [
+            "src/subllm/openai_worker.py",
+            "tests/test_openai_worker.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the protected source change and restore the previously approved immutable runtime pin; never change or delete credentials"
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_native_transports.py tests/test_openai_worker.py tests/test_health.py tests/test_client.py tests/test_credential_env.py"
+        ],
+        "evidence": "Bounded provider-specific quota, malformed payload, ordinaryHTTP400, temporary429, secret-free exceptions and permitted fallback regressions"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "bash project/governance-check.sh",
+          "ruff check src tests",
+          "Existing protected OneDev profile and independent Validator"
+        ],
+        "evidence": "Exact-head native6gates and independent App receipt"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "Observe or qualify immutable reviewed runtime deployment through existing owner route"
+        ],
+        "evidence": "Exact imported source and shared credential-source readback; no busy service restart"
+      }
+    ]
+  }
+}

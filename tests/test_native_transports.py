@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import io
+import json
 import urllib.error
 
 import pytest
@@ -117,6 +118,49 @@ def test_http_failures_use_the_openai_worker_vocabulary(monkeypatch, error, outc
     assert KEY not in str(exc.value)
 
 
+_LOW_CREDIT = "Your credit balance is too low to access the Anthropic API."
+
+
+@pytest.mark.parametrize(("provider", "status", "detail", "expected"), [
+    ("claude", 400, {"type": "invalid_request_error", "message": _LOW_CREDIT}, "quota_exhausted"),
+    (None, 400, {"type": "invalid_request_error", "message": _LOW_CREDIT}, "http_400"),
+    ("agy", 400, {"type": "invalid_request_error", "message": _LOW_CREDIT}, "http_400"),
+    ("claude", 401, {"type": "invalid_request_error", "message": _LOW_CREDIT}, "http_401"),
+    ("claude", 400, {"type": "invalid_request_error", "message": "Invalid max_tokens"}, "http_400"),
+    ("claude", 400, {"type": "other", "message": _LOW_CREDIT}, "http_400"),
+    ("claude", 400, {"type": "invalid_request_error", "message": [_LOW_CREDIT]}, "http_400"),
+    ("claude", 400, [], "http_400"),
+])
+def test_anthropic_credit_refusal_requires_bounded_provider_evidence(
+    monkeypatch, provider, status, detail, expected,
+):
+    payload = json.dumps({"error": detail}).encode()
+    error = urllib.error.HTTPError("https://api.example.com/x", status, "refused", {}, io.BytesIO(payload))
+    monkeypatch.setattr(native_http.urllib.request, "build_opener", lambda *a: _Opener(error))
+    with pytest.raises(NativeHTTPError) as caught:
+        native_http.post_json("https://api.example.com/x", {}, {"x-api-key": KEY}, 3,
+                              quota_provider=provider)
+    assert caught.value.outcome == expected
+    assert caught.value.retryable == (expected in {"quota_exhausted", "http_401"})
+    assert caught.value.provider_level
+    assert KEY not in str(caught.value) and _LOW_CREDIT not in str(caught.value)
+    assert error.fp.closed
+
+
+@pytest.mark.parametrize("payload", [
+    b"not json",
+    json.dumps({"error": {"type": "invalid_request_error", "message": _LOW_CREDIT}}).encode()
+        + b" " * (native_http.MAX_ERROR_RESPONSE_BYTES + 1),
+])
+def test_malformed_or_oversized_anthropic_error_stays_non_retryable(monkeypatch, payload):
+    error = urllib.error.HTTPError("https://api.example.com/x", 400, "refused", {}, io.BytesIO(payload))
+    monkeypatch.setattr(native_http.urllib.request, "build_opener", lambda *a: _Opener(error))
+    with pytest.raises(NativeHTTPError) as caught:
+        native_http.post_json("https://api.example.com/x", {}, {}, 3, quota_provider="claude")
+    assert caught.value.outcome == "http_400" and not caught.value.retryable
+    assert error.fp.closed
+
+
 def test_plain_http_and_oversized_or_non_json_responses_are_refused(monkeypatch):
     with pytest.raises(NativeHTTPError):
         native_http.post_json("http://insecure.example/x", {}, {}, 3)
@@ -167,6 +211,36 @@ def test_quota_error_fails_over_to_the_next_provider(monkeypatch, tmp_path):
     response = complete("validator-agent", "direct-pr-review", MESSAGES, timeout_seconds=5,
                         environ=_environ("agy,claude", GEMINI_API_KEY=KEY, ANTHROPIC_API_KEY=KEY))
     assert (response.provider, response.content) == ("claude", "from claude")
+
+
+def test_anthropic_billing_refusal_cools_and_uses_permitted_fallback(monkeypatch, tmp_path):
+    from subllm.health import provider_health
+
+    monkeypatch.delenv("SUBLLM_POLICY_FILE", raising=False)
+    payload = json.dumps({"error": {"type": "invalid_request_error",
+        "message": _LOW_CREDIT + " private account " + KEY}}).encode()
+    calls = []
+
+    def opener(*args):
+        calls.append("claude")
+        return _Opener(urllib.error.HTTPError("https://api.anthropic.com/v1/messages", 400,
+                                             "refused", {}, io.BytesIO(payload)))
+
+    monkeypatch.setattr(native_http.urllib.request, "build_opener", opener)
+    _capture(monkeypatch, gemini, GEMINI_REPLY)
+    environment = _environ("claude,agy", ANTHROPIC_API_KEY=KEY, GEMINI_API_KEY=KEY,
+                           SUBLLM_HEALTH_STATE_FILE=str(tmp_path / "quota-health.json"))
+    for index in range(2):
+        result = complete("validator-agent", "direct-pr-review", MESSAGES, timeout_seconds=5,
+                          environ=environment)
+        assert result.provider == "agy"
+        if index == 0:
+            assert result.attempts[0].diagnostic_code == "SUBLLM-PROVIDER-QUOTA-EXHAUSTED"
+            assert "private account" not in repr(result.attempts) and KEY not in repr(result.attempts)
+    assert calls == ["claude"]
+    health = {row.provider: row for row in provider_health(environ=environment)}
+    assert health["claude"].reason == "quota_exhausted"
+    assert health["claude"].cooldown_remaining_seconds > 0
 
 
 def test_non_retryable_client_error_does_not_fail_over(monkeypatch, tmp_path):
