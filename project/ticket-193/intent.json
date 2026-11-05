@@ -1,0 +1,107 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-193",
+  "summary": "SESSION_EXECUTION_AUTHORIZATION: Add codex-cli/gpt-6-luna fallback to Heyasa, Koru and Supervisor after direct codex API rate limits, preserving explicit allowlists and existing failover.",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-193/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy.py",
+    "tests/test_task_model_routing.py",
+    "tests/test_policy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "2648fd1521ec4cb2231f8b6f686c00eb76a47bd5",
+    "outcome": "Make the already-enabled Codex CLI subscription transport eligible as a GPT-6 Luna fallback for Heyasa command and decision-routing, Koru DSL and queue execution, and Supervisor assessment after direct Codex API limits.",
+    "complexity": "S",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "runtimeDependencies": [],
+    "nonGoals": [
+      "Do not alter credentials, provider account limits, systemd settings, or consumer repositories.",
+      "Do not bypass an explicit SUBLLM_PROVIDER_ORDER allowlist or invoke Codex CLI when disabled.",
+      "Do not change model selection for unrelated application routes."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "components": [
+        {
+          "name": "SubLLM route policy and routing regression tests",
+          "paths": [
+            "src/subllm/policy.py",
+            "tests/test_task_model_routing.py",
+            "tests/test_policy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "decision": "Add a route-specific codex-cli/gpt-6-luna candidate to Heyasa, Koru and Supervisor routes so normal bounded provider failover can use the authenticated local CLI after a direct API limit. Preserve explicit operator allowlists and keep the existing downstream fallback candidates.",
+      "rollback": "Revert the exact route candidates and focused regression cases through the protected publication lifecycle.",
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      }
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_task_model_routing.py"
+        ],
+        "evidence": "Resolver returns the exact codex-cli/gpt-6-luna candidate for each affected Heyasa, Koru and Supervisor role and preserves the existing codex/gpt-6-luna route."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_task_model_routing.py"
+        ],
+        "evidence": "Default policy orders the CLI fallback before Ollama after the direct Codex candidate; an explicit allowlist that omits codex-cli remains authoritative."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_task_model_routing.py"
+        ],
+        "evidence": "Offline regression cases exercise route resolution and fail-closed provider exclusion without network or credentials."
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "./project/governance-check.sh",
+          "./scripts/verify",
+          "git diff --check"
+        ],
+        "evidence": "Record exact output and exit codes; protected OneDev and independent Validator must approve the exact head before merge."
+      },
+      {
+        "criterion": "AC-05",
+        "commands": [
+          "one bounded live SubLLM canary through the protected runtime deployment"
+        ],
+        "evidence": "A fresh read of the usage ledger records codex-cli/gpt-6-luna for the unique canary request. Runtime restart/deploy requires its protected deployment binding and independent acceptance readback."
+      }
+    ]
+  }
+}

@@ -1,4 +1,6 @@
 """Exercise task defaults through resolution and completion, including opt-outs."""
+from pathlib import Path
+
 import pytest
 
 from subllm import client_routes, complete, configured_routes
@@ -81,6 +83,91 @@ def test_provider_order_can_prefer_local_inference(application, function):
     routes = configured_routes(application, function, environ={"SUBLLM_PROVIDER_ORDER": "ollama,zai"})
     assert routes[0].provider == "ollama"
     assert [r.model for r in routes if r.provider == "zai"] == ["glm-5.3", "glm-5.3-flash"]
+
+
+@pytest.mark.parametrize(("application", "function"), (
+    ("heyasa", "command"),
+    ("heyasa", "decision-routing"),
+    ("koru-agent", "nl-to-koru-dsl"),
+    ("koru-agent", "queue-executor"),
+    ("supervisor", "assessment"),
+))
+def test_luna_cli_is_available_after_codex_api_and_before_ollama(application, function):
+    routes = configured_routes(application, function, environ={
+        "SUBLLM_PROVIDER_ORDER": "codex,codex-cli,ollama",
+    })
+
+    providers = [route.provider for route in routes]
+    assert providers.index("codex") < providers.index("codex-cli") < providers.index("ollama")
+    cli_route = routes[providers.index("codex-cli")]
+    assert cli_route.model == "gpt-6-luna"
+    assert cli_route.wire_model == "gpt-6-luna"
+
+
+def test_luna_cli_fallback_precedes_ollama_in_repository_default_policy():
+    policy_file = Path(__file__).resolve().parents[1] / "subllm.toml"
+    routes = configured_routes("supervisor", "assessment", environ={
+        "SUBLLM_POLICY_FILE": str(policy_file),
+        "SUBLLM_PROVIDER_ORDER": "",
+    })
+
+    providers = [route.provider for route in routes]
+    assert providers.index("codex") < providers.index("codex-cli") < providers.index("ollama")
+
+
+def test_heyasa_api_rate_limit_fails_over_to_luna_cli(monkeypatch):
+    environ = {"SUBLLM_PROVIDER_ORDER": "codex,codex-cli,ollama"}
+    candidates = configured_routes("heyasa", "command", environ=environ)
+    routes = tuple(route for route in candidates if route.provider in {"codex", "codex-cli", "ollama"})
+    calls = []
+
+    def invoke(route, *args, **kwargs):
+        calls.append((route.provider, route.wire_model))
+        if route.provider == "codex":
+            raise _RetryableAttemptError("rate limited", outcome="http_429")
+        return CompletionResponse("ok", route.provider, route.wire_model)
+
+    monkeypatch.setattr(client_routes, "available_routes", lambda *args, **kwargs: routes)
+    monkeypatch.setattr(client_routes, "order_with_last_resort", lambda available, **kwargs: available)
+    monkeypatch.setattr(client_routes, "_complete_route", invoke)
+
+    response = complete("heyasa", "command", MESSAGES, environ=environ)
+
+    assert (response.provider, response.model) == ("codex-cli", "gpt-6-luna")
+    assert calls == [("codex", "gpt-6-luna"), ("codex-cli", "gpt-6-luna")]
+
+
+def test_disabled_luna_cli_provider_is_not_resolved(tmp_path):
+    policy_file = Path(__file__).resolve().parents[1] / "subllm.toml"
+    policy = policy_file.read_text(encoding="utf-8")
+    cli_provider = "[providers.codex-cli]\nenabled = true"
+    assert cli_provider in policy
+    disabled_policy = tmp_path / "subllm.toml"
+    disabled_policy.write_text(policy.replace(cli_provider, "[providers.codex-cli]\nenabled = false", 1),
+                              encoding="utf-8")
+
+    routes = configured_routes("supervisor", "assessment", environ={
+        "SUBLLM_POLICY_FILE": str(disabled_policy),
+        "SUBLLM_PROVIDER_ORDER": "",
+    })
+
+    assert "codex-cli" not in [route.provider for route in routes]
+
+
+@pytest.mark.parametrize(("application", "function"), (
+    ("heyasa", "command"),
+    ("heyasa", "decision-routing"),
+    ("koru-agent", "nl-to-koru-dsl"),
+    ("koru-agent", "queue-executor"),
+    ("supervisor", "assessment"),
+))
+def test_explicit_provider_order_can_exclude_luna_cli(application, function):
+    routes = configured_routes(application, function, environ={
+        "SUBLLM_PROVIDER_ORDER": "codex,ollama",
+    })
+
+    assert "codex" in [route.provider for route in routes]
+    assert "codex-cli" not in [route.provider for route in routes]
 
 
 @pytest.mark.parametrize(("application", "function"), (

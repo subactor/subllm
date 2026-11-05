@@ -329,15 +329,17 @@ def test_twinstudio_declares_every_runtime_route() -> None:
 def test_supervisor_assessment_bounds_only_direct_zai_reasoning() -> None:
     assessment = configured_routes("supervisor", "assessment")
     delegation = configured_routes("supervisor", "delegation")
-    assert sorted((r.provider, r.model, r.wire_model) for r in assessment) == sorted(
-        (r.provider, r.model, r.wire_model) for r in delegation
-    )
+    assert {(r.provider, r.model, r.wire_model) for r in assessment} == {
+        *((r.provider, r.model, r.wire_model) for r in delegation),
+        ("codex-cli", "gpt-6-luna", "gpt-6-luna"),
+    }
     previous_by_model = {(r.provider, r.model): r for r in delegation}
     for current in assessment:
-        previous = previous_by_model[(current.provider, current.model)]
+        previous = previous_by_model.get((current.provider, current.model))
         assert dict(current.model_parameters) == (
             {"reasoning_effort": "low"}
             if current.provider == "zai" else dict(previous.model_parameters)
+            if previous is not None else {}
         )
     for function in ("delegation", "review"):
         assert all(
@@ -379,7 +381,10 @@ def test_heyasa_autonomy_routes_have_own_identity_and_default_candidates() -> No
     for function in ("command", "decision-routing"):
         routes = configured_routes("heyasa", function)
         defaults = configured_routes("doctor-agent", "repair-proposal")
-        assert [(item.provider, item.model) for item in routes] == [(item.provider, item.model) for item in defaults]
+        assert {(item.provider, item.model) for item in routes} == {
+            *((item.provider, item.model) for item in defaults),
+            ("codex-cli", "gpt-6-luna"),
+        }
         assert all(item.application == "heyasa" and item.function == function for item in routes)
     validate_policy()
 
