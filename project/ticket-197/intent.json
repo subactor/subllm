@@ -1,0 +1,82 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-197",
+  "summary": "Project unsupported Codex schema uniqueness while preserving local validation",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-197/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "tests/test_response_schema.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "1e9f74ee7697add5830abf6b4f9ea4e217f5cf6b",
+    "targetBranch": "main",
+    "outcome": "A supported strict Codex wire projection omits uniqueItems while the unchanged original schema is fully enforced locally before accepting a completion.",
+    "nonGoals": [
+      "No consumer contract relaxation, response repair, paid400 retry or credential/provider policy change.",
+      "No change to other providers, CLI transport, non-strict schema formats or authority boundaries."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Project only unsupported uniqueItems at schema nodes in strict Codex OpenAI-compatible wire requests. Preserve property names/annotations, freeze copies, and keep the original declared_schema_gate acceptance contract and existing quality failover.",
+      "components": [
+        {
+          "name": "subllm-client-routes",
+          "paths": [
+            "src/subllm/client_routes.py",
+            "tests/test_response_schema.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Restore the preceding accepted dedicated SubLLM API source; preserve its existing client, credentials, archive and other MCP services."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_response_schema.py"
+        ],
+        "evidence": "Host-private focused regression receipt including pre-change failure"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Host-private full verification and governance receipts"
+      }
+    ]
+  }
+}
