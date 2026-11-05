@@ -47,7 +47,8 @@ def invoke(
         if name in parameters:
             body[name] = parameters[name]
     raw = post_json(f"{api_base.rstrip('/')}/messages", body,
-                    {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION}, timeout_seconds)
+                    {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION}, timeout_seconds,
+                    quota_provider="claude")
     try:
         text = "".join(str(block.get("text", "")) for block in raw["content"] if block.get("type") == "text").strip()
     except (KeyError, TypeError, AttributeError):

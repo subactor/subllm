@@ -33,6 +33,27 @@ def test_temporary_429_remains_a_rate_limit(monkeypatch):
     assert openai_worker._execute(_source())["outcome"] == "http_429"
 
 
+@pytest.mark.parametrize(("provider", "code", "expected"), [
+    ("zai", "1310", "quota_exhausted"),
+    ("zai", "1302", "http_429"),
+    ("codex", "1310", "http_429"),
+    ("zai", ["1310"], "http_429"),
+])
+def test_zai_plan_limit_is_provider_specific_and_secret_free(monkeypatch, provider, code, expected):
+    payload = json.dumps({"error": {"code": code,
+        "message": "Weekly/Monthly Limit Exhausted; private account id.secret"}}).encode()
+
+    def invoke(request):
+        raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
+
+    monkeypatch.setattr(openai_worker, "urlopen", invoke)
+    source = {**_source(), "provider": provider}
+    result = openai_worker._execute(source)
+    assert result["outcome"] == expected
+    assert result["retryable"] and result["provider_level"]
+    assert "private account" not in repr(result) and "id.secret" not in repr(result)
+
+
 @pytest.mark.parametrize("error", [[], {"code": ["credit_balance_exhausted"]}, {"code": {}}])
 def test_malformed_quota_evidence_remains_a_bounded_http_failure(monkeypatch, error):
     payload = json.dumps({"error": error}).encode()

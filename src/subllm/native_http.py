@@ -15,6 +15,26 @@ from typing import Any
 from .errors import CompletionError
 
 MAX_RESPONSE_BYTES = 4_000_000
+MAX_ERROR_RESPONSE_BYTES = 16_384
+
+
+def _anthropic_credit_refusal(error: urllib.error.HTTPError, provider: str | None) -> bool:
+    if provider != "claude" or error.code != 400:
+        return False
+    try:
+        payload = error.read(MAX_ERROR_RESPONSE_BYTES + 1)
+        if len(payload) > MAX_ERROR_RESPONSE_BYTES:
+            return False
+        raw = json.loads(payload)
+    except (ValueError, OSError, AttributeError, TypeError):
+        return False
+    detail = raw.get("error") if isinstance(raw, Mapping) else None
+    if not isinstance(detail, Mapping) or detail.get("type") != "invalid_request_error":
+        return False
+    message = detail.get("message")
+    return isinstance(message, str) and message.startswith(
+        "Your credit balance is too low to access the Anthropic API."
+    )
 
 
 class NativeHTTPError(Exception):
@@ -33,6 +53,8 @@ class NativeHTTPError(Exception):
 
     @property
     def retryable(self) -> bool:
+        if self.outcome == "quota_exhausted":
+            return True  # Continue to another permitted provider, never retry this account.
         status = self.status
         if status is None:
             return True
@@ -53,6 +75,7 @@ def post_json(
     timeout_seconds: float,
     *,
     model_scoped_statuses: frozenset[int] = frozenset(),
+    quota_provider: str | None = None,
 ) -> Any:
     if not url.startswith("https://"):
         raise NativeHTTPError("transport_error")
@@ -68,6 +91,12 @@ def post_json(
             payload = response.read(MAX_RESPONSE_BYTES + 1)
     except urllib.error.HTTPError as exc:
         status = exc.code
+        try:
+            exhausted = _anthropic_credit_refusal(exc, quota_provider)
+        finally:
+            exc.close()
+        if exhausted:
+            raise NativeHTTPError("quota_exhausted", status=status) from None
         raise NativeHTTPError(
             "model_unavailable" if status == 404 else f"http_{status}",
             status=status, model_scoped=status in model_scoped_statuses,
