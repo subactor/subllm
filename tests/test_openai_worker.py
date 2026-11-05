@@ -37,6 +37,7 @@ def test_temporary_429_remains_a_rate_limit(monkeypatch):
     ("zai", "1310", "quota_exhausted"),
     ("zai", "1302", "http_429"),
     ("codex", "1310", "http_429"),
+    (None, "1310", "http_429"),
     ("zai", ["1310"], "http_429"),
 ])
 def test_zai_plan_limit_is_provider_specific_and_secret_free(monkeypatch, provider, code, expected):
@@ -47,7 +48,11 @@ def test_zai_plan_limit_is_provider_specific_and_secret_free(monkeypatch, provid
         raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
 
     monkeypatch.setattr(openai_worker, "urlopen", invoke)
-    source = {**_source(), "provider": provider}
+    source = _source()
+    if provider is None:
+        source.pop("provider")  # Private exchange callers may omit routing metadata.
+    else:
+        source["provider"] = provider
     result = openai_worker._execute(source)
     assert result["outcome"] == expected
     assert result["retryable"] and result["provider_level"]

@@ -37,6 +37,9 @@ Private diagnostic receipts remain outside this repository.
 
 ## Local validation
 
-131 focused offline tests passed, including actual native classifier-to-fallback
-and persisted cooldown behavior. Governance and Ruff passed. Runtime activation
+134 focused offline tests passed, including actual native classifier-to-fallback
+and persisted cooldown behavior, plus the existing two private-gateway exchange
+secrecy cases. Native full-suite feedback identified missing optional provider
+metadata in those exchanges; unknown provider context now stays unclassified
+instead of raising KeyError. Governance and Ruff passed. Runtime activation
 and protected exact-head publication remain pending; local PASS is not approval.
