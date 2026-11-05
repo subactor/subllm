@@ -1,11 +1,53 @@
 from __future__ import annotations
 
 import json
+from io import BytesIO
 from urllib.error import HTTPError
 
 import pytest
 
 from subllm import CompletionError, openai_worker
+
+
+@pytest.mark.parametrize("code", ["credit_balance_exhausted", "insufficient_quota",
+    "project_spend_limit_exceeded", "organization_spend_limit_exceeded",
+    "organization_usage_limit_exceeded", "billing_hard_limit_reached"])
+def test_billing_429_is_exhausted_quota_without_leaking_provider_text(monkeypatch, code):
+    payload = json.dumps({"error": {"type": "insufficient_quota", "code": code,
+                                    "message": "private account id.secret"}}).encode()
+    def invoke(request):
+        raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
+    monkeypatch.setattr(openai_worker, "urlopen", invoke)
+    result = openai_worker._execute(_source())
+    assert result["outcome"] == "quota_exhausted"
+    assert result["retryable"] is True  # another authorized transport may serve
+    assert result["provider_level"] is True
+    assert "private account" not in repr(result) and "id.secret" not in repr(result)
+
+
+def test_temporary_429_remains_a_rate_limit(monkeypatch):
+    payload = json.dumps({"error": {"type": "rate_limit_error", "code": "rate_limit_exceeded"}}).encode()
+    def invoke(request):
+        raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
+    monkeypatch.setattr(openai_worker, "urlopen", invoke)
+    assert openai_worker._execute(_source())["outcome"] == "http_429"
+
+
+@pytest.mark.parametrize("error", [[], {"code": ["credit_balance_exhausted"]}, {"code": {}}])
+def test_malformed_quota_evidence_remains_a_bounded_http_failure(monkeypatch, error):
+    payload = json.dumps({"error": error}).encode()
+    def invoke(request):
+        raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
+    monkeypatch.setattr(openai_worker, "urlopen", invoke)
+    assert openai_worker._execute(_source())["outcome"] == "http_429"
+
+
+def test_oversized_429_body_cannot_supply_quota_evidence(monkeypatch):
+    payload = b" " * 1_000_001 + b'{"error":{"code":"credit_balance_exhausted"}}'
+    def invoke(request):
+        raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
+    monkeypatch.setattr(openai_worker, "urlopen", invoke)
+    assert openai_worker._execute(_source())["outcome"] == "http_429"
 
 
 class _Response:

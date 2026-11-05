@@ -14,6 +14,7 @@ from .policy import CURSOR_API_KEY_ENV, EXTRA_CREDENTIAL_ENV, PROVIDERS, SUBLLM_
 SUBLLM_ENV_FILE = "SUBLLM_ENV_FILE"
 POLICY_ENV_NAMES = (
     SUBLLM_PROVIDER_ORDER,
+    "SUBLLM_CREDENTIAL_SOURCE",
     "SUBLLM_POSTGRES_DSN",
     "SUBLLM_DATABASE_URL",
     "SUBLLM_GATEWAY_DATABASE_URL",
@@ -190,6 +191,22 @@ def merged_environment(
     environ: Mapping[str, str] | None = None,
     cwd: Path | None = None,
 ) -> Mapping[str, str]:
+    environment = os.environ if environ is None else environ
+    source = environment.get("SUBLLM_CREDENTIAL_SOURCE", "process").strip()
+    if source not in {"process", "shared"}:
+        raise CredentialFileError("SUBLLM_CREDENTIAL_SOURCE must be process or shared")
+    if source == "shared":
+        # Explicit operator ownership, never key rotation following a refusal.
+        # Requiring a file pin avoids ambient discovery crossing service scopes.
+        if not environment.get(SUBLLM_ENV_FILE, "").strip():
+            raise CredentialFileError("shared credential source requires SUBLLM_ENV_FILE")
+        shared = load_shared_environment(environ=environment, cwd=cwd)
+        merged = {**shared, **environment}
+        for name in credential_names():
+            merged.pop(name, None)
+            if name in shared:
+                merged[name] = shared[name]
+        return merged
     if environ is not None:
         return environ
     merged = load_shared_environment(cwd=cwd)

@@ -35,6 +35,16 @@ def _routes():
     )
 
 
+def test_exhausted_quota_is_not_a_transient_last_resort(tmp_path):
+    env = {"SUBLLM_HEALTH_STATE_FILE": str(tmp_path / "quota.json")}
+    routes = _routes()
+    for route in routes:
+        record_failure(route.provider, reason="quota_exhausted", latency_seconds=0.5,
+                       policy=_POLICY, now=100, environ=env)
+    assert order_with_last_resort(routes, now=101, environ=env) == ()
+    assert all(r.cooldown_remaining_seconds > 60 for r in provider_health(now=101, environ=env))
+
+
 def test_explicit_environment_isolates_persisted_health_and_reset(tmp_path):
     first = {"SUBLLM_HEALTH_STATE_FILE": str(tmp_path / "first.json")}
     second = {"SUBLLM_HEALTH_STATE_FILE": str(tmp_path / "second.json")}

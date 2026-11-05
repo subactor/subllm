@@ -42,7 +42,7 @@ _STATE_SCHEMA = "subllm.provider-health/v1"
 _STATE_FILE_ENV = "SUBLLM_HEALTH_STATE_FILE"
 _PROVIDER = re.compile(r"^[a-z][a-z0-9-]{0,63}$")
 _REASON = re.compile(r"^[a-z][a-z0-9_]{0,63}$")
-UNCREDITED_REASONS = frozenset({"http_401", "http_402", "http_403"})
+UNCREDITED_REASONS = frozenset({"http_401", "http_402", "http_403", "quota_exhausted"})
 
 
 def _clock() -> float:

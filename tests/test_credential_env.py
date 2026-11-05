@@ -16,6 +16,7 @@ from subllm import (
     load_env_file,
     resolve,
 )
+from subllm.credential_env import merged_environment
 
 
 def _private_file(path: Path, content: str) -> Path:
@@ -24,10 +25,42 @@ def _private_file(path: Path, content: str) -> Path:
     return path
 
 
+def test_shared_source_owns_credentials_without_mutating_the_caller(tmp_path):
+    shared = _private_file(tmp_path / "central.env", "OPENAI_API_KEY=test-k1\n")
+    supplied = {"SUBLLM_ENV_FILE": str(shared), "SUBLLM_CREDENTIAL_SOURCE": "shared",
+                "OPENAI_API_KEY": "test-k2", "ZAI_API_KEY": "old.secret",
+                "SUBLLM_PROVIDER_ORDER": "codex,codex-cli", "OTHER": "preserved"}
+    before = dict(supplied)
+    effective = merged_environment(environ=supplied)
+    assert effective["OPENAI_API_KEY"] == "test-k1"
+    assert "ZAI_API_KEY" not in effective
+    assert effective["SUBLLM_PROVIDER_ORDER"] == "codex,codex-cli"
+    assert effective["OTHER"] == "preserved"
+    assert supplied == before
+
+
+def test_shared_source_applies_to_ambient_process_credentials(tmp_path, monkeypatch):
+    shared = _private_file(tmp_path / "central.env", "OPENAI_API_KEY=test-k1\n")
+    monkeypatch.setenv("SUBLLM_ENV_FILE", str(shared))
+    monkeypatch.setenv("SUBLLM_CREDENTIAL_SOURCE", "shared")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-k2")
+    assert merged_environment()["OPENAI_API_KEY"] == "test-k1"
+
+
+@pytest.mark.parametrize("settings", [
+    {"SUBLLM_CREDENTIAL_SOURCE": "unknown"},
+    {"SUBLLM_CREDENTIAL_SOURCE": "shared"},
+    {"SUBLLM_CREDENTIAL_SOURCE": "shared", "SUBLLM_ENV_FILE": "missing.env"},
+])
+def test_shared_source_never_silently_uses_a_stale_key(settings):
+    with pytest.raises(CredentialFileError):
+        merged_environment(environ={**settings, "OPENAI_API_KEY": "test-k2"})
+
+
 def test_workspace_discovery_and_process_precedence(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shared = tmp_path / "subllm" / ".env"
     shared.parent.mkdir()
-    _private_file(shared, "ZAI_API_KEY=id.from-file\nOPENROUTER_API_KEY=or-file\n")
+    _private_file(shared, "ZAI_API_KEY=test-id.from-file\nOPENROUTER_API_KEY=or-file\n")
     application = tmp_path / "repair-agent"
     application.mkdir()
     monkeypatch.chdir(application)
@@ -37,13 +70,13 @@ def test_workspace_discovery_and_process_precedence(tmp_path: Path, monkeypatch:
     assert find_env_file() == shared
     route = resolve("repair-agent", "repair-plan")
     assert route.provider == "zai"
-    assert route.api_key == "id.from-file"
+    assert route.api_key == "test-id.from-file"
 
 
 def test_subactor_workspace_discovery_from_sibling_project(tmp_path: Path) -> None:
     shared = tmp_path / "subactor" / "subllm" / ".env"
     shared.parent.mkdir(parents=True)
-    _private_file(shared, "CURSOR_API_KEY=cursor-workspace-key\n")
+    _private_file(shared, "CURSOR_API_KEY=test-cursor-workspace-key\n")
     project = tmp_path / "semcod" / "koru"
     project.mkdir(parents=True)
 
@@ -53,7 +86,7 @@ def test_subactor_workspace_discovery_from_sibling_project(tmp_path: Path) -> No
 def test_explicit_environment_keeps_resolution_hermetic(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shared = tmp_path / "subllm" / ".env"
     shared.parent.mkdir()
-    _private_file(shared, "ZAI_API_KEY=id.from-file\n")
+    _private_file(shared, "ZAI_API_KEY=test-id.from-file\n")
     application = tmp_path / "doctor-agent"
     application.mkdir()
     monkeypatch.chdir(application)
@@ -147,13 +180,13 @@ def test_dotenv_is_gitignored() -> None:
 def test_cursor_api_key_loads_from_shared_file(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
     shared = tmp_path / "subllm" / ".env"
     shared.parent.mkdir()
-    _private_file(shared, "CURSOR_API_KEY=cursor_test-not-a-secret\nZAI_API_KEY=id.secret\n")
+    _private_file(shared, "CURSOR_API_KEY=test-cursor-not-a-secret\nZAI_API_KEY=id.secret\n")
     monkeypatch.chdir(tmp_path / "subllm")
     monkeypatch.delenv("SUBLLM_ENV_FILE", raising=False)
     monkeypatch.delenv("CURSOR_API_KEY", raising=False)
 
-    assert load_env_file(shared)[CURSOR_API_KEY_ENV] == "cursor_test-not-a-secret"
-    assert cursor_api_key() == "cursor_test-not-a-secret"
+    assert load_env_file(shared)[CURSOR_API_KEY_ENV] == "test-cursor-not-a-secret"
+    assert cursor_api_key() == "test-cursor-not-a-secret"
 
 
 def test_missing_cursor_api_key_is_reported(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
@@ -178,11 +211,11 @@ def test_shared_file_accepts_provider_order(tmp_path: Path) -> None:
 
 
 def test_import_accepts_cursor_api_key(tmp_path: Path) -> None:
-    source = _private_file(tmp_path / "cursor.env", "CURSOR_API_KEY=cursor_test-not-a-secret\n")
+    source = _private_file(tmp_path / "cursor.env", "CURSOR_API_KEY=test-cursor-not-a-secret\n")
     target = tmp_path / "subllm.env"
 
     assert import_credentials([source], target) == (CURSOR_API_KEY_ENV,)
-    assert load_env_file(target) == {CURSOR_API_KEY_ENV: "cursor_test-not-a-secret"}
+    assert load_env_file(target) == {CURSOR_API_KEY_ENV: "test-cursor-not-a-secret"}
 
 
 def stat_mode(path: Path) -> int:

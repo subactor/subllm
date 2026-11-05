@@ -37,6 +37,78 @@ from subllm.client import (
 )
 
 
+@pytest.mark.parametrize("diagnostic,outcome", [
+    ("SUBLLM-CODEX-TIMEOUT", "timeout"),
+    ("SUBLLM-CODEX-UNAVAILABLE", "provider_unavailable"),
+    ("SUBLLM-CODEX-HTTP-429", "quota_exhausted"),
+])
+def test_transient_cli_failure_uses_next_permitted_transport(monkeypatch, diagnostic, outcome):
+    from subllm import codex_cli
+    calls = []
+    def unavailable(*args):
+        calls.append("codex-cli")
+        raise CompletionError("local failure", diagnostic_code=diagnostic)
+    def worker(request, **kwargs):
+        calls.append(request["provider"])
+        return _worker_success("ok")
+    monkeypatch.setattr(codex_cli, "invoke", unavailable)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", worker)
+    monkeypatch.setattr("subllm.resolver.shutil.which", lambda name, **kwargs: "/bin/" + name)
+    result = complete("heyasa", "command", [{"role": "user", "content": "ok"}],
+                      environ={"SUBLLM_PROVIDER_ORDER": "codex-cli,ollama", "OLLAMA_API_KEY": "test-ollama"})
+    assert calls == ["codex-cli", "ollama"]
+    assert result.provider == "ollama"
+    assert result.attempts[0].outcome == outcome
+    assert result.attempts[0].diagnostic_code == diagnostic
+
+
+def test_cli_format_failure_does_not_spend_another_candidate(monkeypatch):
+    from subllm import codex_cli
+    def invalid(*args):
+        raise CompletionError("bad contract", diagnostic_code="SUBLLM-CLI-UNSUPPORTED-CONTENT")
+    monkeypatch.setattr(codex_cli, "invoke", invalid)
+    monkeypatch.setattr("subllm.resolver.shutil.which", lambda name, **kwargs: "/bin/" + name)
+    monkeypatch.setattr(client_workers, "_run_openai_worker", lambda *a, **kw: pytest.fail("unexpected fallback"))
+    with pytest.raises(CompletionError, match="bad contract"):
+        complete("heyasa", "command", [{"role": "user", "content": "ok"}],
+                 environ={"SUBLLM_PROVIDER_ORDER": "codex-cli,ollama", "OLLAMA_API_KEY": "test-ollama"})
+
+
+def test_quota_diagnostic_is_distinct_from_temporary_rate_limit():
+    assert client_types._attempt_diagnostic_code("quota_exhausted") == "SUBLLM-PROVIDER-QUOTA-EXHAUSTED"
+    assert client_types._attempt_diagnostic_code("http_429") == PROVIDER_RATE_LIMIT_CODE
+
+
+def test_completion_shared_source_reaches_transport_instead_of_stale_process_key(monkeypatch, tmp_path):
+    shared = tmp_path / "subllm.env"
+    shared.write_text("OPENAI_API_KEY=test-k1\n")
+    shared.chmod(0o600)
+    monkeypatch.setenv("SUBLLM_CREDENTIAL_SOURCE", "shared")
+    monkeypatch.setenv("SUBLLM_ENV_FILE", str(shared))
+    monkeypatch.setenv("SUBLLM_PROVIDER_ORDER", "codex")
+    monkeypatch.setenv("OPENAI_API_KEY", "test-k2")
+    def worker(request, **kwargs):
+        assert request["provider"] == "codex" and request["api_key"] == "test-k1"
+        return _worker_success("ok")
+    monkeypatch.setattr(client_workers, "_run_openai_worker", worker)
+    assert complete("koru-agent", "nl-to-koru-dsl", [{"role": "user", "content": "ok"}]).provider == "codex"
+    assert os.environ["OPENAI_API_KEY"] == "test-k2"
+
+
+def test_cli_failure_preserves_an_explicit_model_restriction(monkeypatch):
+    from subllm import codex_cli
+    def unavailable(*args):
+        raise CompletionError("timeout", diagnostic_code="SUBLLM-CODEX-TIMEOUT")
+    monkeypatch.setattr(codex_cli, "invoke", unavailable)
+    monkeypatch.setattr("subllm.resolver.shutil.which", lambda name, **kwargs: "/bin/" + name)
+    monkeypatch.setattr(client_workers, "_run_openai_worker",
+                        lambda *a, **kw: pytest.fail("model restriction bypassed"))
+    with pytest.raises(CompletionError) as failure:
+        complete("heyasa", "command", [{"role": "user", "content": "ok"}], model="gpt-6-luna",
+                 environ={"SUBLLM_PROVIDER_ORDER": "codex-cli,ollama", "OLLAMA_API_KEY": "test-ollama"})
+    assert failure.value.diagnostic_code == PROVIDER_CHAIN_EXHAUSTED_CODE
+
+
 def test_completion_ignores_another_clients_cooldown(monkeypatch, tmp_path):
     from subllm.health import record_failure
     from subllm.policy_config import load_policy_config
