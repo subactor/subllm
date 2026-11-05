@@ -4,6 +4,7 @@ import math
 import os
 import time
 from collections.abc import Mapping, Sequence
+from copy import deepcopy
 from dataclasses import replace
 from functools import partial
 from pathlib import Path
@@ -35,6 +36,28 @@ from .types import ResolvedRoute
 from .usage import record_attempt
 
 NATIVE_API_TRANSPORTS = frozenset({"gemini-sdk", "anthropic"})
+
+
+def _codex_response_format(response_format):
+    """Project Codex's strict wire dialect; acceptance keeps the original schema."""
+    if not response_format or response_format.get("type") != "json_schema":
+        return response_format
+    descriptor = response_format.get("json_schema", {})
+    if descriptor.get("strict") is not True:
+        return response_format
+    from referencing import Resource
+    from referencing.jsonschema import DRAFT202012
+
+    projected = deepcopy(dict(response_format))
+    pending = [Resource.from_contents(projected["json_schema"]["schema"], default_specification=DRAFT202012)]
+    while pending:
+        resource = pending.pop()
+        pending.extend(resource.subresources())
+        if isinstance(resource.contents, dict):
+            # Unsupported by Codex's strict API. declared_schema_gate still
+            # enforces uniqueness, including on a later failover response.
+            resource.contents.pop("uniqueItems", None)
+    return projected
 
 
 def _complete_native(
@@ -108,7 +131,7 @@ def _invoke_route(
             messages,
             timeout_seconds=timeout_seconds,
             request_id=request_id,
-            response_format=response_format,
+            response_format=_codex_response_format(response_format) if route.provider == "codex" else response_format,
             policy_file=policy_file,
         )
     raise CompletionError(f"provider {route.provider} uses unsupported transport {route.transport}")

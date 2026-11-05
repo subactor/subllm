@@ -283,3 +283,81 @@ def test_adaptive_completion_enforces_declared_schema(monkeypatch, tmp_path):
     result = complete("todo2code", "semantic", MESSAGES, environ=ENV, response_format=wire)
     assert result.content == GOOD and len(calls) == 2
     assert ("zai", "glm-5.3") not in adaptive._observations(config, "json_schema")
+
+
+def unique_wire_schema():
+    return {"type": "json_schema", "json_schema": {
+        "name": "unique_values", "strict": True, "schema": {
+            "type": "object", "additionalProperties": False, "required": ["values"],
+            "properties": {"values": {"type": "array", "uniqueItems": True,
+                                      "items": {"type": "string"}}},
+        },
+    }}
+
+
+def test_codex_strict_wire_projection_keeps_local_uniqueness(monkeypatch):
+    from dataclasses import replace
+
+    wire = unique_wire_schema()
+    original = json.dumps(wire, sort_keys=True)
+    calls = []
+
+    def invoke(route, messages, **kwargs):
+        projected = kwargs["response_format"]
+        # The real API rejects this keyword with HTTP400 before generation.
+        assert "uniqueItems" not in projected["json_schema"]["schema"]["properties"]["values"]
+        assert projected["json_schema"]["strict"] is True
+        calls.append(route.wire_model)
+        content = '{"values":["a","a"]}' if len(calls) == 1 else '{"values":["a","b"]}'
+        return CompletionResponse(content, route.provider, route.wire_model)
+
+    monkeypatch.setattr(client_routes, "_complete_openai_compatible", invoke)
+    env = {"OPENAI_API_KEY": "test-codex-wire-key", "SUBLLM_PROVIDER_ORDER": "codex"}
+    first = client_routes.available_routes("platform", "interactive", environ=env)[0]
+    second = replace(first, model="gpt-5.6-sol", wire_model="gpt-5.6-sol")
+    monkeypatch.setattr(client_routes, "available_routes", lambda *a, **kw: [first, second])
+    result = complete("platform", "interactive", MESSAGES,
+                      environ=env, response_format=wire)
+    assert result.content == '{"values":["a","b"]}' and len(calls) == 2
+    assert [a.outcome for a in result.attempts] == ["quality_rejected", "success"]
+    assert json.dumps(wire, sort_keys=True) == original
+
+
+def test_codex_projection_visits_schema_resources_without_editing_instance_data():
+    from subllm.client_routes import _codex_response_format
+
+    wire = unique_wire_schema()
+    root = wire["json_schema"]["schema"]
+    root["$defs"] = {"values": {"type": "array", "uniqueItems": True,
+                                "items": {"anyOf": [{"type": "array", "uniqueItems": True},
+                                                     {"type": "string"}]}}}
+    root["properties"]["uniqueItems"] = {"type": "boolean"}
+    root["properties"]["values"] = {"$ref": "#/$defs/values"}
+    root["default"] = {"uniqueItems": True, "values": [{"uniqueItems": True}]}
+    root["examples"] = [{"uniqueItems": True}]
+    original = json.dumps(wire, sort_keys=True)
+    projected = _codex_response_format(wire)
+    schema = projected["json_schema"]["schema"]
+    assert schema["properties"] == root["properties"]
+    assert "uniqueItems" not in schema["$defs"]["values"]
+    assert "uniqueItems" not in schema["$defs"]["values"]["items"]["anyOf"][0]
+    assert schema["default"] == root["default"] and schema["examples"] == root["examples"]
+    assert json.dumps(wire, sort_keys=True) == original
+
+
+@pytest.mark.parametrize("provider,strict", [("zai", True), ("codex", False)])
+def test_other_provider_or_nonstrict_wire_preserves_uniqueness(monkeypatch, provider, strict):
+    wire = unique_wire_schema()
+    wire["json_schema"]["strict"] = strict
+    calls = []
+
+    def invoke(route, messages, **kwargs):
+        calls.append(kwargs["response_format"])
+        assert kwargs["response_format"] is wire
+        return CompletionResponse('{"values":["a"]}', route.provider, route.wire_model)
+
+    monkeypatch.setattr(client_routes, "_complete_openai_compatible", invoke)
+    env = {"SUBLLM_PROVIDER_ORDER": provider,
+           "OPENAI_API_KEY" if provider == "codex" else "ZAI_API_KEY": "test-id.test-secret"}
+    complete("platform", "interactive", MESSAGES, environ=env, response_format=wire)
+    assert calls == [wire]
