@@ -77,7 +77,18 @@ def _invoke_route(
 
         invoke = {"codex-cli": codex_cli, "claude-cli": claude_cli, "agy-cli": agy_cli,
                   "cursor-cli": cursor_cli}[route.transport].invoke
-        content, usage = invoke(route.wire_model, messages, timeout_seconds, response_format)
+        try:
+            content, usage = invoke(route.wire_model, messages, timeout_seconds, response_format)
+        except CompletionError as exc:
+            prefix = {"codex-cli": "SUBLLM-CODEX-", "claude-cli": "SUBLLM-CLAUDE-",
+                      "agy-cli": "SUBLLM-AGY-", "cursor-cli": "SUBLLM-CURSOR-CLI-"}[route.transport]
+            code = exc.diagnostic_code or ""
+            outcome = {"TIMEOUT": "timeout", "UNAVAILABLE": "provider_unavailable",
+                       "HTTP-429": "quota_exhausted", "FAILED": "provider_unavailable"}.get(
+                           code[len(prefix):] if code.startswith(prefix) else "")
+            if outcome is None:
+                raise
+            raise _RetryableAttemptError(str(exc), outcome=outcome, diagnostic_code=code) from exc
         return CompletionResponse(content, route.provider, route.wire_model, usage, "stop")
     if route.transport in NATIVE_API_TRANSPORTS:
         return _complete_native(route, messages, timeout_seconds=timeout_seconds, response_format=response_format)

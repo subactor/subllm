@@ -1,0 +1,124 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-194",
+  "summary": "Use explicit shared credentials and distinguish exhausted quota in central failover",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-194/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_types.py",
+    "src/subllm/credential_env.py",
+    "src/subllm/health.py",
+    "src/subllm/openai_worker.py",
+    "tests/test_client.py",
+    "tests/test_credential_env.py",
+    "tests/test_health.py",
+    "tests/test_openai_worker.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "a39ad0e62fbab1bbb5b5334b06509ae535a1386d",
+    "targetBranch": "main",
+    "outcome": "Central SubLLM can explicitly own service credentials, distinguishes exhausted credit from temporary HTTP429, and continues permitted failover after transient CLI failure. Qualified protected delivery and runtime use are verified.",
+    "nonGoals": [
+      "No credential rotation in response to quota, copying secrets into source, quota bypass or widening provider allowlists.",
+      "No consumer repository changes, dependency changes, new public transport or changes to retained Willmux526.",
+      "No global change to legacy credential precedence or hermetic explicit environments unless shared mode is explicitly requested."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 9,
+      "maxAffectedComponents": 3,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add opt-in shared credential source requiring an explicit validated SubLLM env file. Preserve process-first defaults and hermetic explicit maps. Parse bounded upstream quota codes without exposing raw errors; use existing closed worker outcome and cooldown/failover paths. Recognized transient CLI errors enter bounded candidate failover. Deployment selects the verified existing central credential file; it never cycles keys after a limit.",
+      "components": [
+        {
+          "name": "credential ownership",
+          "paths": [
+            "src/subllm/credential_env.py",
+            "tests/test_credential_env.py"
+          ]
+        },
+        {
+          "name": "attempt classification and failover",
+          "paths": [
+            "src/subllm/openai_worker.py",
+            "src/subllm/client_types.py",
+            "src/subllm/client_routes.py",
+            "tests/test_openai_worker.py",
+            "tests/test_client.py"
+          ]
+        },
+        {
+          "name": "quota cooldown",
+          "paths": [
+            "src/subllm/health.py",
+            "tests/test_health.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional SUBLLM_CREDENTIAL_SOURCE=shared requires explicit SUBLLM_ENV_FILE; default process precedence remains."
+      ],
+      "dataChanges": [],
+      "rollback": "Revert the protected source change and remove only the owned service source-selection drop-in; credential files and prior observations remain untouched.",
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      }
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "PYTHONPATH=src python -m pytest -q tests/test_credential_env.py"
+        ],
+        "evidence": "Shared source is authoritative only on explicit opt-in; hermetic and legacy modes stay compatible."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "PYTHONPATH=src python -m pytest -q tests/test_openai_worker.py tests/test_health.py"
+        ],
+        "evidence": "Bounded quota parsing, secret-free diagnostic, long cooldown and no transient last-resort retry for billing refusal."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "PYTHONPATH=src python -m pytest -q tests/test_client.py"
+        ],
+        "evidence": "Recognized transient CLI errors fail over within allowed models/providers; bad contracts do not spend another candidate."
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "bash project/governance-check.sh",
+          "protected OneDev and independent Validator",
+          "one bounded live post-deployment SubLLM route canary"
+        ],
+        "evidence": "Exact-head protected merge and exact runtime/source/credential-selection readback; original K2 probe fails billing and central K1 probe succeeds."
+      }
+    ],
+    "runtimeDependencies": []
+  }
+}

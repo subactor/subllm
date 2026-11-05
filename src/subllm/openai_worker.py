@@ -160,13 +160,25 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
     except HTTPError as exc:
         status = exc.code
         error_body = None
-        if source.get("capture_exchange"):
-            try:
-                encoded_error = exc.read(1_000_001)
-                error_body = (json.loads(encoded_error) if len(encoded_error) <= 1_000_000
-                              else {"capture_status": "response_exceeds_limit"})
-            except (ValueError, OSError, AttributeError):
-                error_body = {"capture_status": "non_json_or_unreadable_error"}
+        try:
+            encoded_error = exc.read(1_000_001)
+            error_body = (json.loads(encoded_error) if len(encoded_error) <= 1_000_000
+                          else {"capture_status": "response_exceeds_limit"})
+        except (ValueError, OSError, AttributeError):
+            error_body = {"capture_status": "non_json_or_unreadable_error"}
+        finally:
+            exc.close()
+        # A billing refusal cannot recover through pacing. Only fixed error
+        # codes/types affect routing; arbitrary provider messages stay private.
+        error = error_body.get("error") if isinstance(error_body, Mapping) else None
+        quota_codes = {"insufficient_quota", "credit_balance_exhausted", "billing_hard_limit_reached",
+                       "project_spend_limit_exceeded", "organization_spend_limit_exceeded",
+                       "organization_usage_limit_exceeded"}
+        if status == 429 and isinstance(error, Mapping) and (
+            (isinstance(error.get("code"), str) and error["code"] in quota_codes)
+            or error.get("type") == "insufficient_quota"
+        ):
+            return finish(_error("quota_exhausted", provider_level=True, retryable=True), error_body)
         if status == 404:
             return finish(_error("model_unavailable", provider_level=False, retryable=True), error_body)
         retryable = status in {401, 402, 403, 408, 409, 425, 429} or status >= 500

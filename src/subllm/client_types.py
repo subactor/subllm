@@ -54,6 +54,8 @@ class _RetryableAttemptError(CompletionError):
 
 
 def _attempt_diagnostic_code(outcome: str) -> str:
+    if outcome == "quota_exhausted":
+        return "SUBLLM-PROVIDER-QUOTA-EXHAUSTED"
     if outcome in {"invalid_response", "quality_rejected"}:
         return RESPONSE_QUALITY_CODE
     if outcome == "http_429":
