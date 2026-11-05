@@ -844,7 +844,10 @@ _VALIDATOR = (
 _KORU = _DEFAULT + (
     RouteCandidate(provider="openrouter", model="deepseek-v4-pro", priority_offset=30),
 )
-_KORU_DSL = _BOUNDED + _KORU[len(_DEFAULT):]
+_KORU_EXECUTOR = _KORU + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),)
+_KORU_DSL = _BOUNDED + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),) + _KORU[len(_DEFAULT):]
+_HEYASA = _DEFAULT + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),)
+_SUPERVISOR_ASSESSMENT = _BOUNDED + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),)
 
 _CODING = (
     # Explicit operator routing can select the CLI without changing API routes.
@@ -919,7 +922,7 @@ _ROUTE_VALUES = (
     RoutePolicy(
         "koru-agent",
         "queue-executor",
-        _KORU,
+        _KORU_EXECUTOR,
     ),
     RoutePolicy(
         "koru-agent",
@@ -987,7 +990,7 @@ _ROUTE_VALUES = (
             RouteCandidate(provider="openrouter", model="gemini-3.6-flash", priority_offset=20),
         ),
     ),
-    RoutePolicy("supervisor", "assessment", _BOUNDED),
+    RoutePolicy("supervisor", "assessment", _SUPERVISOR_ASSESSMENT),
     RoutePolicy("supervisor", "delegation", _DEFAULT),
     RoutePolicy("supervisor", "review", _DEFAULT),
     RoutePolicy("subactor-proxy", "chat", _DEFAULT),
@@ -997,8 +1000,8 @@ _ROUTE_VALUES = (
     RoutePolicy("subactor-proxy", "completion", _BOUNDED),
     RoutePolicy("premesh", "chat", _DEFAULT),
     RoutePolicy("autogrammar-gillm", "invoke", _DEFAULT),
-    RoutePolicy("heyasa", "command", _DEFAULT),
-    RoutePolicy("heyasa", "decision-routing", _DEFAULT),
+    RoutePolicy("heyasa", "command", _HEYASA),
+    RoutePolicy("heyasa", "decision-routing", _HEYASA),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})
