@@ -34,6 +34,8 @@ from .interaction_context import ACTIVE_ARCHIVE
 from .interaction_store import InteractionStore, utc_now
 from .policy import MODELS, ROUTES
 from .proxy import _complete_model_direct
+from .quality import validate_response
+from .quality_schema import schema_gate
 from .usage import query_usage
 
 LOG = logging.getLogger(__name__)
@@ -137,6 +139,11 @@ def validate_config(config):
         tokens.add(token)
         if set(client.get("mcp", [])) - set(config.get("mcp", {})):
             raise ValueError("Client refers to an unregistered MCP server")
+        if "compile_route" in client and (
+            not isinstance(client["compile_route"], str)
+            or client["compile_route"] not in {f"{a}/{f}" for a, f in ROUTES}
+        ):
+            raise ValueError("Client compile route must be a registered application/function")
     for name, upstream in config.get("mcp", {}).items():
         if not NAME.fullmatch(name) or ("command" in upstream) == ("url" in upstream):
             raise ValueError("MCP requires a valid name and exactly one command or URL")
@@ -375,9 +382,52 @@ def create_app(config, store=None):
         except (ValueError, UnicodeDecodeError):
             return JSONResponse({"error": "Invalid request or unsupported generation parameter"}, 400)
 
+        return await execute_completion(caller, payload, model, adaptive_alias=adaptive_alias)
+
+    async def compile_structured(request):
+        caller = request.state.principal
+        client = config["clients"][caller]
+        model = client.get("compile_route")
+        if not client.get("llm", False) or not model:
+            return JSONResponse({"ok": False, "error": "Structured compilation not granted"}, 403)
+        try:
+            body = await request.json()
+            if not isinstance(body, dict) or set(body) - {
+                "system", "user", "schema_name", "schema", "preferred_model", "grammar_note",
+            }:
+                raise ValueError("Unsupported compile parameter")
+            for field in ("system", "user"):
+                if not isinstance(body.get(field), str) or not body[field].strip() or len(body[field]) > 1_000_000:
+                    raise ValueError("Expected bounded nonempty prompts")
+            if not isinstance(body.get("schema_name"), str) or not re.fullmatch(
+                r"[A-Za-z0-9_-]{1,64}", body["schema_name"],
+            ) or not isinstance(body.get("schema"), dict):
+                raise ValueError("Expected named object schema")
+            preferred = body.get("preferred_model")
+            if preferred is not None and (not isinstance(preferred, str) or not preferred.strip()
+                                          or len(preferred) > 200):
+                raise ValueError("Invalid advisory model")
+            if "grammar_note" in body and body["grammar_note"] != "gbnf_grammar_unsupported_over_gateway":
+                raise ValueError("Grammar constraints are not supported by this transport")
+            # Reject invalid/external schema references before archive admission or paid work.
+            validator = schema_gate(body["schema"], None)
+        except (ValueError, UnicodeDecodeError, SubLLMError):
+            return JSONResponse({"ok": False, "error": "Invalid structured compile contract"}, 400)
+        payload = {
+            "model": model,
+            "messages": [{"role": "system", "content": body["system"]},
+                         {"role": "user", "content": body["user"]}],
+            "response_format": {"type": "json_schema", "json_schema": {
+                "name": body["schema_name"], "strict": True, "schema": body["schema"],
+            }},
+        }
+        return await execute_completion(caller, payload, model, compile_context=(body, validator))
+
+    async def execute_completion(caller, payload, model, *, adaptive_alias=False, compile_context=None):
         def invoke():
             try:
-                record = store.begin(kind="llm", caller=caller, target=model, request=payload)
+                archived_request = compile_context[0] if compile_context else payload
+                record = store.begin(kind="llm", caller=caller, target=model, request=archived_request)
                 bus.record_gateway_exchange(record)
             except Exception:
                 raise ArchiveAdmissionError from None
@@ -417,6 +467,20 @@ def create_app(config, store=None):
                     ],
                     "usage": dict(response.usage),
                 }
+                if compile_context:
+                    # Central routes already enforce this before accepting a candidate;
+                    # also keep the typed HTTP boundary fail-closed on malformed results.
+                    validate_response(response, payload["response_format"], compile_context[1])
+                    result = {
+                        "ok": True, "available": True, "source": "subllm", "policy": model,
+                        "provider": response.provider,
+                        "selected_model": f"{response.provider}/{response.model}",
+                        "provider_model": response.model,
+                        "response_id": "chatcmpl-" + record["id"],
+                        "requested_model": compile_context[0].get("preferred_model"),
+                        "usage": dict(response.usage), "data": json.loads(response.content),
+                        "structured_mode": "json_schema", "transport": "subllm-policy",
+                    }
                 info, status = None, 200
                 metadata = {"provider": response.provider, "model": response.model}
             except Exception as exc:
@@ -425,6 +489,12 @@ def create_app(config, store=None):
                     "SUBLLM-UPSTREAM-TIMEOUT" if isinstance(exc, TimeoutError) else "SUBLLM-LLM-EXECUTION"
                 )
                 result = {"error": {"code": code or info["code"], "message": info["meaning"]}}
+                if compile_context:
+                    result = {
+                        "ok": False, "available": True, "source": "subllm", "policy": model,
+                        "error": code or info["code"], "selected_model": None, "provider_model": None,
+                        "response_id": "chatcmpl-" + record["id"],
+                    }
                 # Exception detail belongs only to the authenticated private archive.
                 from .credential_env import credential_names, merged_environment
 
@@ -516,6 +586,7 @@ def create_app(config, store=None):
             Route("/v1/interactions", history),
             Route("/v1/models", models),
             Route("/v1/chat/completions", completion, methods=["POST"]),
+            Route("/compile", compile_structured, methods=["POST"]),
             Mount("/mcp", app=mcp),
         ],
         lifespan=lifespan,
