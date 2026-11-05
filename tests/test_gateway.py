@@ -34,6 +34,176 @@ def auth(credential=TOKEN):
     return {"Authorization": "Bearer " + credential}
 
 
+COMPILE_REQUEST = {
+    "system": "Return the requested object.",
+    "user": "Set matched to true.",
+    "schema_name": "control_probe",
+    "schema": {
+        "type": "object", "required": ["matched"], "additionalProperties": False,
+        "properties": {"matched": {"type": "boolean"}},
+    },
+    "preferred_model": "codex/gpt-6-luna",
+}
+
+
+def test_compile_uses_granted_route_and_preserves_actual_identity(setup, monkeypatch):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+    calls = []
+
+    def routed(*args, **kwargs):
+        calls.append((args, kwargs))
+        return CompletionResponse('{"matched": true}', "codex-cli", "gpt-6-luna", {"output_tokens": 9}, "stop")
+
+    monkeypatch.setattr("subllm.gateway.complete", routed)
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("direct dispatch"))
+    with TestClient(create_app(config, store)) as client:
+        response = client.post("/compile", headers=auth(), json=COMPILE_REQUEST)
+        assert response.status_code == 200, response.text
+        result = response.json()
+        assert result["ok"] and result["data"] == {"matched": True}
+        assert result["selected_model"] == "codex-cli/gpt-6-luna"
+        assert result["provider_model"] == "gpt-6-luna" and result["provider"] == "codex-cli"
+        assert result["requested_model"] == "codex/gpt-6-luna"
+        day, rid = response.headers["x-subllm-interaction"].split("/")
+        assert result["response_id"] == "chatcmpl-" + rid
+        detail = client.get(f"/v1/interactions?day={day}&id={rid}", headers=auth()).json()["data"]
+        assert detail["target"] == "platform/interactive"
+        assert detail["request"] == COMPILE_REQUEST
+        assert detail["response"] == result
+        assert detail["metadata"]["provider"] == "codex-cli"
+        assert client.get(f"/v1/interactions?day={day}&id={rid}", headers=auth(OTHER)).json()["data"] is None
+    assert len(calls) == 1
+    args, kwargs = calls[0]
+    assert args[:2] == ("platform", "interactive")
+    assert args[2] == [{"role": "system", "content": COMPILE_REQUEST["system"]},
+                       {"role": "user", "content": COMPILE_REQUEST["user"]}]
+    assert kwargs["response_format"]["json_schema"]["schema"] == COMPILE_REQUEST["schema"]
+    assert kwargs["response_format"]["json_schema"]["strict"] is True
+    assert "model" not in kwargs  # The advisory hint must not disable central failover.
+
+
+@pytest.mark.parametrize("credential,grant", [(None, True), (TOKEN, False), (OTHER, True)])
+def test_compile_requires_authentication_llm_and_explicit_grant(setup, monkeypatch, credential, grant):
+    config, store = setup
+    if grant:
+        for value in config["clients"].values():
+            value["compile_route"] = "platform/interactive"
+    monkeypatch.setattr("subllm.gateway.complete", lambda *a, **kw: pytest.fail("unauthorized paid call"))
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(credential) if credential else {}, json=COMPILE_REQUEST)
+        assert result.status_code == (401 if credential is None else 403)
+
+
+@pytest.mark.parametrize("delta", [
+    {"system": " "}, {"user": []}, {"schema_name": "bad name"}, {"schema": []},
+    {"schema": {"type": "not-a-json-type"}},
+    {"schema": {"$ref": "https://invalid.example/private-schema"}},
+    {"schema": {"$ref": "#/missing"}}, {"preferred_model": {}},
+    {"model": "glm-5.3"}, {"route": "supervisor/assessment"}, {"max_tokens": 1},
+    {"temperature": 0}, {"grammar_note": "apply unverified grammar"},
+])
+def test_compile_rejects_invalid_contract_before_paid_execution(setup, monkeypatch, delta):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+    monkeypatch.setattr("subllm.gateway.complete", lambda *a, **kw: pytest.fail("invalid paid call"))
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(), json={**COMPILE_REQUEST, **delta})
+        assert result.status_code == 400, result.text
+        assert client.get("/v1/interactions", headers=auth()).json()["data"] == []
+
+
+@pytest.mark.parametrize("route", ["glm-5.3", "unknown/function", "", 1])
+def test_compile_grant_must_bind_a_registered_named_route(setup, route):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = route
+    with pytest.raises(ValueError, match="compile route"):
+        create_app(config, store)
+
+
+@pytest.mark.parametrize("content", ['{"matched": "wrong"}', '{"matched": true, "extra": 1}', 'not JSON'])
+def test_compile_rejects_malformed_upstream_result(setup, monkeypatch, content):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+    monkeypatch.setattr("subllm.gateway.complete",
+                        lambda *a, **kw: CompletionResponse(content, "codex", "gpt-6-luna", {}, "stop"))
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("direct fallback"))
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(), json=COMPILE_REQUEST)
+        assert result.status_code == 502
+        assert result.json()["ok"] is False and "data" not in result.json()
+
+
+def test_compile_returns_sanitized_failure_without_direct_fallback(setup, monkeypatch):
+    from subllm.errors import CompletionError
+
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+    calls = []
+
+    def unavailable(*a, **kw):
+        calls.append(1)
+        raise CompletionError("private upstream detail", diagnostic_code="SUBLLM-PROVIDER-QUOTA-EXHAUSTED")
+
+    monkeypatch.setattr("subllm.gateway.complete", unavailable)
+    monkeypatch.setattr("subllm.gateway._complete_model_direct", lambda *a, **kw: pytest.fail("direct fallback"))
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(), json=COMPILE_REQUEST)
+        assert result.status_code == 502
+        assert result.json()["error"] == "SUBLLM-PROVIDER-QUOTA-EXHAUSTED"
+        assert result.json()["ok"] is False and "private upstream detail" not in result.text
+        assert result.headers["x-subllm-archive-status"] == "complete"
+    assert calls == [1]
+
+
+def test_compile_survives_archive_finish_failure_without_repeating_request(setup, monkeypatch):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+    calls = []
+
+    def routed(*a, **kw):
+        calls.append(1)
+        return CompletionResponse('{"matched": true}', "codex-cli", "gpt-6-luna", {}, "stop")
+
+    def broken(*a, **kw):
+        raise OSError("disk full")
+
+    monkeypatch.setattr("subllm.gateway.complete", routed)
+    monkeypatch.setattr(store, "finish", broken)
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(), json=COMPILE_REQUEST)
+        assert result.status_code == 200 and result.json()["ok"]
+        assert result.headers["x-subllm-archive-status"] == "pending"
+    assert calls == [1]
+
+
+def test_compile_archive_admission_failure_does_not_start_paid_work(setup, monkeypatch):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+
+    def broken(**kwargs):
+        raise OSError("storage unavailable")
+
+    monkeypatch.setattr(store, "begin", broken)
+    monkeypatch.setattr("subllm.gateway.complete", lambda *a, **kw: pytest.fail("unarchived paid call"))
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(), json=COMPILE_REQUEST)
+        assert result.status_code == 503
+
+
+def test_compile_accepts_control_grammar_advisory_and_no_model_hint(setup, monkeypatch):
+    config, store = setup
+    config["clients"]["first"]["compile_route"] = "platform/interactive"
+    monkeypatch.setattr("subllm.gateway.complete",
+                        lambda *a, **kw: CompletionResponse('{"matched": true}', "codex", "gpt-6-luna", {}, "stop"))
+    body = {k: v for k, v in COMPILE_REQUEST.items() if k != "preferred_model"}
+    body["grammar_note"] = "gbnf_grammar_unsupported_over_gateway"
+    with TestClient(create_app(config, store)) as client:
+        result = client.post("/compile", headers=auth(), json=body)
+        assert result.status_code == 200
+        assert result.json()["requested_model"] is None and result.json()["structured_mode"] == "json_schema"
+
+
 def test_llm_archive_isolation_and_deep_link(setup, monkeypatch):
     config, store = setup
     monkeypatch.setattr(

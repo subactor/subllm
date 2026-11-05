@@ -1,0 +1,85 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-196",
+  "summary": "Serve Control structured compilation through the central SubLLM gateway",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-196/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/gateway.py",
+    "tests/test_gateway.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "9e723f0df785af028aed1ecb0417a0987f0edc54",
+    "targetBranch": "main",
+    "outcome": "Control structured compilation calls an explicitly granted named route on the authenticated central SubLLM gateway with schema, archive and actual routing metadata preserved.",
+    "nonGoals": [
+      "No provider key rotation, borrowed caller identity, TLS bypass or local direct-provider fallback.",
+      "No reset/replay of old Planfile work, authority-envelope fabrication, catalog/provider policy expansion or change to unrelated MCP clients.",
+      "Control runtime activation remains separately guarded in PLF-25166."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Expose /compile as a typed adapter over the existing authenticated, archived central completion pipeline. An operator-granted client compile_route binds it to an existing application/function route; provider availability and keys remain exclusively in SubLLM. Retain the caller model hint as advisory metadata, without restricting central failover.",
+      "components": [
+        {
+          "name": "subllm-gateway",
+          "paths": [
+            "src/subllm/gateway.py",
+            "tests/test_gateway.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Optional per-client compile_route grant and POST /compile compatibility endpoint"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Restore the prior accepted immutable gateway source and remove only this new Control grant; preserve existing clients, archive and provider credential files."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_gateway.py"
+        ],
+        "evidence": "Host-private focused-test receipt"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Host-private full-test and governance receipts"
+      }
+    ]
+  }
+}
