@@ -61,7 +61,7 @@ where = ["src"]
 subllm = ["py.typed", "code2dsl_bridge.mjs", "code2dsl_projection.mjs", "assets/*.html", "assets/*.css", "assets/*.js"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests", "scripts/tests"]
 pythonpath = ["src"]
 addopts = "-p wellmanifest_governance -ra"
 

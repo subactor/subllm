@@ -1,0 +1,200 @@
+name: Publish
+
+# Tag-bound PyPI Trusted Publishing (OIDC) and matching GitHub Release workflow
+# for subactor-subllm (Refs subactor/subllm#20). No long-lived PyPI API tokens
+# are stored in this repository; publication fails closed if subactor-procache
+# is absent on the target index or the 5/day publication cap is reached.
+
+on:
+  push:
+    tags:
+      - "v*"
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: "Execution mode (dry-run only qualifies artifacts; testpypi/pypi require OIDC)"
+        required: true
+        type: choice
+        options:
+          - dry-run
+          - testpypi
+          - pypi
+        default: dry-run
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  qualify:
+    name: Build and qualify distributions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact source
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install build and verification dependencies
+        run: |
+          python -m pip install 'pip>=25.1'
+          python -m pip install --group dev -e '.[test]'
+
+      - name: Run full repository verification
+        run: ./scripts/verify
+
+      - name: Build clean wheel and sdist
+        run: |
+          rm -rf dist
+          python -m build
+
+      - name: Verify distribution metadata, isolated routes, and checksums
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          args=(
+            --pyproject pyproject.toml
+            --dist-dir dist
+            --write-checksums dist/sha256sums.txt
+          )
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            args+=(--tag "$REF_NAME")
+          fi
+          python scripts/verify-release-package.py "${args[@]}"
+
+      - name: Upload qualified distribution artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: qualified-distributions
+          path: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/sha256sums.txt
+          if-no-files-found: error
+          retention-days: 7
+
+  publish-pypi:
+    name: Publish to package index (OIDC)
+    needs: qualify
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')) ||
+      (github.event_name == 'workflow_dispatch' && inputs.mode != 'dry-run')
+    runs-on: ubuntu-latest
+    environment:
+      name: ${{ (github.event_name == 'workflow_dispatch' && inputs.mode == 'testpypi') && 'testpypi' || 'pypi' }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Check out release verifier
+        uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Download qualified distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: qualified-distributions
+          path: dist
+
+      - name: Enforce upstream dependency availability and daily publication cap
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_MODE: ${{ inputs.mode }}
+          REF_NAME: ${{ github.ref_name }}
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum -c sha256sums.txt)
+          base_url="https://pypi.org"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$DISPATCH_MODE" == "testpypi" ]]; then
+            base_url="https://test.pypi.org"
+          fi
+          args=(
+            --pyproject pyproject.toml
+            --dist-dir dist
+            --check-pypi-index
+            --pypi-base-url "$base_url"
+          )
+          if [[ "$EVENT_NAME" == "push" ]]; then
+            args+=(--tag "$REF_NAME")
+          fi
+          python scripts/verify-release-package.py "${args[@]}"
+
+      - name: Publish to TestPyPI (Trusted Publishing)
+        if: github.event_name == 'workflow_dispatch' && inputs.mode == 'testpypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          repository-url: https://test.pypi.org/legacy/
+          skip-existing: true
+
+      - name: Publish to PyPI (Trusted Publishing)
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.mode == 'pypi'
+        uses: pypa/gh-action-pypi-publish@release/v1
+        with:
+          packages-dir: dist
+          skip-existing: true
+
+      - name: Verify published distribution SHA-256 digests on index
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          DISPATCH_MODE: ${{ inputs.mode }}
+        run: |
+          set -euo pipefail
+          base_url="https://pypi.org"
+          if [[ "$EVENT_NAME" == "workflow_dispatch" && "$DISPATCH_MODE" == "testpypi" ]]; then
+            base_url="https://test.pypi.org"
+          fi
+          python scripts/verify-release-package.py \
+            --pyproject pyproject.toml \
+            --dist-dir dist \
+            --verify-pypi-published \
+            --pypi-base-url "$base_url"
+
+  github-release:
+    name: Create matching GitHub Release
+    needs:
+      - qualify
+      - publish-pypi
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/v')
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download qualified distributions
+        uses: actions/download-artifact@v4
+        with:
+          name: qualified-distributions
+          path: dist
+
+      - name: Verify distribution checksums before release publication
+        run: |
+          set -euo pipefail
+          (cd dist && sha256sum -c sha256sums.txt)
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/*.whl
+            dist/*.tar.gz
+            dist/sha256sums.txt
+          fail_on_unmatched_files: true
+          generate_release_notes: true

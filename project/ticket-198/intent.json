@@ -1,0 +1,98 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-198",
+  "summary": "Add tag-bound OIDC PyPI release workflow and package verifier",
+  "workstream": "governance",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-198/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    ".github/workflows/publish.yml",
+    "pyproject.toml",
+    "scripts/tests/test_release_package.py",
+    "scripts/verify-release-package.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "7b51d03f0b11753934c894cb0f3dc6674a0d0fcd",
+    "targetBranch": "main",
+    "outcome": "Provide a fail-closed, tag-bound GitHub Actions OIDC PyPI and GitHub Release workflow plus a stdlib release-package verifier enforcing version/tag parity, direct-URL-free metadata, isolated wheel route qualification for all six Semcod/Autogrammar routes, Procache 0.1.0 index availability, the 5/day PyPI publication cap, and post-upload SHA-256 readback. Refs GitHub subactor/subllm#20.",
+    "nonGoals": [
+      "No long-lived PyPI API tokens, unverified release tags, or direct uploads while subactor-procache==0.1.0 is 404 on PyPI.",
+      "No changes to runtime routing policy, provider credentials, or foreign dockuri/procache worktrees."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Keep all release qualification logic in a deterministic stdlib CLI script (scripts/verify-release-package.py) invoked by .github/workflows/publish.yml before and after pypa/gh-action-pypi-publish OIDC upload, and include scripts/tests in pytest testpaths so protected OneDev and local CI run the full regression suite.",
+      "components": [
+        {
+          "name": "release-verifier",
+          "paths": [
+            "scripts/verify-release-package.py",
+            "scripts/tests/test_release_package.py",
+            "pyproject.toml"
+          ]
+        },
+        {
+          "name": "release-workflow",
+          "paths": [
+            ".github/workflows/publish.yml"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the workflow, verifier script, test file, and pytest testpaths entry together; no live runtime or published registry artifact is mutated."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q scripts/tests/test_release_package.py"
+        ],
+        "evidence": "Focused unit and real-wheel isolated route qualification tests pass."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q scripts/tests/test_release_package.py"
+        ],
+        "evidence": "Fail-closed PyPI index precondition (Procache 404, >=5 daily cap, digest mismatch) and post-publish SHA-256 readback tests pass."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "./scripts/verify",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "Full local verification, governance gate, OneDev local-verify, and independent Validator App approval pass."
+      }
+    ]
+  }
+}
