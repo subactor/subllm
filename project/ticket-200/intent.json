@@ -1,0 +1,100 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-200",
+  "summary": "Add HeyAsa ops v1 model and communication cost ledger emitter (KPI-04)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-200/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "src/subllm/kpi_ledger.py",
+    "tests/test_kpi_ledger.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "90d3254e1fd1ee314ab29aa8cfa139cc22119f98",
+    "targetBranch": "main",
+    "outcome": "Deliver a deterministic heyasa.ops.v1 cost and model-invocation ledger emitter (KPI-04) in subactor/subllm supporting charge_id idempotency, retry and fallback attribution, unknown-fee completeness guards, locked PLN pricing metadata, and separation of provider statuses from business goal verification.",
+    "nonGoals": [
+      "Do not modify existing SubLLM client_types.py or usage.py paths reserved by ticket-199.",
+      "Do not emit case.goal_verified from provider or webhook callbacks."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Implement KpiCostLedger and DeploymentContext in a standalone stdlib module src/subllm/kpi_ledger.py conforming strictly to heyasa.ops.v1 payload schemas, re-export from src/subllm/__init__.py, and verify with unit tests in tests/test_kpi_ledger.py.",
+      "components": [
+        {
+          "name": "kpi-cost-ledger",
+          "paths": [
+            "src/subllm/kpi_ledger.py",
+            "src/subllm/__init__.py",
+            "tests/test_kpi_ledger.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "Export KpiCostLedger, DeploymentContext, CostAuditRecord, KpiLedgerError, and IncompleteCostMeasurementError from subllm"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert src/subllm/kpi_ledger.py, tests/test_kpi_ledger.py, and re-exports via protected PR delivery."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_kpi_ledger.py"
+        ],
+        "evidence": "tests/test_kpi_ledger.py"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_kpi_ledger.py"
+        ],
+        "evidence": "tests/test_kpi_ledger.py"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_kpi_ledger.py"
+        ],
+        "evidence": "tests/test_kpi_ledger.py"
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "wellman check"
+        ],
+        "evidence": "project/ticket-200/README.md"
+      }
+    ]
+  }
+}

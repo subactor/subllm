@@ -35,6 +35,17 @@ from .errors import (
     UnknownRouteError,
 )
 from .health import ProviderHealthReceipt, provider_health, reset_provider_health
+from .kpi_ledger import (
+    CALCULATION_METHODS,
+    COST_CATEGORIES,
+    HEYASA_OPS_SCHEMA,
+    PRICING_SOURCES,
+    CostAuditRecord,
+    DeploymentContext,
+    IncompleteCostMeasurementError,
+    KpiCostLedger,
+    KpiLedgerError,
+)
 from .policy import (
     APPLICATIONS,
     CURSOR_API_KEY_ENV,
@@ -118,6 +129,15 @@ __all__ = [
     "ModelSpec",
     "ProviderModelSpec",
     "ProviderHealthReceipt",
+    "CALCULATION_METHODS",
+    "COST_CATEGORIES",
+    "CostAuditRecord",
+    "DeploymentContext",
+    "HEYASA_OPS_SCHEMA",
+    "IncompleteCostMeasurementError",
+    "KpiCostLedger",
+    "KpiLedgerError",
+    "PRICING_SOURCES",
     "ProviderPolicyConfig",
     "ProviderSpec",
     "ResolvedRoute",
