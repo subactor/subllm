@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from decimal import Decimal
 import json
+from decimal import Decimal
 from pathlib import Path
 
 import pytest

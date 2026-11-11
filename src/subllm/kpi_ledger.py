@@ -16,14 +16,14 @@ Emits schema-conformant `heyasa.ops.v1` events (`model.invoked`, `cost.recorded`
 
 from __future__ import annotations
 
-from dataclasses import dataclass
-from datetime import UTC, datetime
-from decimal import Decimal, InvalidOperation, ROUND_HALF_UP
 import json
-from pathlib import Path
 import re
 import threading
-from typing import Any, Mapping
+from dataclasses import dataclass
+from datetime import UTC, datetime
+from decimal import ROUND_HALF_UP, Decimal, InvalidOperation
+from pathlib import Path
+from typing import Any
 
 HEYASA_OPS_SCHEMA = "heyasa.ops.v1"
 COST_CATEGORIES: tuple[str, ...] = ("model", "tool", "infra_variable", "telephony", "sms")
@@ -195,7 +195,15 @@ class KpiCostLedger:
             with self._jsonl_path.open("a", encoding="utf-8") as handle:
                 handle.write(json.dumps(event, sort_keys=True, ensure_ascii=False) + "\n")
 
-    def _envelope(self, *, event_id: str, case_id: str, kind: str, timestamp: str, payload: dict[str, Any]) -> dict[str, Any]:
+    def _envelope(
+        self,
+        *,
+        event_id: str,
+        case_id: str,
+        kind: str,
+        timestamp: str,
+        payload: dict[str, Any],
+    ) -> dict[str, Any]:
         return {
             "schema_version": HEYASA_OPS_SCHEMA,
             "event_id": _require_id(event_id, "event_id"),
@@ -238,8 +246,10 @@ class KpiCostLedger:
                 "zero amount requires explicit_zero=True (e.g. local inference); pass amount=None when fee is unknown"
             )
         if currency == "PLN":
-            if fx_rate_to_pln is not None and _parse_non_negative_decimal(fx_rate_to_pln, "fx_rate_to_pln") != Decimal("1"):
-                raise KpiLedgerError("PLN currency cannot use non-unit fx_rate_to_pln")
+            if fx_rate_to_pln is not None:
+                parsed_fx = _parse_non_negative_decimal(fx_rate_to_pln, "fx_rate_to_pln")
+                if parsed_fx != Decimal("1"):
+                    raise KpiLedgerError("PLN currency cannot use non-unit fx_rate_to_pln")
             pln_dec = raw_dec
         else:
             if fx_rate_to_pln is None:
