@@ -436,7 +436,7 @@ def test_worker_private_exchange_preserves_body_without_credential(monkeypatch, 
         "capture_exchange": True,
     }
 
-    def denied(request):
+    def denied(request, **_kwargs):
         raise HTTPError(
             request.full_url,
             429,
