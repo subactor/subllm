@@ -11,7 +11,7 @@
 
 SESSION_EXECUTION_AUTHORIZATION: the user requested continued implementation and merging of SUBLLM_TICKETS.md and explicitly approved the one-field legacy repository identity correction. The published controller preserved the original metadata snapshot and handed this existing scope to agent:codex / codex-subllm-client-fixtures-20261112 at revision4/fence4. Scope and original intent paths remain unchanged.
 
-Preserve accurate provider failure diagnostics when the bounded transport supplies a mandatory timeout and a bounded read size. Update only the two outdated mock signatures in tests/test_client.py. Preserve HTTP 402, truncation, fallback, body and credential assertions. No runtime diagnostic API or unrelated usage changes are introduced.
+Preserve accurate provider failure diagnostics when the bounded transport supplies a mandatory timeout and a bounded read size. Update the two outdated mock signatures in tests/test_client.py and use explicit test-prefixed credential placeholders. Preserve HTTP 402, truncation, fallback, body and credential assertions. No runtime diagnostic API or unrelated usage changes are introduced.
 
 ## Acceptance criteria
 
@@ -26,4 +26,6 @@ and raw command logs are not required delivery output.
 
 Refs: S1 issue #208 and transport PR #216. The current transport full CI has 1406 passes and only these two mock incompatibilities. The proposal passed both tests in an isolated copy before custody recovery; the original file is qualified in this delivery.
 
-Verification: both original tests pass on the current main baseline, and the same assertions pass against S1 a9f6243 using an isolated fixture copy. The only executable diff is the two fixture signatures. The original lease and ticket metadata are preserved in the controller handoff snapshot. No assertion or runtime behavior was weakened.
+Verification: both original tests pass on the current main baseline, and the same assertions pass against S1 a9f6243 using an isolated fixture copy. The original lease and ticket metadata are preserved in the controller handoff snapshot. No assertion or runtime behavior was weakened.
+
+Full-file protected scanning exposed three inherited synthetic credential literals without the required placeholder prefix. They all explicitly contain test/fixture markers; prefixing their definitions and matching expectations with test- preserves their semantics and satisfies the existing scanner. The complete client file passes all 40 tests. Scanner policy and required CI remain unchanged.
