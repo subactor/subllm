@@ -3,7 +3,7 @@
 - **ID**: ticket-207
 - **Owner**: codex
 - **Status**: IN_PROGRESS
-- **Workflow state**: EDIT
+- **Workflow state**: PUBLICATION
 - **maxActiveMinutes**: 90
 
 SESSION_EXECUTION_AUTHORIZATION: the user requested the seven tasks in SUBLLM_TICKETS.md. This integration slice delivers the explicitly requested S2 API/migration matrix and a canonical source/evidence/status report. It preserves source work in ticket-204 and the existing packaging/adoption owners. No publication, closure or implementation of S3-S7 is inferred from a backlog entry.

@@ -11,7 +11,7 @@
   "created": "2026-11-12",
   "updated": "2026-11-12",
   "review_after": "2026-12-12",
-  "source_revision": "89f81f99793120c45caa49bcaf632810541b85cb",
+  "source_revision": "ec62460de362dc19e407a7dce0f3e9c720850f14",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -33,7 +33,7 @@ Które zadania z dostarczonego SUBLLM_TICKETS.md mają dowody wykonania, a któr
 <!-- docs:section scope -->
 ## Zakres
 
-Wyłącznie upstream subactor/subllm. S1 jest lokalnym kandydatem w ticket-204; ticket-207 dostarcza macierz API i ten raport. Oryginalny plik wejściowy zachowano. Nie aktywowano zmian w usługach operatora ani konsumentach.
+Wyłącznie upstream subactor/subllm. S1 jest kandydatem ticket-204 w roboczym [PR #216](https://github.com/subactor/subllm/pull/216); ticket-207 dostarcza macierz API i ten raport. Oryginalny plik wejściowy zachowano. Nie aktywowano zmian w usługach operatora ani konsumentach.
 
 <!-- docs:section method -->
 ## Metoda
@@ -45,7 +45,7 @@ Sprawdzono obecne źródła, PyPI i archiwum projektu dostarczające pierwotną 
 
 | Zadanie | Zgłoszenie | Bieżący wynik |
 |---|---|---|
-| S1 HTTP | [#208](https://github.com/subactor/subllm/issues/208) | Poprawka lokalna; 87 testów transportu PASS, Ruff i governance PASS. |
+| S1 HTTP | [#208](https://github.com/subactor/subllm/issues/208) | Roboczy PR #216; 88 testów transportu PASS, Ruff i governance PASS; odbiór klientów otwarty. |
 | S2 release | [#20](https://github.com/subactor/subllm/issues/20) | Kandydat: wheel/sdist, offline venv, pip check i testy na Pythonie 3.11/3.12 PASS; [macierz migracji](../information/subllm-api-generations.md); brak nowego release. |
 | S3 budżet | [#209](https://github.com/subactor/subllm/issues/209) | Backlog; brak publicznego generation_limits. |
 | S4 receipt | [#210](https://github.com/subactor/subllm/issues/210) | Backlog; zachować obecny native archive/journal. |
@@ -58,7 +58,7 @@ Sprawdzono obecne źródła, PyPI i archiwum projektu dostarczające pierwotną 
 
 Kandydat S1 blokuje redirect/proxy, ogranicza body do 1 MB dla OpenAI-worker i 4 MB dla native HTTP, odrzuca JSON głębszy niż 64 poziomy oraz wymaga skończonych timeoutów obsługiwanych przez platformę. Nie ponawia HTTP po TypeError. Fixture TLS potwierdza jeden native attempt i jeden wpis usage, bez ruchu do redirect targetu.
 
-Testy klientów/usage: 91 PASS i 3 FAIL. Przypadek czasowy Cursor przeszedł osobno i na bazie. Dwa deterministyczne błędy dotyczą starych sygnatur atrap w tests/test_client.py, zarezerwowanym przez ticket-199. Minimalna poprawka atrap przechodzi oba testy w izolowanej kopii; asercji nie osłabiono, pliku rezerwowanego nie zmieniono.
+Head PR #216 `c5fd4dfc9553797dd3a988e0efc1bec11739c865` zawiera obecną bazę main. Zestaw transportu i klientów/usage uruchomiony przez przypięty Wellman 0.23.0: 179 PASS i 3 FAIL. Przypadek czasowy Cursor przeszedł wcześniej osobno i na bazie. Dwa deterministyczne błędy dotyczą starych sygnatur atrap w tests/test_client.py, zarezerwowanym przez ticket-199. Minimalna poprawka atrap przechodzi oba testy w izolowanej kopii; asercji nie osłabiono, pliku rezerwowanego nie zmieniono.
 
 Wheel z commitu `8e0ca7720f8789f5add793be164468f925b9ca91` zaliczył po 87 testów transportu i dodatkowy fixture publicznego complete() na Pythonie 3.11 i 3.12. Fixture nie zastępuje workera atrapą: lokalne HTTP uruchamia rzeczywisty subprocess, a zapisany wynik jest odczytywany z native archive. Artefakty i ich hashe są opisane w macierzy API.
 
@@ -70,7 +70,7 @@ Udany test izolowany sugeruje zależność przypadku Cursor od czasu startu proc
 <!-- docs:section limitations -->
 ## Ograniczenia
 
-Pełny odbiór S1 i niezależna publikacja pozostają otwarte. Polityka custody nie zezwala na automatyczne przejęcie starej rezerwacji; nie stanowi to zgody na jej obejście. Lokalny PASS, utworzenie issue i zmiana statusu dokumentu nie oznaczają merge, wydania PyPI ani realizacji S3–S7. Nie wykonywano płatnych wywołań providerów.
+Pełny odbiór S1 i niezależna publikacja pozostają otwarte. Aktualny kontroler dopuszcza przejęcie bezczynnych zadań, lecz klasyfikuje ticket-199 jako INVALID_LEASE: historyczny repositoryRef nie spełnia kontraktu kanonicznego. Wymaga to naprawy przez kontroler; samego lease nie nadpisano. Lokalny PASS, utworzenie issue i zmiana statusu dokumentu nie oznaczają merge, wydania PyPI ani realizacji S3–S7. Nie wykonywano płatnych wywołań providerów.
 
 <!-- docs:section recommendations -->
 ## Następny krok

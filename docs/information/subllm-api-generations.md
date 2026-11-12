@@ -11,7 +11,7 @@
   "created": "2026-11-12",
   "updated": "2026-11-12",
   "review_after": "2026-12-12",
-  "source_revision": "89f81f99793120c45caa49bcaf632810541b85cb",
+  "source_revision": "ec62460de362dc19e407a7dce0f3e9c720850f14",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -41,7 +41,7 @@ Publiczne API i wydawanie subactor/subllm. Profile konsumentów są wymaganiami 
 
 Odczyt PyPI z 2026-11-12: najnowsze 1.4.2. Wheel `subactor_subllm-1.4.2-py3-none-any.whl`, SHA-256 `6ef26c9612a8d51d5c41a65d8ff2ab0e8fa6e8edae6ef68536786c1fdf66744a`. Zweryfikowano digest i AST bez wykonywania pobranego kodu. Jego `complete()` ma application, function, messages, timeout_seconds, request_id, environ, credentials.
 
-Baza Git wskazana w metadanych deklaruje 1.14.0 w pyproject.toml, ale VERSION ma 1.13.0. Własność synchronizacji metadanych ma istniejący ticket-206; nie nadpisano jego zakresu.
+Baza Git wskazana w metadanych ma 1.14.0 zarówno w pyproject.toml, jak i VERSION. Pierwszy audyt bazy `89f81f99793120c45caa49bcaf632810541b85cb` wykrył VERSION 1.13.0; synchronizację dostarczył istniejący ticket-206. Zgodność tych pól nie zamyka luki PyPI/API.
 
 <!-- docs:section content -->
 ## Macierz i migracja
@@ -74,4 +74,4 @@ Nowy release PyPI nie został opublikowany. Sam workflow nie dowodzi konfiguracj
 <!-- docs:section next_actions -->
 ## Następne kroki
 
-Dokończyć S1 i kompatybilne fixture, uwzględnić synchronizację metadanych z main i ponowić kwalifikację finalnego źródła. Porównać hash artefaktu budowanego i opublikowanego; dopiero wtedy zmieniać profile konsumentów. Śledzenie: [S2 #20](https://github.com/subactor/subllm/issues/20).
+Dokończyć [S1 w PR #216](https://github.com/subactor/subllm/pull/216) i kompatybilne fixture, następnie ponowić kwalifikację finalnego źródła. Porównać hash artefaktu budowanego i opublikowanego; dopiero wtedy zmieniać profile konsumentów. Śledzenie: [S2 #20](https://github.com/subactor/subllm/issues/20).
