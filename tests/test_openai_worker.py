@@ -15,7 +15,7 @@ from subllm import CompletionError, openai_worker
 def test_billing_429_is_exhausted_quota_without_leaking_provider_text(monkeypatch, code):
     payload = json.dumps({"error": {"type": "insufficient_quota", "code": code,
                                     "message": "private account id.secret"}}).encode()
-    def invoke(request):
+    def invoke(request, **_kwargs):
         raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
     monkeypatch.setattr(openai_worker, "urlopen", invoke)
     result = openai_worker._execute(_source())
@@ -27,7 +27,7 @@ def test_billing_429_is_exhausted_quota_without_leaking_provider_text(monkeypatc
 
 def test_temporary_429_remains_a_rate_limit(monkeypatch):
     payload = json.dumps({"error": {"type": "rate_limit_error", "code": "rate_limit_exceeded"}}).encode()
-    def invoke(request):
+    def invoke(request, **_kwargs):
         raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
     monkeypatch.setattr(openai_worker, "urlopen", invoke)
     assert openai_worker._execute(_source())["outcome"] == "http_429"
@@ -44,7 +44,7 @@ def test_zai_plan_limit_is_provider_specific_and_secret_free(monkeypatch, provid
     payload = json.dumps({"error": {"code": code,
         "message": "Weekly/Monthly Limit Exhausted; private account id.secret"}}).encode()
 
-    def invoke(request):
+    def invoke(request, **_kwargs):
         raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
 
     monkeypatch.setattr(openai_worker, "urlopen", invoke)
@@ -62,7 +62,7 @@ def test_zai_plan_limit_is_provider_specific_and_secret_free(monkeypatch, provid
 @pytest.mark.parametrize("error", [[], {"code": ["credit_balance_exhausted"]}, {"code": {}}])
 def test_malformed_quota_evidence_remains_a_bounded_http_failure(monkeypatch, error):
     payload = json.dumps({"error": error}).encode()
-    def invoke(request):
+    def invoke(request, **_kwargs):
         raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
     monkeypatch.setattr(openai_worker, "urlopen", invoke)
     assert openai_worker._execute(_source())["outcome"] == "http_429"
@@ -70,7 +70,7 @@ def test_malformed_quota_evidence_remains_a_bounded_http_failure(monkeypatch, er
 
 def test_oversized_429_body_cannot_supply_quota_evidence(monkeypatch):
     payload = b" " * 1_000_001 + b'{"error":{"code":"credit_balance_exhausted"}}'
-    def invoke(request):
+    def invoke(request, **_kwargs):
         raise HTTPError(request.full_url, 429, "limited", {}, BytesIO(payload))
     monkeypatch.setattr(openai_worker, "urlopen", invoke)
     assert openai_worker._execute(_source())["outcome"] == "http_429"
@@ -83,7 +83,7 @@ class _Response:
     def __exit__(self, *_args):
         return None
 
-    def read(self) -> bytes:
+    def read(self, size: int = -1) -> bytes:
         return json.dumps({
             "choices": [{"message": {"content": '{"ok":true}'}, "finish_reason": "stop"}],
             "usage": {"total_tokens": 9},
@@ -108,7 +108,7 @@ def _source() -> dict[str, object]:
 def test_execute_preserves_policy_owned_request_fields(monkeypatch) -> None:
     observed: dict[str, object] = {}
 
-    def open_request(request):
+    def open_request(request, **_kwargs):
         observed["url"] = request.full_url
         observed["authorization"] = request.get_header("Authorization")
         observed["body"] = json.loads(request.data.decode("utf-8"))
@@ -134,7 +134,7 @@ def test_execute_preserves_policy_owned_request_fields(monkeypatch) -> None:
 
 @pytest.mark.parametrize("status", [402, 429])
 def test_execute_returns_secret_free_retryable_http_receipt(monkeypatch, status) -> None:
-    def open_request(request):
+    def open_request(request, **_kwargs):
         raise HTTPError(request.full_url, status, "limited", {}, None)
 
     monkeypatch.setattr(openai_worker, "urlopen", open_request)
@@ -233,7 +233,7 @@ def test_execute_handles_reasoning_truncation(monkeypatch) -> None:
         def __exit__(self, *_args):
             return None
 
-        def read(self) -> bytes:
+        def read(self, size: int = -1) -> bytes:
             return json.dumps({
                 "choices": [{
                     "message": {
