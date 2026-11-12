@@ -210,6 +210,33 @@ def test_cache_unavailable_before_loading_runs_native_path_once(captured, config
     assert response.cache.state == "unavailable" and len(captured.calls) == 1
 
 
+def test_concurrent_wal_open_busy_is_retried_before_any_inference(captured, config, monkeypatch):
+    original = SQLiteResponseCache._connect
+    calls = []
+
+    def connect(self):
+        calls.append("connect")
+        if len(calls) == 1:
+            raise sqlite3.OperationalError("database is locked")
+        return original(self)
+
+    monkeypatch.setattr(SQLiteResponseCache, "_connect", connect)
+    assert call(config).cache.state == "miss" and call(config).cache.state == "hit"
+    assert len(captured.calls) == count_attempts() == 1
+
+
+def test_busy_flight_storage_never_bypasses_coordination_to_infer(captured, config, monkeypatch):
+    def busy(*args, **kwargs):
+        error = sqlite3.OperationalError("test-extended-busy-code")
+        error.sqlite_errorcode = sqlite3.SQLITE_BUSY | (1 << 8)
+        raise error
+
+    monkeypatch.setattr(SQLiteResponseCache, "get_or_set", busy)
+    with pytest.raises(CompletionError, match="cache storage is busy"):
+        call(config)
+    assert captured.calls == []
+
+
 def test_original_inference_error_survives_cache_release_failure(captured, config, monkeypatch):
     def invoke(*a, **kw):
         captured.calls.append("failed")
@@ -297,17 +324,17 @@ def test_parallel_misses_coalesce_and_each_operation_gets_a_receipt(captured, co
 
     def invoke(*args, **kwargs):
         started.set()
-        assert release.wait(3)
+        assert release.wait(30)
         return captured.invoke(*args, **kwargs)
 
     monkeypatch.setattr(client_routes, "_invoke_route", invoke)
     with ThreadPoolExecutor(2) as pool:
         first = pool.submit(call, config)
-        assert started.wait(2)
+        assert started.wait(30)
         second = pool.submit(call, config)
         time.sleep(0.05)
         release.set()
-        responses = [first.result(5), second.result(5)]
+        responses = [first.result(60), second.result(60)]
     assert sorted(response.cache.state for response in responses) == ["hit", "miss"]
     assert len(captured.calls) == count_attempts() == 1
     assert len({response.audit.attempts[0].archive.id for response in responses}) == 2
@@ -322,7 +349,7 @@ def test_caller_mutation_cannot_change_the_body_after_its_key_is_bound(captured,
 
     def invoke(route, observed, **kwargs):
         started.set()
-        assert release.wait(3)
+        assert release.wait(30)
         assert observed[0]["content"] == "test-original-input"
         assert route.model_parameters["temperature"] == "0.2"
         return captured.invoke(route, observed, **kwargs)
@@ -330,11 +357,11 @@ def test_caller_mutation_cannot_change_the_body_after_its_key_is_bound(captured,
     monkeypatch.setattr(client_routes, "_invoke_route", invoke)
     with ThreadPoolExecutor(1) as pool:
         future = pool.submit(complete, "onedev-agent", "code-edit", messages, cache=config)
-        assert started.wait(2)
+        assert started.wait(30)
         messages[0]["content"] = "test-mutated-input"
         parameters["temperature"] = "0.9"
         release.set()
-        assert future.result(5).cache.state == "miss"
+        assert future.result(60).cache.state == "miss"
     parameters["temperature"] = "0.2"
     original = [{"role": "user", "content": "test-original-input"}]
     assert complete("onedev-agent", "code-edit", original, cache=config).cache.state == "hit"
@@ -349,19 +376,19 @@ def test_cancelled_owner_releases_flight_and_waiter_can_complete(captured, confi
         calls.append("invoke")
         if len(calls) == 1:
             started.set()
-            assert release.wait(3)
+            assert release.wait(30)
             raise KeyboardInterrupt()
         return captured.invoke(*args, **kwargs)
 
     monkeypatch.setattr(client_routes, "_invoke_route", invoke)
     with ThreadPoolExecutor(2) as pool:
         first = pool.submit(call, config)
-        assert started.wait(2)
+        assert started.wait(30)
         second = pool.submit(call, config)
         release.set()
         with pytest.raises(KeyboardInterrupt):
-            first.result(5)
-        assert second.result(5).cache.state == "miss"
+            first.result(60)
+        assert second.result(60).cache.state == "miss"
     assert len(calls) == 2 and call(config).cache.state == "hit"
 
 
@@ -370,19 +397,19 @@ def test_wait_timeout_does_not_start_an_overlapping_inference(captured, config, 
 
     def invoke(*args, **kwargs):
         started.set()
-        assert release.wait(3)
+        assert release.wait(30)
         return captured.invoke(*args, **kwargs)
 
     monkeypatch.setattr(client_routes, "_invoke_route", invoke)
     with ThreadPoolExecutor(2) as pool:
         first = pool.submit(call, config)
-        assert started.wait(2)
+        assert started.wait(30)
         try:
             with pytest.raises(CompletionError, match="cache wait timed out"):
                 call(config, timeout_seconds=0.05)
         finally:
             release.set()
-        assert first.result(5).cache.state == "miss"
+        assert first.result(60).cache.state == "miss"
     assert len(captured.calls) == 1
 
 

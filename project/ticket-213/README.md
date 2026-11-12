@@ -33,8 +33,13 @@ This directory contains the minimal reviewed intent. Optional participant prose
 and raw command logs are not required delivery output.
 
 Initial S5 suite: 45 PASS. Affected routing, audit, generation, quality and HTTP
-regression: 230 PASS. Final cache/input-snapshot and native usage checks are
-running; their exact result and independent publication receipts remain external.
+regression: 230 PASS. Extended cache/native usage selection: 203 PASS, with an
+AF_UNIX path-length failure subsequently verified in all three process modes
+(3 PASS) using a short descriptor alias resolving inside this checkout. Final
+cache faults/concurrency: 10 PASS. Nonfunctional rendezvous guards allow slow
+archive commits; the short cache-wait assertion and effect counts are retained.
+SQLite contention never bypasses native singleflight to start a paid request.
+Exact logs and independent publication receipts remain external.
 semcod/search identified dockuri/procache tests and its existing SQLite flight
 implementation. Runtime reuse retains the immutable dependency pin already in
 this repository. Ruff, docs/report, log and managed governance checks pass.

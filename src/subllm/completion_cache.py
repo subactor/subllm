@@ -16,6 +16,7 @@ import hashlib
 import json
 import math
 import os
+import sqlite3
 import stat
 import time
 from contextlib import contextmanager, suppress
@@ -179,6 +180,21 @@ def _open_cache(config, deadline, check):
         raise OSError("completion cache requires a private regular file")
 
     class CheckedCache(SQLiteResponseCache):
+        def _connect(self):
+            # The pinned procache predates its WAL-open retry. Concurrent first
+            # opens may report SQLITE_BUSY without honoring SQLite busy_timeout.
+            while True:
+                try:
+                    return super()._connect()
+                except sqlite3.OperationalError as error:
+                    if not _busy(error):
+                        raise
+                    remaining = deadline - time.monotonic()
+                    if remaining <= 0:
+                        raise CompletionError("completion cache wait timed out",
+                                              diagnostic_code="SUBLLM-CACHE-TIMEOUT") from None
+                    time.sleep(min(0.01, remaining))
+
         def get(self, key, *, now=None):
             entry = super().get(key, now=now)
             return entry if entry is None or check(entry.value) else None
@@ -199,6 +215,13 @@ def _open_cache(config, deadline, check):
             return super()._flight_active(key)
 
     return CheckedCache(config.path, namespace="subllm-completion-v1")
+
+
+def _busy(error):
+    return isinstance(error, sqlite3.OperationalError) and (
+        (getattr(error, "sqlite_errorcode", 0) or 0) & 0xFF in {sqlite3.SQLITE_BUSY, sqlite3.SQLITE_LOCKED}
+        or str(error) in {"database is locked", "database table is locked"}
+    )
 
 
 def _candidate(payload, key):
@@ -312,6 +335,11 @@ def cached_complete(config, invoke, *, application, function, messages, response
             raise source_error from None
         if generated is not None:
             return replace(generated, cache=_receipt("unavailable", key))
+        if _busy(error):
+            # Another owner may hold the flight. Never turn lock contention
+            # before loading into an uncoordinated second provider invocation.
+            raise CompletionError("completion cache storage is busy",
+                                  diagnostic_code="SUBLLM-CACHE-BUSY") from None
         if hit or isinstance(error, CompletionError):
             raise
         return replace(invoke(routes, max(0, deadline - time.monotonic())),
