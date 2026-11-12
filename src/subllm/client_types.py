@@ -11,6 +11,7 @@ from .errors import (
     RESPONSE_QUALITY_CODE,
     CompletionError,
 )
+from .generation import GenerationUsage
 
 
 @dataclass(frozen=True)
@@ -32,6 +33,7 @@ class CompletionResponse:
     attempts: tuple[CompletionAttempt, ...] = ()
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
     audit: CompletionAudit | None = None
+    generation: GenerationUsage | None = None
 
 
 @dataclass(frozen=True)

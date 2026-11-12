@@ -11,7 +11,8 @@ from pathlib import Path
 from types import MappingProxyType
 from urllib.parse import urlsplit
 
-from .errors import InvalidPolicyError
+from .errors import CompletionError, InvalidPolicyError
+from .generation import token_limit
 from .policy import (
     APPLICATIONS,
     CATALOG_PROVIDER_DEFAULTS,
@@ -66,6 +67,8 @@ class ExecutionPolicyConfig:
     failure_threshold: int
     max_attempts: int
     uncredited_cooldown_seconds: float = 3600.0
+    max_output_tokens: int | None = None
+    max_total_output_tokens: int | None = None
 
 
 @dataclass(frozen=True)
@@ -253,6 +256,8 @@ def _execution_with_environment(
         failure_threshold=failure_threshold,
         max_attempts=execution.max_attempts,
         uncredited_cooldown_seconds=uncredited_cooldown,
+        max_output_tokens=execution.max_output_tokens,
+        max_total_output_tokens=execution.max_total_output_tokens,
     )
 
 
@@ -368,6 +373,15 @@ def _bounded_number(
     return value
 
 
+def _generation_limit(value, *, name, source):
+    if value is None:
+        return None
+    try:
+        return token_limit(value)
+    except CompletionError:
+        raise InvalidPolicyError(f"{name} must be a positive bounded integer in {source}") from None
+
+
 def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
     required = {
         "failover_enabled",
@@ -377,7 +391,7 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         "failure_threshold",
         "max_attempts",
     }
-    allowed = required | {"uncredited_cooldown_seconds"}
+    allowed = required | {"uncredited_cooldown_seconds", "max_output_tokens", "max_total_output_tokens"}
     if not isinstance(raw, dict) or not (required <= set(raw) <= allowed):
         raise InvalidPolicyError(f"invalid execution settings in {source}")
     enabled = raw["failover_enabled"]
@@ -434,6 +448,10 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         failure_threshold=failure_threshold,
         max_attempts=max_attempts,
         uncredited_cooldown_seconds=uncredited_cooldown,
+        max_output_tokens=_generation_limit(raw.get("max_output_tokens"), name="max_output_tokens", source=source),
+        max_total_output_tokens=_generation_limit(
+            raw.get("max_total_output_tokens"), name="max_total_output_tokens", source=source,
+        ),
     )
 
 
@@ -518,11 +536,15 @@ def _validate_custom_provider(name: str, raw: object, *, source: Path) -> Custom
         routes = ("all",)
 
     raw_parameters = raw.get("model_parameters", {})
-    if not isinstance(raw_parameters, dict) or set(raw_parameters) - {"reasoning_effort"}:
+    if not isinstance(raw_parameters, dict) or set(raw_parameters) - {"reasoning_effort", "max_tokens"}:
         raise InvalidPolicyError(
-            f"custom provider '{name}' model_parameters must contain only reasoning_effort in {source}"
+            f"custom provider '{name}' model_parameters must contain only reasoning_effort and max_tokens in {source}"
         )
     model_parameters: dict[str, str] = {}
+    if "max_tokens" in raw_parameters:
+        model_parameters["max_tokens"] = str(_generation_limit(
+            raw_parameters["max_tokens"], name="model_parameters.max_tokens", source=source,
+        ))
     if "reasoning_effort" in raw_parameters:
         reasoning_effort = raw_parameters["reasoning_effort"]
         if not isinstance(reasoning_effort, str) or reasoning_effort not in {"low", "medium", "high", "none"}:

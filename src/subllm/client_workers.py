@@ -157,8 +157,9 @@ def _complete_openai_compatible(
         "timeout_seconds": timeout_seconds,
     }
     if "max_tokens" in route.model_parameters:
-        with suppress(ValueError, TypeError):
-            worker_request["max_tokens"] = int(route.model_parameters["max_tokens"])
+        from .generation import token_limit
+
+        worker_request["max_tokens"] = token_limit(route.model_parameters["max_tokens"], legacy_string=True)
     result = _run_openai_worker(
         worker_request,
         timeout_seconds=timeout_seconds,

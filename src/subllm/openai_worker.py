@@ -11,13 +11,15 @@ from urllib.request import Request
 
 from .credential_env import credential_is_valid
 from .errors import CompletionError
+from .generation import token_limit
 from .native_http import DEFAULT_TIMEOUT_SECONDS, decode_response_json, normalize_timeout
 from .native_http import open_request as urlopen
 from .policy import MODELS, PROVIDERS
 from .policy_config import load_policy_config
 
+_RUNTIME_POLICY = None
 with suppress(Exception):
-    load_policy_config()
+    _RUNTIME_POLICY = load_policy_config()
 
 HTTP_SAFETY_PROFILE = "bounded-no-proxy-no-redirect-v1"
 MAX_OPENAI_WORKER_REQUEST_BYTES = 4_000_000
@@ -94,6 +96,27 @@ def _request(source: Any) -> Mapping[str, Any]:
             raise CompletionError("OpenAI worker extra headers are not safe")
     if source.get("response_format") is not None and not isinstance(source["response_format"], Mapping):
         raise CompletionError("OpenAI worker response_format must be an object or null")
+    # The one-shot worker reads the selected policy at process startup, together
+    # with its provider catalogue. Reloading here can clear registered entries.
+    runtime = _RUNTIME_POLICY
+    if runtime is None:
+        raise CompletionError("OpenAI worker policy is unavailable")
+    ceilings = [value for value in (runtime.execution.max_output_tokens,
+                                   runtime.execution.max_total_output_tokens) if value is not None]
+    custom = runtime.custom_providers.get(provider)
+    if custom is not None and "max_tokens" in dict(custom.model_parameters):
+        ceilings.append(token_limit(dict(custom.model_parameters)["max_tokens"], legacy_string=True))
+    requested = []
+    if "max_tokens" in source:
+        requested.append(token_limit(source["max_tokens"]))
+    for parameters in (source["model_parameters"], source["request_fields"]):
+        for name in ("max_tokens", "max_completion_tokens"):
+            if name in parameters:
+                requested.append(token_limit(parameters[name], legacy_string=True))
+    if ceilings and requested and max(requested) > min(ceilings):
+        raise CompletionError("OpenAI worker generation limit exceeds operator policy")
+    if requested or ceilings:
+        source = {**source, "max_tokens": min(requested + ceilings)}
     return source
 
 
@@ -117,11 +140,14 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         **dict(source["model_parameters"]),
         **dict(source["request_fields"]),
     }
-    if "max_tokens" in source:
-        body["max_tokens"] = source["max_tokens"]
-    elif "max_tokens" in body:
-        with suppress(ValueError, TypeError):
-            body["max_tokens"] = int(body["max_tokens"])
+    limit = source.get("max_tokens", body.get("max_tokens"))
+    if limit is not None:
+        limit = token_limit(limit, legacy_string=True)
+        body.pop("max_tokens", None)
+        body.pop("max_completion_tokens", None)
+        if "n" in body and (type(body["n"]) is not int or body["n"] != 1):
+            raise CompletionError("bounded generation requires a single completion")
+        body["max_completion_tokens" if source["provider"] == "codex" else "max_tokens"] = limit
     if source["response_format"] is not None:
         body["response_format"] = dict(source["response_format"])
     def finish(result, response=None):
