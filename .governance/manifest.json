@@ -70,7 +70,6 @@
           "scripts/runtime.sh",
           "wellmanifest_governance.py",
           "worktree-guard.yaml",
-          "pyproject.toml",
           "package.json",
           "scripts/**",
           ".cursor/**",
