@@ -1,0 +1,93 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-201",
+  "summary": "Durable caller-bound business cost observation journal (PLF22321 slice1)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-201/**",
+    "src/subllm/kpi_usage.py",
+    "src/subllm/kpi_ledger.py",
+    "tests/test_kpi_usage.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "517ab5a0fce31d88118fe2f3f484ba0c879cfa3d",
+    "targetBranch": "main",
+    "outcome": "PLF-22321 slice1: durable trusted case grants, cost admission and actual-attempt accounting replay with pinned pricing/FX, unknown fee reconciliation and atomic canonical event exports. Gateway wiring is the explicitly dependent slice2.",
+    "nonGoals": [
+      "No production/customer activation, routing or model-priority change, default price, implicit FX, new dependency or provider request replay.",
+      "Do not modify managed governance or native advisory lease projection; newer allocator/controller compatibility remains PLF-22311.",
+      "Gateway transport/client attempt seam excluded and preserved in external snapshot for dependent slice2; no competing implementation."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 35,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "One stdlib component persists grants, per-request observation admission, canonical events and pricing provenance in SQLite. A ContextVar carries the authenticated server binding into the existing actual-attempt observer seam. The gateway opts in through trusted composition, and reuses KpiCostLedger for business events.",
+      "components": [
+        {
+          "name": "gateway-business-cost",
+          "paths": [
+            "src/subllm/kpi_usage.py",
+            "src/subllm/kpi_ledger.py",
+            "tests/test_kpi_usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "GatewayCostObserver trusted journal API",
+        "KpiCostLedger.close_case_cost optional event_id"
+      ],
+      "dataChanges": [
+        {
+          "kind": "component-local-state",
+          "component": "gateway-business-cost",
+          "description": "Private observation/grant journal and atomically exported canonical cost stream; no existing billing/history schema migration."
+        }
+      ],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the bounded source change through protected publication."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest tests/test_kpi_usage.py tests/test_kpi_ledger.py"
+        ],
+        "evidence": "durable replay/restart, FX, unknown, failure, concurrency and export tests"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh --base origin/main",
+          "External Heyasa consumer validation",
+          "Protected native CI and independent Validator merge"
+        ],
+        "evidence": "exact-head test and terminal merge receipts"
+      }
+    ]
+  }
+}

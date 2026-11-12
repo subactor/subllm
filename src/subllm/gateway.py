@@ -32,6 +32,7 @@ from .gateway_diagnostics import diagnostic
 from .gateway_mcp import MCPBridge
 from .interaction_context import ACTIVE_ARCHIVE
 from .interaction_store import InteractionStore, utc_now
+from .kpi_usage import CostAdmissionError, KpiLedgerError
 from .policy import MODELS, ROUTES
 from .proxy import _complete_model_direct
 from .quality import validate_response
@@ -216,7 +217,7 @@ class GatewayGuard:
         await self.app(scope, inbound, headers)
 
 
-def create_app(config, store=None):
+def create_app(config, store=None, *, cost_observer=None):
     config = validate_config(config)
     legacy_usage_database = config.get("usage_database")
     store = store or InteractionStore(
@@ -382,7 +383,8 @@ def create_app(config, store=None):
         except (ValueError, UnicodeDecodeError):
             return JSONResponse({"error": "Invalid request or unsupported generation parameter"}, 400)
 
-        return await execute_completion(caller, payload, model, adaptive_alias=adaptive_alias)
+        return await execute_completion(caller, payload, model, adaptive_alias=adaptive_alias,
+                                        cost_reference=request.headers.get("X-SubLLM-Business-Case"))
 
     async def compile_structured(request):
         caller = request.state.principal
@@ -421,9 +423,22 @@ def create_app(config, store=None):
                 "name": body["schema_name"], "strict": True, "schema": body["schema"],
             }},
         }
-        return await execute_completion(caller, payload, model, compile_context=(body, validator))
+        return await execute_completion(caller, payload, model, compile_context=(body, validator),
+                                        cost_reference=request.headers.get("X-SubLLM-Business-Case"))
 
-    async def execute_completion(caller, payload, model, *, adaptive_alias=False, compile_context=None):
+    async def execute_completion(caller, payload, model, *, adaptive_alias=False, compile_context=None,
+                                 cost_reference=None):
+        binding = None
+        if cost_reference is not None:
+            try:
+                if cost_observer is None:
+                    raise KpiLedgerError("cost observation not configured")
+                binding = cost_observer.authorize(caller, cost_reference)
+            except KpiLedgerError:
+                return JSONResponse({"error": "Business case reference not granted"}, 403)
+            except CostAdmissionError:
+                return JSONResponse({"error": "Cost journal unavailable; upstream call was not started"}, 503)
+
         def invoke():
             try:
                 archived_request = compile_context[0] if compile_context else payload
@@ -431,6 +446,8 @@ def create_app(config, store=None):
                 bus.record_gateway_exchange(record)
             except Exception:
                 raise ArchiveAdmissionError from None
+            cost_capture = cost_observer.begin(binding, record["id"], model) if binding else None
+            cost_recorded = None
             started = time.monotonic()
             capture = ACTIVE_ARCHIVE.set((store, record))
             try:
@@ -511,6 +528,8 @@ def create_app(config, store=None):
                     LOG.error("SUBLLM-LLM-EXECUTION: unexpected upstream failure")
             finally:
                 ACTIVE_ARCHIVE.reset(capture)
+                if cost_capture is not None:
+                    cost_recorded = cost_observer.finish(cost_capture)
             elapsed = int((time.monotonic() - started) * 1000)
             if info:
                 info["durationMs"] = elapsed
@@ -520,10 +539,12 @@ def create_app(config, store=None):
             except Exception:
                 archived = False
                 LOG.error("SUBLLM-ARCHIVE-WRITE: result returned; archive entry remains pending")
-            return result, status, record, archived
+            return result, status, record, archived, cost_recorded
 
         try:
-            result, status, record, archived = await asyncio.to_thread(invoke)
+            result, status, record, archived, cost_recorded = await asyncio.to_thread(invoke)
+        except CostAdmissionError:
+            return JSONResponse({"error": "Cost journal unavailable; upstream call was not started"}, 503)
         except ArchiveAdmissionError:
             return JSONResponse({"error": "Archive unavailable; upstream call was not started"}, 503)
         except Exception:
@@ -532,6 +553,8 @@ def create_app(config, store=None):
             "X-SubLLM-Interaction": f"{record['day']}/{record['id']}",
             "X-SubLLM-Archive-Status": "complete" if archived else "pending",
         }
+        if cost_recorded is not None:
+            headers["X-SubLLM-Cost-Observation"] = "recorded" if cost_recorded else "pending"
         if payload.get("stream") and status == 200:
             # Compatibility stream after the routed completion; no false claim of live upstream tokens.
             chunk = {k: v for k, v in result.items() if k != "choices"}

@@ -170,13 +170,18 @@ def _complete_route(
             diagnostic = getattr(exc, "diagnostic_code", None) or "SUBLLM-ATTEMPT-FAILED"
         raise
     finally:
-        finish_attempt(archive, route, response, attempt_error, round((time.monotonic() - started) * 1000))
+        from .kpi_usage import record_provider_attempt
+
+        duration_ms = round((time.monotonic() - started) * 1000)
+        status = "success" if response is not None and attempt_error is None else "error"
+        usage = response.usage if response is not None else {}
+        record_provider_attempt(provider=route.provider, model=route.wire_model,
+                                status=status, duration_ms=duration_ms, usage=usage)
+        finish_attempt(archive, route, response, attempt_error, duration_ms)
         record_attempt(request_id=request_id or uuid4().hex,
                        application=route.application, function=route.function,
                        provider=route.provider, model=route.wire_model,
-                       status="success" if response is not None and attempt_error is None else "error",
-                       diagnostic_code=diagnostic, duration_ms=round((time.monotonic() - started) * 1000),
-                       usage=response.usage if response is not None else {})
+                       status=status, diagnostic_code=diagnostic, duration_ms=duration_ms, usage=usage)
 
 def _requested_model_routes(routes: list[ResolvedRoute], model: str | None) -> list[ResolvedRoute]:
     if model is None:

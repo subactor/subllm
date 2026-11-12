@@ -463,9 +463,12 @@ class KpiCostLedger:
         timestamp: str | None = None,
         allow_empty_explicit_zero: bool = False,
         strict: bool = True,
+        event_id: str | None = None,
     ) -> dict[str, Any] | None:
         """Emit `cost.measurement_closed` only when all recorded attempts have known fees."""
         _require_id(case_id, "case_id")
+        if event_id is not None:
+            _require_id(event_id, "event_id")
         stamp = _require_timestamp(timestamp)
         with self._lock:
             unknown = sorted(self._unknown_charges_by_case.get(case_id, set()))
@@ -484,7 +487,7 @@ class KpiCostLedger:
                 )
             self._closed_cases.add(case_id)
             closed_event = self._envelope(
-                event_id=f"cost-closed:{case_id}",
+                event_id=event_id if event_id is not None else f"cost-closed:{case_id}",
                 case_id=case_id,
                 kind="cost.measurement_closed",
                 timestamp=stamp,
