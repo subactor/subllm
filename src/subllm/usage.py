@@ -85,6 +85,9 @@ def record_attempt(
     strict: bool = False,
 ) -> bool:
     """Logging failure must never retry a paid request or replace its result."""
+    from .audit import JournalReference, observe_journal
+
+    identity = (request_id, application, function, provider, model)
     try:
         from .interaction_context import _take_usage_archive_reference
 
@@ -135,8 +138,16 @@ def record_attempt(
                     reference["day"] if reference else None,
                 ),
             )
-        return cursor.rowcount == 1
+        inserted = cursor.rowcount == 1
+        if inserted:
+            observe_journal(identity, "stored", JournalReference(
+                str(cursor.lastrowid), hashlib.sha256(request_id.encode()).hexdigest()[:24],
+            ))
+        else:
+            observe_journal(identity, "unavailable")
+        return inserted
     except (OSError, sqlite3.Error, ValueError, TypeError) as exc:
+        observe_journal(identity, "unavailable")
         if strict:
             raise PoaContractError("USAGE-STORAGE-001", "Usage history is temporarily unavailable") from exc
         # Fixed message only: database errors can contain sensitive paths or SQL values.

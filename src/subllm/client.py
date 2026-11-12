@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from .audit import ArchiveReference, AuditAttempt, CompletionAudit, JournalReference
 from .client_cli import completion_main
 from .client_code_edit import code_edit_main, execute_code_edit
 from .client_routes import complete
@@ -10,6 +11,7 @@ from .client_types import (
 )
 
 __all__ = [
+    "ArchiveReference", "AuditAttempt", "CompletionAudit", "JournalReference",
     "CodeEditResponse", "CompletionAttempt", "CompletionResponse", "code_edit_main", "complete",
     "completion_main", "execute_code_edit",
 ]

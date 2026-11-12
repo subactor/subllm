@@ -1,0 +1,58 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-211",
+  "summary": "Return native completion audit receipts and persistence states (S4)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-211/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "src/subllm/audit.py",
+    "src/subllm/client.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_types.py",
+    "src/subllm/interaction_context.py",
+    "src/subllm/interaction_store.py",
+    "src/subllm/usage.py",
+    "tests/test_completion_audit.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "e98c74ed0ea98b2e5f9918112dcb0bf8b1df3a98",
+    "targetBranch": "main",
+    "outcome": "Return an immutable, identity-bound audit receipt from public complete(), observing the existing archive/journal commits for every actual attempt without a second logger or provider retry.",
+    "nonGoals": ["No provider, policy, dependency, consumer lock or release mutation.", "No implementation claims for S3 or S5-S7."],
+    "complexity": "M",
+    "estimatedMinutes": 60,
+    "budgets": {"maxImplementationFiles": 9, "maxAffectedComponents": 1, "maxPublicInterfaceChanges": 1, "maxRuntimeDependencies": 0},
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse native interaction_context, InteractionStore and usage.record_attempt. Context-local observation collects only acknowledged archive finishes and committed journal row IDs; frozen dataclasses expose states and references without payloads, secrets or filesystem paths.",
+      "components": [{"name": "completion-audit", "paths": ["src/subllm/audit.py", "src/subllm/client_types.py", "src/subllm/client_routes.py", "src/subllm/client.py", "src/subllm/__init__.py", "src/subllm/interaction_context.py", "src/subllm/interaction_store.py", "src/subllm/usage.py", "tests/test_completion_audit.py"]}],
+      "responsibilityChanges": false,
+      "interfaceChanges": ["Optional additive CompletionResponse.audit with immutable per-attempt journal/archive references and stored/unavailable/disabled states."],
+      "dataChanges": [],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Revert the additive audit observation and response field; existing journal/archive formats remain compatible."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {"criterion": "AC-01", "commands": ["Focused audit tests with actual SQLite/archive readback"], "evidence": "Receipts reference only committed rows and completed archive documents; public fields are immutable and exclude payloads/paths."},
+      {"criterion": "AC-02", "commands": ["Archive/journal fault tests and missing final row tests"], "evidence": "Storage failures preserve the provider result, correct unavailable/disabled state and exactly one invocation per planned attempt."},
+      {"criterion": "AC-03", "commands": ["Fallback, nested and concurrent request tests"], "evidence": "All attempts share the request correlation without crossing request references."},
+      {"criterion": "AC-04", "commands": ["Affected SDK/archive, usage, client and native transport regression tests", "Ruff", "project/governance-check.sh", "Protected local OneDev and independent exact-head Validator"], "evidence": "Preserved compatibility and trusted merge of the material S4 implementation."}
+    ]
+  }
+}
