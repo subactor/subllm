@@ -12,6 +12,7 @@ from contextlib import contextmanager
 from dataclasses import replace
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from io import BytesIO
+from pathlib import Path
 from urllib.error import HTTPError
 
 import pytest
@@ -260,3 +261,38 @@ def test_redirect_records_one_native_attempt_and_one_usage_entry(
     assert first == ["POST"] and redirected == [] and begins == [1]
     summary = query_usage({})["summary"]
     assert summary["attempts"] == 1 and summary["requests"] == 1
+
+
+def test_public_complete_persists_a_real_loopback_response(monkeypatch, tmp_path):
+    from datetime import UTC, datetime
+
+    from subllm import complete, interaction_store
+    from subllm.usage import query_usage
+
+    monkeypatch.setenv("SUBLLM_ARCHIVE_DIR", str(tmp_path / "archive"))
+    monkeypatch.setattr(interaction_store, "_DEFAULT_STORE", None)
+    payload = json.dumps({"choices": [{"message": {"content": "fixture-ok"}, "finish_reason": "stop"}],
+                          "usage": {"prompt_tokens": 3, "completion_tokens": 2}}).encode()
+    with serve(payload=payload) as (base, requests):
+        # Preserve the real policy schema; only an isolated custom route is enabled.
+        policy = (Path(__file__).resolve().parents[1] / "subllm.toml").read_text()
+        policy = policy.replace("enabled = true", "enabled = false")
+        policy += (f'\n[custom_providers.transport_fixture]\napi_base = "{base}/v1"\n'
+                   'default_model = "fixture-model"\npriority = 1\nenabled = true\n'
+                   'routes = ["onedev-agent/code-edit"]\n')
+        policy_file = tmp_path / "subllm.toml"
+        policy_file.write_text(policy)
+        monkeypatch.setenv("SUBLLM_POLICY_FILE", str(policy_file))
+        response = complete("onedev-agent", "code-edit", [{"role": "user", "content": "fixture"}],
+                            request_id="public-loopback-fixture", timeout_seconds=10, cwd=tmp_path)
+    assert requests == ["POST"]
+    assert response.content == "fixture-ok" and response.provider == "transport_fixture"
+    assert response.usage["prompt_tokens"] == 3 and response.usage["completion_tokens"] == 2
+    summary = query_usage({})["summary"]
+    assert summary["attempts"] == 1 and summary["requests"] == 1
+    store = interaction_store.get_default_interaction_store()
+    records = store.query(datetime.now(UTC).date().isoformat(), include_payloads=True)
+    assert len(records) == 1
+    saved = store.get_interaction(records[0]["id"], records[0]["day"])
+    assert saved["correlation_id"] == "public-loopback-fixture"
+    assert saved["response"]["content"] == "fixture-ok"

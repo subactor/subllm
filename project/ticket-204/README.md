@@ -25,4 +25,6 @@ S2 release, S3 limits, S4 audit receipt, S5 cache, S6 streaming and S7 snapshot/
 
 ## Verification checkpoint
 
-87 focused transport/native tests PASS; Ruff PASS; managed governance PASS. Consumer suite: 91 passed / 3 failed; the Cursor descendant timing case subsequently passed isolated and on baseline. Two deterministic legacy mock incompatibilities remain in the reserved tests/test_client.py. The proposed minimal fixture patch passes both tests in an isolated copy. AC-03/04 remain open; no release or merge is claimed.
+87 focused transport/native tests PASS; Ruff PASS; managed governance PASS. The public complete() loopback/archive test also passes, exercising the real child worker and stored response. Wheel/sdist were built from 8e0ca7720f8789f5add793be164468f925b9ca91; clean offline installs, pip check and all 87 packaged transport tests pass on Python 3.11 and 3.12. This candidate is not a release.
+
+Consumer suite: 91 passed / 3 failed; the Cursor descendant timing case subsequently passed isolated and on baseline. Two deterministic legacy mock incompatibilities remain in the reserved tests/test_client.py. The proposed minimal fixture patch passes both tests in an isolated copy. AC-03/04 remain open; no release or merge is claimed. Upstream tracking: #208; migration/release: #20.
