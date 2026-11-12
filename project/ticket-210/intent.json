@@ -1,0 +1,80 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-210",
+  "summary": "Record qualified transport and remaining release prerequisites",
+  "workstream": "integration",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-210/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/analysis/subllm-integration-tickets.md",
+    "docs/analysis/subllm-integration-tickets.report.json",
+    "docs/information/subllm-api-generations.md"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "986a99b58ad19152c1fdad76c7eed3711386e754",
+    "targetBranch": "main",
+    "outcome": "Refresh the canonical API migration and S1-S7 reports with the independently merged transport, qualified final artifacts and observed PyPI dependency prerequisite.",
+    "nonGoals": [
+      "No runtime, dependency, operator policy or managed-standard mutation.",
+      "No claim of PyPI publication or implementation of the S3-S7 backlog."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Update the existing indexed documentation from exact merged-source, trusted workflow and offline installed-wheel receipts; preserve the existing publication gates.",
+      "components": [
+        {
+          "name": "integration-documentation",
+          "paths": [
+            "docs/analysis/subllm-integration-tickets.md",
+            "docs/analysis/subllm-integration-tickets.report.json",
+            "docs/information/subllm-api-generations.md"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": { "impact": "none", "states": [], "evidence": [] },
+      "rollback": "Revert the documentation updates and required Report sidecar; preserve merged runtime and existing ownership."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": ["Read back PRs 216, 219, 220 and trusted workflow run 43282789586"],
+        "evidence": "Exact merged source and independent CI receipts."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": ["Compare qualified-distributions hashes, final offline matrix and PyPI index preflight"],
+        "evidence": "Source 986a99b, 90 tests per interpreter, publication disabled and missing procache index entry."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": ["scripts/check-docs-report.py --base 986a99b58ad19152c1fdad76c7eed3711386e754", "Pinned documentation checker", "project/governance-check.sh", "Protected exact-head Validator and merge"],
+        "evidence": "Canonical documentation metadata and protected delivery receipts."
+      }
+    ]
+  }
+}
