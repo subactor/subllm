@@ -1,0 +1,80 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-203",
+  "summary": "Make packaging workstream ownership unambiguous",
+  "workstream": "governance",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-203/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    ".governance/manifest.json"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "5f9d2ba9ba30bd4d9d20f9dba372163d1c852397",
+    "targetBranch": "main",
+    "outcome": "PLF-22342 prerequisite for22340: make packaging ownership unambiguous before whole published standard adoption.",
+    "nonGoals": [
+      "No managed base/hash or adoption change.",
+      "No packaging, product source, user resolver.py, native202 or existing lease edits."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 15,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Remove the duplicate governance registry entry for pyproject.toml while retaining its existing integration owner. This is a target-owned configuration correction; no component responsibility or persistent data moves. Managed projection remains unchanged.",
+      "components": [
+        {
+          "name": "workstream-ownership",
+          "paths": [
+            ".governance/manifest.json"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of single target-owned extension entry."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python .governance/work_continuity.py verify-pin --root .",
+          "python .governance/governance_check.py --root . --manifest .governance/manifest.json --lock .governance/manifest.lock.json --base origin/main"
+        ],
+        "evidence": "Unchanged immutable managed pin and one packaging owner."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Protected OneDev complete native profile; independent Validator review and merge"
+        ],
+        "evidence": "Exact current-base/head protected delivery, no waived gates."
+      }
+    ]
+  }
+}
