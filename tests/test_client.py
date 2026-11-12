@@ -121,7 +121,7 @@ def test_completion_ignores_another_clients_cooldown(monkeypatch, tmp_path):
     monkeypatch.setattr(client_routes, "_complete_route", lambda route, messages, **kwargs:
                         CompletionResponse("ok", route.provider, route.wire_model))
     response = complete("todo2code", "semantic", [{"role": "user", "content": "canary"}],
-                        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
                                  "SUBLLM_HEALTH_STATE_FILE": str(isolated)})
     assert response.provider == "zai"
     assert global_path.read_bytes() == before
@@ -143,7 +143,7 @@ def test_completion_failover_updates_only_the_callers_health(monkeypatch, tmp_pa
 
     monkeypatch.setattr(client_routes, "_complete_route", invoke)
     response = complete("todo2code", "semantic", [{"role": "user", "content": "canary"}],
-                        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
                                  "SUBLLM_HEALTH_STATE_FILE": str(isolated)})
     assert response.provider == "openrouter" and calls == ["zai", "openrouter"]
     assert not global_path.exists()
@@ -217,7 +217,7 @@ def test_complete_sends_vision_image_parts_on_nexu_route(monkeypatch) -> None:
         "autogrammar-nexu",
         "vision",
         [{"role": "user", "content": [image, {"type": "text", "text": "label this"}]}],
-        environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+        environ={"OPENROUTER_API_KEY": "test-sk-or-v1-testkey"},
     )
 
     assert result.content == "a button"
@@ -244,7 +244,7 @@ def test_complete_rejects_images_on_text_routes() -> None:
                     ],
                 }
             ],
-            environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+            environ={"OPENROUTER_API_KEY": "test-sk-or-v1-testkey"},
         )
 
 
@@ -254,7 +254,7 @@ def test_complete_rejects_vision_route_without_image() -> None:
             "autogrammar-nexu",
             "vision",
             [{"role": "user", "content": "no image"}],
-            environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+            environ={"OPENROUTER_API_KEY": "test-sk-or-v1-testkey"},
         )
 
 
@@ -271,7 +271,7 @@ def test_complete_rejects_file_image_urls() -> None:
                     ],
                 }
             ],
-            environ={"OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+            environ={"OPENROUTER_API_KEY": "test-sk-or-v1-testkey"},
         )
 
 
@@ -291,7 +291,7 @@ def test_complete_dispatches_koru_cursor_route(monkeypatch, tmp_path, enabled_cu
         "koru-agent",
         "planning-assistant",
         [{"role": "user", "content": "x"}],
-        environ={"CURSOR_API_KEY": "cursor_test-not-a-secret"},
+        environ={"CURSOR_API_KEY": "test-cursor_test-not-a-secret"},
         cwd=tmp_path,
     )
 
@@ -379,7 +379,7 @@ def test_complete_cursor_uses_tool_free_sdk_with_caller_directory(monkeypatch, t
         "koru-agent",
         "planning-assistant",
         [{"role": "system", "content": "JSON only"}, {"role": "user", "content": "plan"}],
-        environ={"CURSOR_API_KEY": "cursor_test-not-a-secret"},
+        environ={"CURSOR_API_KEY": "test-cursor_test-not-a-secret"},
         cwd=tmp_path,
     )
 
@@ -441,7 +441,7 @@ def test_cursor_worker_timeout_reaps_real_descendant(monkeypatch, tmp_path) -> N
             {
                 "schema": "subllm.cursor-worker-request/v1",
                 "model": "gpt-5.6-sol",
-                "api_key": "cursor_test-not-a-secret",
+                "api_key": "test-cursor_test-not-a-secret",
                 "cwd": str(tmp_path),
                 "name": "subllm-timeout-test",
                 "prompt": "wait",
@@ -561,7 +561,7 @@ def test_complete_fails_over_after_provider_timeout_and_reports_attempts(monkeyp
         timeout_seconds=20,
         environ={
             "ZAI_API_KEY": "id.secret",
-            "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+            "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
         },
     )
 
@@ -604,7 +604,7 @@ def test_complete_codes_rate_limit_before_successful_failover(monkeypatch) -> No
         timeout_seconds=20,
         environ={
             "ZAI_API_KEY": "id.secret",
-            "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+            "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
         },
     )
 
@@ -634,7 +634,7 @@ def test_complete_caches_uncredited_account_and_skips_on_next_request(monkeypatc
     monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     env = {
         "ZAI_API_KEY": "id.secret",
-        "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+        "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
     }
 
     # First request: zai returns 402 (payment required / insufficient credits)
@@ -694,7 +694,7 @@ def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
             timeout_seconds=20,
             environ={
                 "ZAI_API_KEY": "id.secret",
-                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
             },
         )
 
@@ -711,7 +711,7 @@ def test_complete_codes_exhausted_bounded_provider_chain(monkeypatch) -> None:
             timeout_seconds=20,
             environ={
                 "ZAI_API_KEY": "id.secret",
-                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
             },
         )
 
@@ -740,7 +740,7 @@ def test_complete_prefers_healthy_provider_during_cooldown(monkeypatch) -> None:
     monkeypatch.setattr(client_workers, "_run_openai_worker", run_worker)
     credentials = {
         "ZAI_API_KEY": "id.secret",
-        "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+        "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
     }
     complete(
         "todo2code",
@@ -785,7 +785,7 @@ def test_complete_does_not_replay_non_retryable_bad_request(monkeypatch) -> None
             [{"role": "user", "content": "bad"}],
             environ={
                 "ZAI_API_KEY": "id.secret",
-                "OPENROUTER_API_KEY": "sk-or-v1-testkey",
+                "OPENROUTER_API_KEY": "test-sk-or-v1-testkey",
             },
         )
 
@@ -973,7 +973,8 @@ def test_cursor_model_run_failure_tries_next_registered_cursor_model(monkeypatch
 
     monkeypatch.setattr(client_workers, "_run_cursor_worker", run_worker)
     result = complete("onedev-agent", "code-context", [{"role": "user", "content": "Select evidence"}],
-                      environ={"CURSOR_API_KEY": "key_test-value-for-unit-tests", "SUBLLM_PROVIDER_ORDER": "cursor"})
+                      environ={"CURSOR_API_KEY": "test-key_test-value-for-unit-tests",
+                               "SUBLLM_PROVIDER_ORDER": "cursor"})
     assert calls == ["gpt-5.6-sol", "grok-4.6"]
     assert result.provider == "cursor" and result.model == "grok-4.6"
     assert [a.outcome for a in result.attempts] == ["model_unavailable", "success"]
@@ -1001,7 +1002,7 @@ def test_payment_required_uses_worker_classification_and_next_allowed_provider(m
 
     providers = []
 
-    def reject_payment(request):
+    def reject_payment(request, **_kwargs):
         raise HTTPError(request.full_url, 402, "payment required", {}, None)
 
     def run_worker(request, **_kwargs):
@@ -1016,7 +1017,7 @@ def test_payment_required_uses_worker_classification_and_next_allowed_provider(m
         "onedev-agent", "code-edit", [{"role": "user", "content": "repair"}],
         timeout_seconds=20,
         environ={"SUBLLM_PROVIDER_ORDER": "openrouter,zai",
-                 "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+                 "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "test-sk-or-v1-testkey"},
     )
     assert result.provider == "zai"
     assert providers == ["openrouter", "zai"]
@@ -1037,7 +1038,7 @@ def test_truncated_reasoning_fails_over_to_next_provider(monkeypatch) -> None:
         def __exit__(self, *_args):
             return None
 
-        def read(self) -> bytes:
+        def read(self, size: int = -1) -> bytes:
             return json.dumps({
                 "choices": [{
                     "message": {
@@ -1064,7 +1065,7 @@ def test_truncated_reasoning_fails_over_to_next_provider(monkeypatch) -> None:
         "onedev-agent", "code-edit", [{"role": "user", "content": "repair"}],
         timeout_seconds=20,
         environ={"SUBLLM_PROVIDER_ORDER": "openrouter,zai",
-                 "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey"},
+                 "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "test-sk-or-v1-testkey"},
     )
     assert result.provider == "zai"
     assert providers == ["openrouter", "zai"]
