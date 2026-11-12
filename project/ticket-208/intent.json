@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-208",
+  "summary": "Review exact documentation adoption lock compatibility",
+  "workstream": "governance",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-208/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "scripts/check-docs-report.py",
+    "scripts/tests/test_docs_adoption.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "6e2a3c62d0f2cc5a0e2ccf5eee442f1588406d02",
+    "targetBranch": "main",
+    "outcome": "PLF-22349: exact lock compatibility for current0.20.38 and pending published0.20.147 adoption; preserve Docs byte inventory admission and unblock frozen214.",
+    "nonGoals": [
+      "No arbitrary candidate-metadata trust, managed lock/hash changes or skipped tests.",
+      "No changes to frozen205, source202, other writers, primary resolver or existing lease."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 15,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Target-owned Docs adapter accepts only two exact reviewed lock byte digests. Retain every managed-file byte and no-symlink check. Independent Validator must review the added trust input before it reaches the target. Unknown lock metadata with intact inventory is a rejection regression.",
+      "components": [
+        {
+          "name": "docs-adoption-adapter",
+          "paths": [
+            "scripts/check-docs-report.py",
+            "scripts/tests/test_docs_adoption.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of added exact pin; old adoption remains supported."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest scripts/tests/test_docs_adoption.py -q",
+          "./project/governance-check.sh --base origin/main"
+        ],
+        "evidence": "Current old adoption, modified artifacts, unknown/forged locks and identical symlink refusal."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Protected full native CI and independent exact-head Validator merge",
+          "Requalify frozen214 against changed main to validate new adoption"
+        ],
+        "evidence": "No gate waiver; old/new actual packages verified in their own protected merge results."
+      }
+    ]
+  }
+}
