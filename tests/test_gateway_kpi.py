@@ -11,19 +11,19 @@ from subllm.kpi_ledger import DeploymentContext, IncompleteCostMeasurementError
 from subllm.kpi_usage import ACTIVE_COST, GatewayCostObserver, TokenTariff
 from subllm.types import ResolvedRoute
 
-TOKEN = "test-cost-observer-credential-" + "a" * 32
-OTHER = "test-cost-observer-credential-" + "b" * 32
+CLIENT_CREDENTIAL = "test-cost-observer-credential-" + "a" * 32
+OTHER_CREDENTIAL = "test-cost-observer-credential-" + "b" * 32
 PAYLOAD = {"model": "heyasa/command", "messages": [{"role": "user", "content": "private prompt"}]}
 
 
 @pytest.fixture
 def setup(tmp_path, monkeypatch):
-    monkeypatch.setenv("COST_TOKEN", TOKEN)
-    monkeypatch.setenv("COST_OTHER", OTHER)
+    monkeypatch.setenv("TEST_COST_CLIENT_CREDENTIAL", CLIENT_CREDENTIAL)
+    monkeypatch.setenv("TEST_COST_OTHER_CREDENTIAL", OTHER_CREDENTIAL)
     config = {"allowed_hosts": ["testserver"], "archive_directory": str(tmp_path / "archive"),
-              "clients": {"alice": {"token_env": "COST_TOKEN", "llm": True, "mcp": [],
+              "clients": {"alice": {"token_env": "TEST_COST_CLIENT_CREDENTIAL", "llm": True, "mcp": [],
                                     "compile_route": "platform/interactive"},
-                          "bob": {"token_env": "COST_OTHER", "llm": True, "mcp": []}}}
+                          "bob": {"token_env": "TEST_COST_OTHER_CREDENTIAL", "llm": True, "mcp": []}}}
     context = DeploymentContext("deployment", "workflow", "1", "cohort", stage="evaluation", synthetic=True)
     tariff = TokenTariff("1", "2", "fixture-tariff")
     observer = GatewayCostObserver(tmp_path / "cost" / "journal.sqlite", {"alice": context, "bob": context},
@@ -39,8 +39,8 @@ def setup(tmp_path, monkeypatch):
     return config, InteractionStore(tmp_path / "archive"), observer
 
 
-def headers(token=TOKEN, reference="reference-a"):
-    return {"Authorization": "Bearer " + token, "X-SubLLM-Business-Case": reference}
+def headers(credential=CLIENT_CREDENTIAL, reference="reference-a"):
+    return {"Authorization": "Bearer " + credential, "X-SubLLM-Business-Case": reference}
 
 
 def response(route):
@@ -77,14 +77,14 @@ def test_real_gateway_failover_records_every_actual_attempt_and_preserves_unknow
     assert not observer.events("bob", "reference-b")
 
 
-@pytest.mark.parametrize("token,reference,expected", [(OTHER, "reference-a", 403),
-                                                       (TOKEN, "reference-b", 403),
-                                                       (TOKEN, "", 403), ("invalid", "reference-a", 401)])
-def test_auth_and_case_grant_fail_before_any_provider(setup, monkeypatch, token, reference, expected):
+@pytest.mark.parametrize("credential,reference,expected", [(OTHER_CREDENTIAL, "reference-a", 403),
+                                                       (CLIENT_CREDENTIAL, "reference-b", 403),
+                                                       (CLIENT_CREDENTIAL, "", 403), ("invalid", "reference-a", 401)])
+def test_auth_and_case_grant_fail_before_any_provider(setup, monkeypatch, credential, reference, expected):
     config, store, observer = setup
     monkeypatch.setattr(client_routes, "_invoke_route", lambda *a, **kw: pytest.fail("unauthorized provider"))
     with TestClient(create_app(config, store, cost_observer=observer)) as client:
-        reply = client.post("/v1/chat/completions", headers=headers(token, reference), json=PAYLOAD)
+        reply = client.post("/v1/chat/completions", headers=headers(credential, reference), json=PAYLOAD)
         assert reply.status_code == expected
 
 
@@ -139,7 +139,8 @@ def test_compile_and_unmeasured_requests_share_transport_without_leaking_binding
         assert measured.status_code == 200, measured.text
         assert measured.headers["x-subllm-cost-observation"] == "recorded"
         assert measured.json()["data"] == {"matched": True}
-        unmeasured = client.post("/v1/chat/completions", headers={"Authorization": "Bearer " + TOKEN}, json=PAYLOAD)
+        unmeasured = client.post("/v1/chat/completions",
+                                 headers={"Authorization": "Bearer " + CLIENT_CREDENTIAL}, json=PAYLOAD)
         assert unmeasured.status_code == 200 and "x-subllm-cost-observation" not in unmeasured.headers
     assert observer.summary("alice", "reference-a")["known_charge_count"] == 1
     assert ACTIVE_COST.get() is None
