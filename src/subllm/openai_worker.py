@@ -4,19 +4,24 @@ import json
 import sys
 from collections.abc import Mapping
 from contextlib import suppress
+from http.client import HTTPException
 from typing import Any
 from urllib.error import HTTPError, URLError
-from urllib.request import Request, urlopen
+from urllib.request import Request
 
 from .credential_env import credential_is_valid
 from .errors import CompletionError
+from .native_http import DEFAULT_TIMEOUT_SECONDS, decode_response_json, normalize_timeout
+from .native_http import open_request as urlopen
 from .policy import MODELS, PROVIDERS
 from .policy_config import load_policy_config
 
 with suppress(Exception):
     load_policy_config()
 
+HTTP_SAFETY_PROFILE = "bounded-no-proxy-no-redirect-v1"
 MAX_OPENAI_WORKER_REQUEST_BYTES = 4_000_000
+MAX_OPENAI_RESPONSE_BYTES = 1_000_000
 
 
 def _request(source: Any) -> Mapping[str, Any]:
@@ -29,12 +34,11 @@ def _request(source: Any) -> Mapping[str, Any]:
         raise CompletionError("OpenAI worker request must be a closed JSON object")
     if "capture_exchange" in source and type(source["capture_exchange"]) is not bool:
         raise CompletionError("capture_exchange must be boolean")
-    if "timeout_seconds" in source and (
-        not isinstance(source["timeout_seconds"], (int, float))
-        or isinstance(source["timeout_seconds"], bool)
-        or source["timeout_seconds"] <= 0
-    ):
-        raise CompletionError("timeout_seconds must be a positive number")
+    if "timeout_seconds" in source:
+        try:
+            normalize_timeout(source["timeout_seconds"])
+        except ValueError:
+            raise CompletionError("timeout_seconds must be a finite positive number") from None
     if "max_tokens" in source and (
         not isinstance(source["max_tokens"], int)
         or isinstance(source["max_tokens"], bool)
@@ -127,7 +131,8 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         exchange = {"request": body, "response": response}
         def scrub(value):
             if isinstance(value, str):
-                return value.replace(str(source["api_key"]), "[credential removed]")
+                secret = str(source["api_key"])
+                return value.replace(secret, "[credential removed]") if secret else value
             if isinstance(value, Mapping):
                 return {scrub(key): scrub(item) for key, item in value.items()}
             if isinstance(value, list):
@@ -145,26 +150,18 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         },
         method="POST",
     )
-    timeout = float(source["timeout_seconds"]) if "timeout_seconds" in source else None
+    timeout = normalize_timeout(source.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS))
     try:
-        try:
-            kwargs = {"timeout": timeout} if timeout is not None else {}
-            with urlopen(request, **kwargs) as response:  # noqa: S310 - base is checked against fixed policy
-                payload = response.read()
-        except TypeError as exc:
-            if "timeout" in str(exc):
-                with urlopen(request) as response:  # noqa: S310
-                    payload = response.read()
-            else:
-                raise
+        with urlopen(request, timeout=timeout) as response:
+            payload = response.read(MAX_OPENAI_RESPONSE_BYTES + 1)
     except HTTPError as exc:
         status = exc.code
         error_body = None
         try:
             encoded_error = exc.read(1_000_001)
-            error_body = (json.loads(encoded_error) if len(encoded_error) <= 1_000_000
+            error_body = (decode_response_json(encoded_error) if len(encoded_error) <= 1_000_000
                           else {"capture_status": "response_exceeds_limit"})
-        except (ValueError, OSError, AttributeError):
+        except (ValueError, OSError, AttributeError, RecursionError):
             error_body = {"capture_status": "non_json_or_unreadable_error"}
         finally:
             exc.close()
@@ -184,6 +181,10 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             return finish(_error("model_unavailable", provider_level=False, retryable=True), error_body)
         retryable = status in {401, 402, 403, 408, 409, 425, 429} or status >= 500
         return finish(_error(f"http_{status}", provider_level=True, retryable=retryable), error_body)
+    except HTTPException:
+        return _error("invalid_response", provider_level=False, retryable=True)
+    except TypeError:
+        return _error("transport_error", provider_level=True, retryable=True)
     except (TimeoutError, URLError, OSError) as exc:
         is_timeout = isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError)
         return _error(
@@ -191,9 +192,12 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             provider_level=True,
             retryable=True,
         )
+    if len(payload) > MAX_OPENAI_RESPONSE_BYTES:
+        return finish(_error("invalid_response", provider_level=False, retryable=True),
+                      {"capture_status": "response_exceeds_limit"})
     raw = None
     try:
-        raw = json.loads(payload.decode("utf-8"))
+        raw = decode_response_json(payload)
         choice = raw["choices"][0]
         message = choice.get("message") if isinstance(choice, Mapping) else {}
         content = message.get("content") if isinstance(message, Mapping) else None
@@ -202,7 +206,7 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             (message.get("reasoning_content") or message.get("reasoning"))
             if isinstance(message, Mapping) else None
         )
-    except (UnicodeDecodeError, json.JSONDecodeError, KeyError, IndexError, TypeError):
+    except (ValueError, KeyError, IndexError, TypeError, RecursionError):
         return finish(_error("invalid_response", provider_level=False, retryable=True), raw)
     if not isinstance(content, str) or not content:
         if finish_reason == "length" and isinstance(reasoning, str) and reasoning:
@@ -242,6 +246,9 @@ def main() -> int:
             raise CompletionError("OpenAI worker request exceeds 4000000 bytes")
         request = _request(json.loads(encoded.decode("utf-8")))
         result = _execute(request)
+    except RecursionError:
+        print("subllm-openai-worker: request exceeds JSON nesting limit", file=sys.stderr)
+        return 2
     except (UnicodeError, json.JSONDecodeError, CompletionError) as exc:
         print(f"subllm-openai-worker: {exc}", file=sys.stderr)
         return 2

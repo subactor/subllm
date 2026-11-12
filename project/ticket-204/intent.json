@@ -1,0 +1,27 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-204",
+  "summary": "S1: bound OpenAI/native HTTP egress reads and timeouts without changing routing or audit",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-204/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/native_http.py",
+    "src/subllm/openai_worker.py",
+    "tests/test_http_transport_bounds.py",
+    "tests/test_openai_worker.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
