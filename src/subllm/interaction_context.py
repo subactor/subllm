@@ -31,7 +31,8 @@ def _take_usage_archive_reference(request_id, application, function, provider, m
     return None
 
 
-def begin_attempt(route, messages, response_format, request_id=None, timeout_seconds=None, *, native_request=None):
+def begin_attempt(route, messages, response_format, request_id=None, timeout_seconds=None, *, native_request=None,
+                  kind="llm_attempt"):
     _NEXT_USAGE_ARCHIVE.set(None)
     identity = (request_id, *(getattr(route, key, None) for key in
                              ("application", "function", "provider", "wire_model")))
@@ -63,7 +64,7 @@ def begin_attempt(route, messages, response_format, request_id=None, timeout_sec
                 request_id or uuid.uuid4().hex
             )
         record = store.begin(
-            kind="llm_attempt", caller=caller, target=target, request=req_payload, correlation_id=correlation,
+            kind=kind, caller=caller, target=target, request=req_payload, correlation_id=correlation,
         )
         return store, _AttemptRecord(record, identity)
     except Exception:
@@ -130,7 +131,8 @@ def finish_attempt(entry, route, response, error, duration_ms):
             ))
         # Gateway parents can intentionally own a different caller/correlation.
         # Preserve that graph and link only an actual same-subject attempt.
-        if (saved is not None and identity and all(isinstance(v, str) and 0 < len(v) <= 256 for v in identity)
+        if (record.get("kind") == "llm_attempt" and saved is not None and identity
+                and all(isinstance(v, str) and 0 < len(v) <= 256 for v in identity)
                 and saved.get("caller") == identity[1] and saved.get("correlation_id") == identity[0]
                 and identity[1:] == (route.application, route.function, route.provider, route.wire_model)):
             _NEXT_USAGE_ARCHIVE.set((identity, (reference["id"], reference["day"])))

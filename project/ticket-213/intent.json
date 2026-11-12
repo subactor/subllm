@@ -1,0 +1,56 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-213",
+  "summary": "Add opt-in exact completion cache with native replay receipts (S5)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-213/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "src/subllm/client.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_types.py",
+    "src/subllm/completion_cache.py",
+    "src/subllm/interaction_context.py",
+    "tests/test_completion_cache.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "4313223d30de1db95ac1c25d1fc4a00c3685848b",
+    "targetBranch": "main",
+    "outcome": "Opt-in exact completion reuse with scope-bound keys, current acceptance checks, separate source usage and native replay receipts without new inference usage.",
+    "nonGoals": ["No tool, mutation, CLI, adaptive or semantic cache.", "No live paid inference, PyPI publication, S6 or S7 changes."],
+    "complexity": "L",
+    "estimatedMinutes": 80,
+    "budgets": {"maxImplementationFiles": 7, "maxAffectedComponents": 1, "maxPublicInterfaceChanges": 1, "maxRuntimeDependencies": 0},
+    "architecture": {
+      "status": "accepted",
+      "decision": "Compose the existing optional procache dependency with native routing, response validation and archive commit acknowledgments. Never retry inference because cache storage failed. Replay archives are operations, not billed provider attempts.",
+      "components": [{"name": "completion-reuse", "paths": ["src/subllm/completion_cache.py", "src/subllm/client_routes.py", "src/subllm/client_types.py", "src/subllm/interaction_context.py", "src/subllm/client.py", "src/subllm/__init__.py", "tests/test_completion_cache.py"]}],
+      "responsibilityChanges": false,
+      "interfaceChanges": ["Add CompletionCache configuration, immutable CompletionCacheReceipt, response.cache and optional complete(cache=..., force_generation=...) arguments."],
+      "dataChanges": [{"kind": "component-local-state", "component": "completion-reuse", "description": "Private TTL entries in existing procache SQLite format; native completion_replay records use existing InteractionStore schema."}],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Disable the opt-in cache or revert the additive adapter; native inference audit and usage remain unchanged."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {"criterion": "AC-01", "commands": ["Synthetic loopback HTTP and persistent native archive/journal readback"], "evidence": "One HTTP, one billed attempt, distinct source/replay IDs across cache restart."},
+      {"criterion": "AC-02", "commands": ["Exact key, quality, force-generation and excluded-effects tests"], "evidence": "No cross-account or stale-policy reuse; rejected cache candidates cannot escape validation."},
+      {"criterion": "AC-03", "commands": ["Concurrent, cancellation, corruption, expiry and write-failure fault tests"], "evidence": "No extra provider call after successful inference due to a cache fault."},
+      {"criterion": "AC-04", "commands": ["Affected regression", "Ruff", "Managed governance", "Protected OneDev and independent exact-head publication"], "evidence": "Preserved uncached routing, S3 generation accounting and S4 receipts."}
+    ]
+  }
+}
