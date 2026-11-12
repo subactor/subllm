@@ -348,7 +348,7 @@ def test_real_native_tls_stream_reuses_policy_and_wire_limits(
         remote = model.providers[provider_id]
         route = replace(seed, provider=provider_id, transport=spec.transport, model=model.id,
                         wire_model=remote.wire_model, litellm_model=remote.litellm_model, api_base=spec.api_base,
-                        api_key="test-native-stream", api_key_env=spec.api_key_env, model_parameters={})
+                        api_key_env=spec.api_key_env, model_parameters={})
         monkeypatch.setattr(client_routes, "available_routes", lambda *a, **kw: [route])
         monkeypatch.setattr(client_routes, "order_with_last_resort", lambda routes, **kw: routes)
         # Only this child interpreter maps the approved hostname to loopback.
