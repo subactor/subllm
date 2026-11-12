@@ -13,6 +13,7 @@
     "TODO.md",
     "project/TICKETS.md",
     "docs/analysis/subllm-integration-tickets.md",
+    "docs/analysis/subllm-integration-tickets.report.json",
     "docs/information/subllm-api-generations.md"
   ],
   "forbiddenPaths": [
@@ -33,7 +34,7 @@
     "complexity": "S",
     "estimatedMinutes": 30,
     "budgets": {
-      "maxImplementationFiles": 2,
+      "maxImplementationFiles": 3,
       "maxAffectedComponents": 1,
       "maxPublicInterfaceChanges": 0,
       "maxRuntimeDependencies": 0
@@ -46,6 +47,7 @@
           "name": "integration-documentation",
           "paths": [
             "docs/analysis/subllm-integration-tickets.md",
+            "docs/analysis/subllm-integration-tickets.report.json",
             "docs/information/subllm-api-generations.md"
           ]
         }
@@ -54,7 +56,7 @@
       "interfaceChanges": [],
       "dataChanges": [],
       "ui": { "impact": "none", "states": [], "evidence": [] },
-      "rollback": "Revert the two documentation updates; preserve merged runtime and existing ownership."
+      "rollback": "Revert the documentation updates and required Report sidecar; preserve merged runtime and existing ownership."
     },
     "runtimeDependencies": [],
     "validation": [
@@ -70,7 +72,7 @@
       },
       {
         "criterion": "AC-03",
-        "commands": ["Pinned documentation checker", "project/governance-check.sh", "Protected exact-head Validator and merge"],
+        "commands": ["scripts/check-docs-report.py --base 986a99b58ad19152c1fdad76c7eed3711386e754", "Pinned documentation checker", "project/governance-check.sh", "Protected exact-head Validator and merge"],
         "evidence": "Canonical documentation metadata and protected delivery receipts."
       }
     ]

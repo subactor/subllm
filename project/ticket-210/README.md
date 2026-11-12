@@ -21,6 +21,7 @@ the primary checkout's unrelated resolver.py changes and all foreign ownership.
 - [x] AC-02: Record final wheel/sdist provenance, offline qualification and the observed PyPI dependency prerequisite without claiming publication or upgrading consumer locks.
 - [ ] AC-03: Validate documentation and managed governance; publish through exact-head independent review and protected merge.
 
-Pinned documentation checker PASS (no findings; older unrelated review dates
-remain advisory). Managed governance PASS. Exact-head protected review and
-publication remain external controller actions.
+Pinned documentation checker and repository scripts/check-docs-report.py PASS,
+including the required evidence-bound analysis Report sidecar. Older unrelated
+review dates remain advisory. Managed governance PASS. Exact-head protected
+review and publication remain external controller actions.

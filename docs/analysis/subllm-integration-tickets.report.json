@@ -1,0 +1,194 @@
+{
+  "schema": "wellmanifest.report/manifest/v1",
+  "id": "subllm-integration-tickets",
+  "version": 1,
+  "title": "SubLLM S1-S7 integration and final artifact qualification",
+  "owner": "subactor/subllm",
+  "kind": "analysis",
+  "created": "2026-11-12",
+  "updated": "2026-11-12",
+  "review_after": "2026-12-12",
+  "status": "draft",
+  "authority": "none",
+  "document": {
+    "path": "docs/analysis/subllm-integration-tickets.md",
+    "index_path": "docs/README.md",
+    "sha256": "16035fe32cefec24f67b95d39347bbbf1fb03958905c2bcd1d5b4636711b1c80"
+  },
+  "scope": {
+    "repositories": [
+      "subactor/subllm"
+    ],
+    "subjects": [
+      {
+        "id": "merged-source",
+        "repository": "subactor/subllm",
+        "revision": "986a99b58ad19152c1fdad76c7eed3711386e754"
+      },
+      {
+        "id": "fault-source",
+        "repository": "subactor/subllm",
+        "revision": "359ba32b3623c85b17bffd7639ce1e39f9519077"
+      }
+    ],
+    "exclusions": [
+      "No production deployment, consumer lock migration, PyPI upload or S3-S7 implementation is claimed."
+    ]
+  },
+  "coverage": {
+    "state": "complete",
+    "unit": "S1-S7 task status entries; not completed implementations",
+    "expected": 7,
+    "observed": 7
+  },
+  "assessment": "incomplete",
+  "findings": [
+    {
+      "id": "s1-merged",
+      "kind": "fact",
+      "text": "Bounded native HTTP transport and compatible client fixtures are independently merged.",
+      "evidence_ids": [
+        "native-http",
+        "trusted-merge",
+        "ci-matrix"
+      ]
+    },
+    {
+      "id": "s2-qualified",
+      "kind": "fact",
+      "text": "The final qualified wheel passed offline install, pip check and 90 tests on each Python 3.11 and 3.12.",
+      "evidence_ids": [
+        "wheel-matrix"
+      ]
+    },
+    {
+      "id": "s2-index-prerequisite",
+      "kind": "fact",
+      "text": "The existing release preflight rejects the absent subactor-procache==0.1.0 PyPI entry.",
+      "evidence_ids": [
+        "index-preflight"
+      ]
+    },
+    {
+      "id": "s7-fault",
+      "kind": "fact",
+      "text": "A real worker remained alive 200 ms after SIGTERM and SIGKILL of its parent at the separate fault-source revision; owned processes were then terminated.",
+      "evidence_ids": [
+        "parent-death"
+      ]
+    },
+    {
+      "id": "remaining-work",
+      "kind": "recommendation",
+      "text": "Resolve the dependency publication prerequisite, qualify consumer profiles and implement S3-S7 in their existing bounded tasks.",
+      "evidence_ids": []
+    }
+  ],
+  "evidence": [
+    {
+      "id": "native-http",
+      "kind": "source",
+      "subject_id": "merged-source",
+      "reference": "repo://subactor/subllm@986a99b58ad19152c1fdad76c7eed3711386e754/src/subllm/native_http.py",
+      "sha256": "8a3214277b405f208810f807fc612c93ea012868e3f615ac72563aeef72c3142"
+    },
+    {
+      "id": "trusted-merge",
+      "kind": "observation",
+      "subject_id": "merged-source",
+      "reference": "receipt:sha256:dcb21bfc7ac24cb5f525d9ea71e46a976918691e337686182e963acdd836559c",
+      "sha256": "dcb21bfc7ac24cb5f525d9ea71e46a976918691e337686182e963acdd836559c"
+    },
+    {
+      "id": "ci-matrix",
+      "kind": "test",
+      "subject_id": "merged-source",
+      "reference": "receipt:sha256:5224a980e9d73602f0353ad21dcce7a407f511793a9a11cbab45ce47c2bd504d",
+      "sha256": "5224a980e9d73602f0353ad21dcce7a407f511793a9a11cbab45ce47c2bd504d"
+    },
+    {
+      "id": "wheel-matrix",
+      "kind": "test",
+      "subject_id": "merged-source",
+      "reference": "receipt:sha256:4153ea65a985d409e716276a77a40f3918571147ea4265c71f740b20316c22ec",
+      "sha256": "4153ea65a985d409e716276a77a40f3918571147ea4265c71f740b20316c22ec"
+    },
+    {
+      "id": "index-preflight",
+      "kind": "test",
+      "subject_id": "merged-source",
+      "reference": "receipt:sha256:7d2b5cebbb9dbc0798ba16178ebb740b350625ee074c74c0bc2b82aaf9a0fdbe",
+      "sha256": "7d2b5cebbb9dbc0798ba16178ebb740b350625ee074c74c0bc2b82aaf9a0fdbe"
+    },
+    {
+      "id": "parent-death",
+      "kind": "test",
+      "subject_id": "fault-source",
+      "reference": "receipt:sha256:eccad22dcb8dd64e23d2cd6908bc66cca9e383965a349950e2933679745f4643",
+      "sha256": "eccad22dcb8dd64e23d2cd6908bc66cca9e383965a349950e2933679745f4643"
+    }
+  ],
+  "checks": [
+    {
+      "name": "Merged transport CI, Python 3.11/3.12/3.13",
+      "subject_id": "merged-source",
+      "result": "PASS",
+      "reason": "1408 passed and 2 skipped on each interpreter.",
+      "evidence_ids": [
+        "ci-matrix"
+      ]
+    },
+    {
+      "name": "Offline installed final wheel, Python 3.11/3.12",
+      "subject_id": "merged-source",
+      "result": "PASS",
+      "reason": "90 tests per interpreter plus pip check; installed module bytes match the downloaded qualified wheel.",
+      "evidence_ids": [
+        "wheel-matrix"
+      ]
+    },
+    {
+      "name": "S7 parent-death reproduction",
+      "subject_id": "fault-source",
+      "result": "PASS",
+      "reason": "Fault reproduced for both signals; reproduction does not constitute a fix.",
+      "evidence_ids": [
+        "parent-death"
+      ]
+    },
+    {
+      "name": "S3-S7 implementations and consumer migration",
+      "subject_id": "merged-source",
+      "result": "NOT_RUN",
+      "reason": "These remain backlog/proposals; policy race and parallel consumer profile qualification are unexecuted.",
+      "evidence_ids": []
+    }
+  ],
+  "limitations": [
+    "Task status coverage is complete; requested implementations and PyPI publication are incomplete.",
+    "Private receipt digests are evidence bindings, not independent publication authority.",
+    "The S7 fault observation used an earlier identified revision; no final-source S7 fix is claimed."
+  ],
+  "next_actions": [
+    {
+      "description": "Resolve the verified dependency index prerequisite and use the existing protected release path.",
+      "owner": "subactor/subllm",
+      "resume_when": "The required procache version is independently published with verified publisher registration."
+    },
+    {
+      "description": "Continue the bounded S3-S7 backlog and consumer profile qualification.",
+      "owner": "subactor/subllm",
+      "resume_when": "Existing task ownership, criteria and scope are admitted."
+    }
+  ],
+  "redaction": {
+    "state": "not_checked",
+    "evidence_ids": []
+  },
+  "publication": {
+    "state": "local",
+    "revision": null,
+    "pull_request": null,
+    "evidence_ids": []
+  }
+}
