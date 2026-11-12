@@ -45,6 +45,15 @@ def test_forged_lock_rejected(adopted):
         CHECK.managed_document_copies(adopted)
 
 
+def test_unreviewed_lock_with_intact_inventory_rejected(adopted):
+    path = adopted / ".governance/manifest.lock.json"
+    value = json.loads(path.read_text())
+    value["standard"]["sourceRevision"] = "0" * 40
+    path.write_text(json.dumps(value))
+    with pytest.raises(RuntimeError, match="Unreviewed"):
+        CHECK.managed_document_copies(adopted)
+
+
 def test_identical_symlink_rejected(adopted):
     path = adopted / ".governance/docs/SNAPSHOT_MIGRATION.md"
     path.unlink()

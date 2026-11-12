@@ -16,9 +16,13 @@ SPEC.loader.exec_module(adapter)
 
 
 
-# Reviewed adoption 0.20.38 at e2fd653ff801fb228fca818e1d874ee685a4da62.
-# An upgrade must explicitly review this pin; candidate metadata cannot exempt files.
-ADOPTION_LOCK_SHA256 = "ba6a96d9239defd435b78ee57dadfcd836c48d61e5beb0aa5513bba30d7e6098"
+# Exact adoption locks require independent review; candidate metadata cannot exempt files.
+ADOPTION_LOCK_SHA256S = frozenset({
+    # 0.20.38 at e2fd653ff801fb228fca818e1d874ee685a4da62.
+    "ba6a96d9239defd435b78ee57dadfcd836c48d61e5beb0aa5513bba30d7e6098",
+    # 0.20.147 at 511eb0ab1c0f9f8697c44f5748ba93b25da5e0d9.
+    "f0fb12ae0de7a9685af8615766482bbff4345822424809ac3366256246aecbc1",
+})
 
 
 def managed_document_copies(root):
@@ -34,7 +38,7 @@ def managed_document_copies(root):
         return current
 
     lock_bytes = verified_path(".governance/manifest.lock.json").read_bytes()
-    if hashlib.sha256(lock_bytes).hexdigest() != ADOPTION_LOCK_SHA256:
+    if hashlib.sha256(lock_bytes).hexdigest() not in ADOPTION_LOCK_SHA256S:
         raise RuntimeError("Unreviewed new-project adoption lock")
     managed = json.loads(lock_bytes)["managedFiles"]
     for relative, expected in managed.items():
