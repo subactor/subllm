@@ -21,6 +21,7 @@ from .client_types import (
 )
 from .client_vision import _validate_vision_messages
 from .client_workers import _complete_cursor, _complete_openai_compatible
+from .completion_cache import CompletionCache, cached_complete
 from .credential_env import merged_environment
 from .errors import (
     PROVIDER_CHAIN_EXHAUSTED_CODE,
@@ -221,6 +222,7 @@ def _complete(
     quality_gate: ResponseValidator | None = None,
     quality_schema: Mapping[str, Any] | bool | None = None,
     _runtime_policy=None,
+    _routes=None,
 ) -> CompletionResponse:
     """Execute configured routes; an explicit model restricts, never expands, them.
 
@@ -273,7 +275,9 @@ def _complete(
             invoke=partial(_complete_route, quality_gate=quality_gate) if quality_gate is not None else _complete_route,
             timeout_seconds=timeout_seconds,
             response_format=response_format, request_id=request_id, cwd=Path(cwd) if cwd else None, environ=environment)
-    routes = available_routes(application, function, environ=environ, credentials=credentials)
+    routes = _routes if _routes is not None else available_routes(
+        application, function, environ=environ, credentials=credentials,
+    )
     if not routes:
         configured = configured_routes(application, function, environ=environ)
         required = ", ".join(sorted({route.api_key_env for route in configured}))
@@ -385,6 +389,8 @@ def complete(
     quality_schema: Mapping[str, Any] | bool | None = None,
     generation_limits: GenerationLimits | Mapping[str, Any] | None = None,
     generation_budget: GenerationBudget | None = None,
+    cache: CompletionCache | None = None,
+    force_generation: bool = False,
 ) -> CompletionResponse:
     """Complete within policy and return immutable native persistence receipts.
 
@@ -398,6 +404,13 @@ def complete(
     attempts. Missing usage stays unknown and blocks further budgeted dispatch.
     Input tokens and currency are outside this budget. Unsupported CLI/Cursor
     limits raise before invocation; callers cannot raise operator ceilings.
+
+    cache=CompletionCache(...) explicitly enables exact plain-text API reuse.
+    It requires account scope, model revision, acceptance version and TTL. A hit
+    is validated again and receives a native replay archive, zero new usage and
+    separate historical source_usage. force_generation bypasses reuse. Install
+    the optional cache dependency; CLI, tools, adaptive and nested gateway calls
+    bypass caching. Each explicit request_id must identify a new operation.
     """
     request_id = request_id or uuid4().hex
     parent = ACTIVE_ARCHIVE.get()
@@ -406,14 +419,30 @@ def complete(
     except (KeyError, IndexError, TypeError):
         correlation_id = request_id
     runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
+    if cache is not None:
+        # Bind the key, native archive and provider body to the same caller input.
+        messages = deepcopy([dict(message) for message in messages]) if messages else messages
+        response_format = deepcopy(dict(response_format)) if response_format is not None else None
+        quality_schema = deepcopy(dict(quality_schema)) if isinstance(quality_schema, Mapping) else quality_schema
     with (
         generation_scope(generation_limits, generation_budget, runtime_policy.execution) as generation,
         capture_audit(request_id, correlation_id) as capture,
     ):
-        response = _complete(
-            application, function, messages, timeout_seconds=timeout_seconds,
-            request_id=request_id, response_format=response_format, environ=environ,
-            credentials=credentials, cwd=cwd, model=model, quality_gate=quality_gate,
-            quality_schema=quality_schema, _runtime_policy=runtime_policy,
+        def invoke(routes=None, timeout=timeout_seconds):
+            response = _complete(
+                application, function, messages, timeout_seconds=timeout,
+                request_id=request_id, response_format=response_format, environ=environ,
+                credentials=credentials, cwd=cwd, model=model, quality_gate=quality_gate,
+                quality_schema=quality_schema, _runtime_policy=runtime_policy, _routes=routes,
+            )
+            return replace(response, audit=capture.receipt(), generation=generation.receipt())
+
+        if cache is None:
+            return invoke()
+        return cached_complete(
+            cache, invoke, application=application, function=function, messages=messages,
+            response_format=response_format, environ=environ, credentials=credentials,
+            model=model, quality_gate=quality_gate, quality_schema=quality_schema,
+            runtime_policy=runtime_policy, generation=generation, capture=capture,
+            timeout_seconds=timeout_seconds, force_generation=force_generation,
         )
-        return replace(response, audit=capture.receipt(), generation=generation.receipt())

@@ -4,6 +4,8 @@ from .client import (
     CodeEditResponse,
     CompletionAttempt,
     CompletionAudit,
+    CompletionCache,
+    CompletionCacheReceipt,
     CompletionResponse,
     GenerationBudget,
     GenerationLimits,
@@ -107,6 +109,8 @@ from .types import (
 )
 
 __all__ = [
+    "CompletionCache",
+    "CompletionCacheReceipt",
     "GenerationBudget",
     "GenerationLimits",
     "GenerationUsage",

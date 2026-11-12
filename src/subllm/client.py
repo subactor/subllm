@@ -7,11 +7,14 @@ from .client_routes import complete
 from .client_types import (
     CodeEditResponse,
     CompletionAttempt,
+    CompletionCacheReceipt,
     CompletionResponse,
 )
+from .completion_cache import CompletionCache
 from .generation import GenerationBudget, GenerationLimits, GenerationUsage
 
 __all__ = [
+    "CompletionCache", "CompletionCacheReceipt",
     "GenerationBudget", "GenerationLimits", "GenerationUsage",
     "ArchiveReference", "AuditAttempt", "CompletionAudit", "JournalReference",
     "CodeEditResponse", "CompletionAttempt", "CompletionResponse", "code_edit_main", "complete",

@@ -4,7 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
-from .audit import CompletionAudit
+from .audit import ArchiveReference, CompletionAudit
 from .errors import (
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
@@ -24,6 +24,18 @@ class CompletionAttempt:
 
 
 @dataclass(frozen=True)
+class CompletionCacheReceipt:
+    """Reuse attribution; source_usage is historical, never newly billed usage."""
+
+    state: str
+    key_digest: str = ""
+    source_request_id: str | None = None
+    source_archive: ArchiveReference | None = None
+    content_digest: str | None = None
+    source_usage: tuple[tuple[str, int | None], ...] = ()
+
+
+@dataclass(frozen=True)
 class CompletionResponse:
     content: str
     provider: str
@@ -34,6 +46,7 @@ class CompletionResponse:
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
     audit: CompletionAudit | None = None
     generation: GenerationUsage | None = None
+    cache: CompletionCacheReceipt | None = None
 
 
 @dataclass(frozen=True)
