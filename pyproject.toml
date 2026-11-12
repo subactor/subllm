@@ -73,6 +73,6 @@ line-length = 120
 select = ["E", "F", "I", "B", "UP", "SIM"]
 
 [tool.wellmanifest]
-standard = "0.20.38"
-revision = "e2fd653ff801fb228fca818e1d874ee685a4da62"
+standard = "0.20.147"
+revision = "511eb0ab1c0f9f8697c44f5748ba93b25da5e0d9"
 gate = "project/governance-check.sh"
