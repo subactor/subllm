@@ -24,7 +24,7 @@
   "conflictsWith": [],
   "integrationTicket": null,
   "delivery": {
-    "acceptedBaseSha": "171989a48fee1bcd2f3882032dd76933b5186dd2",
+    "acceptedBaseSha": "ec62460de362dc19e407a7dce0f3e9c720850f14",
     "targetBranch": "main",
     "outcome": "PLF-22330 / PLF-22321 slice2: bind authenticated gateway requests to trusted server-registered business case references, persist every actual provider attempt through the merged durable cost journal, and preserve paid results when observation delivery fails.",
     "nonGoals": [
