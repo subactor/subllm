@@ -1001,7 +1001,7 @@ def test_payment_required_uses_worker_classification_and_next_allowed_provider(m
 
     providers = []
 
-    def reject_payment(request):
+    def reject_payment(request, **_kwargs):
         raise HTTPError(request.full_url, 402, "payment required", {}, None)
 
     def run_worker(request, **_kwargs):
@@ -1037,7 +1037,7 @@ def test_truncated_reasoning_fails_over_to_next_provider(monkeypatch) -> None:
         def __exit__(self, *_args):
             return None
 
-        def read(self) -> bytes:
+        def read(self, size: int = -1) -> bytes:
             return json.dumps({
                 "choices": [{
                     "message": {
