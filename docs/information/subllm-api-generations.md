@@ -3,7 +3,7 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "subllm-api-generations",
   "kind": "information",
-  "version": 1,
+  "version": 2,
   "title": "Generacje API SubLLM i profile migracji",
   "status": "proposed",
   "owner": "subactor/subllm",
@@ -11,7 +11,7 @@
   "created": "2026-11-12",
   "updated": "2026-11-12",
   "review_after": "2026-12-12",
-  "source_revision": "ec62460de362dc19e407a7dce0f3e9c720850f14",
+  "source_revision": "986a99b58ad19152c1fdad76c7eed3711386e754",
   "affected_repositories": [
     "subactor/subllm"
   ],
@@ -19,7 +19,9 @@
     "https://pypi.org/project/subactor-subllm/1.4.2/",
     "repo://subactor/subllm/pyproject.toml",
     "repo://subactor/subllm/src/subllm/client_routes.py",
-    "https://github.com/subactor/subllm/issues/20"
+    "https://github.com/subactor/subllm/issues/20",
+    "https://github.com/subactor/subllm/pull/216",
+    "https://github.com/subactor/subllm/actions/runs/43282789586"
   ]
 }
 ---
@@ -41,7 +43,7 @@ Publiczne API i wydawanie subactor/subllm. Profile konsumentów są wymaganiami 
 
 Odczyt PyPI z 2026-11-12: najnowsze 1.4.2. Wheel `subactor_subllm-1.4.2-py3-none-any.whl`, SHA-256 `6ef26c9612a8d51d5c41a65d8ff2ab0e8fa6e8edae6ef68536786c1fdf66744a`. Zweryfikowano digest i AST bez wykonywania pobranego kodu. Jego `complete()` ma application, function, messages, timeout_seconds, request_id, environ, credentials.
 
-Baza Git wskazana w metadanych ma 1.14.0 zarówno w pyproject.toml, jak i VERSION. Pierwszy audyt bazy `89f81f99793120c45caa49bcaf632810541b85cb` wykrył VERSION 1.13.0; synchronizację dostarczył istniejący ticket-206. Zgodność tych pól nie zamyka luki PyPI/API.
+Baza Git wskazana w metadanych ma 1.14.0 zarówno w pyproject.toml, jak i VERSION. Synchronizację tych pól dostarczył ticket-206; S1 jest scalone w [PR #216](https://github.com/subactor/subllm/pull/216). Zgodność pól wersji nie zamyka luki PyPI/API.
 
 <!-- docs:section content -->
 ## Macierz i migracja
@@ -60,18 +62,23 @@ Baza Git wskazana w metadanych ma 1.14.0 zarówno w pyproject.toml, jak i VERSIO
 |---|---|
 | Scanner optional | Zachować zgodny lock narzędzia; wymagać tylko API rzeczywiście używanego przez scanner. |
 | Worker | Osobny interpreter i zweryfikowany artefakt z wymaganym API oraz ograniczeniami HTTP. Nie nadpisywać wspólnego środowiska scannera. |
-| Publikacja | Przejść przez istniejący tag-bound OIDC workflow i weryfikator artefaktów, po niezależnym review poprawki S1. |
+| Publikacja | Istniejący tag-bound OIDC workflow i weryfikator artefaktów; kwalifikacja przeszła, bramka dostępności zależności pozostaje otwarta. |
 
 Dostarczony profil Forge rozdziela lock scannera i worker z lokalnym wheel 1.14.0+forge.1. Deklaracja code2logic `subactor-subllm>=0.1.0` nie wyklucza 1.14; problem dotyczy wybranego locka i wymaganego API. Nie usuwać lokalnej poprawki przed kwalifikacją upstream.
 
 <!-- docs:section limitations -->
 ## Ograniczenia
 
-Kandydat S1 z commitu `8e0ca7720f8789f5add793be164468f925b9ca91` przeszedł build wheel/sdist, kontrolę metadanych i routingu istniejącym weryfikatorem pakietu, instalację offline w pustych venv oraz pip check na Pythonie 3.11/3.12. Każdy interpreter zaliczył 87 testów transportu oraz dodatkowy fixture publicznego complete() z prawdziwym lokalnym HTTP, subprocess i odczytem zapisanej odpowiedzi z archiwum. SHA-256 wheel: `25449a133fffaf49fafa188a96d0f1531fcd0b182a0d1624279f08fb12aded6c`; sdist: `8f6ea4d2c7977d7acb75479a69669ce2fd0968d067f3d48f74c1fa26d815cdc9`.
+Finalne źródło `986a99b58ad19152c1fdad76c7eed3711386e754` przeszło [kwalifikację istniejącym workflow, run 43282789586](https://github.com/subactor/subllm/actions/runs/43282789586): build wheel/sdist, metadane i routing pakietu. Pobrany artefakt bez przebudowy zainstalowano offline w pustych venv Python 3.11/3.12. Pip check oraz **90 testów na każdym interpreterze PASS**, w tym publiczne complete() z rzeczywistym subprocess, lokalnym HTTP i odczytem native archive. Sprawdzono import z site-packages i zgodność zainstalowanych modułów z wheel.
 
-Nowy release PyPI nie został opublikowany. Sam workflow nie dowodzi konfiguracji Trusted Publisher, uruchomienia ani zgodności opublikowanego artefaktu. Kandydat S1 nie zawiera jeszcze zmian z późniejszego main; po integracji wymaga ponownej kwalifikacji.
+| Artefakt 1.14.0 | SHA-256 |
+|---|---|
+| subactor_subllm-1.14.0-py3-none-any.whl | `5e51c0434cbdbcecf7439ab5cd7ca36b98c33638714ef83cfb6df9fffa520025` |
+| subactor_subllm-1.14.0.tar.gz | `b14507eaf51277ea7638ffd93c50e3fa57fa175756d9be534d6bcb95f7f2bad0` |
+
+Nowego release PyPI nie opublikowano. Run wykonano w trybie dry-run; upload OIDC i GitHub Release pominięto zgodnie z trybem. Weryfikator indeksu zgłasza PROCACHE_INDEX_UNAVAILABLE: subactor-procache==0.1.0 zwraca HTTP 404. Istniejący ticket publikacji zależności wymaga niezależnego potwierdzenia Trusted Publisher; nie obchodzono tej bramki. Odbiór migracji scannera i równoległych profili pozostaje NOT_RUN.
 
 <!-- docs:section next_actions -->
 ## Następne kroki
 
-Dokończyć [S1 w PR #216](https://github.com/subactor/subllm/pull/216) i kompatybilne fixture, następnie ponowić kwalifikację finalnego źródła. Porównać hash artefaktu budowanego i opublikowanego; dopiero wtedy zmieniać profile konsumentów. Śledzenie: [S2 #20](https://github.com/subactor/subllm/issues/20).
+Zapewnić zweryfikowaną publikację wymaganej zależności, ponowić preflight indeksu i uruchomić chronione wydanie. Porównać hashe artefaktów budowanych i opublikowanych; dopiero po odbiorze API zmieniać profile konsumentów. Śledzenie: [S2 #20](https://github.com/subactor/subllm/issues/20).

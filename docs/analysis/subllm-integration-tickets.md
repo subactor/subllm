@@ -3,7 +3,7 @@
   "schema": "wellmanifest.docs/document/v1",
   "id": "subllm-integration-tickets",
   "kind": "analysis",
-  "version": 1,
+  "version": 2,
   "title": "Realizacja zadań integracyjnych SubLLM S1–S7",
   "status": "proposed",
   "owner": "subactor/subllm",
@@ -11,13 +11,15 @@
   "created": "2026-11-12",
   "updated": "2026-11-12",
   "review_after": "2026-12-12",
-  "source_revision": "ec62460de362dc19e407a7dce0f3e9c720850f14",
+  "source_revision": "986a99b58ad19152c1fdad76c7eed3711386e754",
   "affected_repositories": [
     "subactor/subllm"
   ],
   "evidence": [
     "https://github.com/subactor/subllm/issues/208",
     "https://github.com/subactor/subllm/issues/20",
+    "https://github.com/subactor/subllm/pull/216",
+    "https://github.com/subactor/subllm/actions/runs/43282789586",
     "repo://subactor/subllm/docs/information/subllm-api-generations.md"
   ]
 }
@@ -33,46 +35,48 @@ Które zadania z dostarczonego SUBLLM_TICKETS.md mają dowody wykonania, a któr
 <!-- docs:section scope -->
 ## Zakres
 
-Wyłącznie upstream subactor/subllm. S1 jest kandydatem ticket-204 w roboczym [PR #216](https://github.com/subactor/subllm/pull/216); ticket-207 dostarcza macierz API i ten raport. Oryginalny plik wejściowy zachowano. Nie aktywowano zmian w usługach operatora ani konsumentach.
+Upstream subactor/subllm po scaleniu [PR #216](https://github.com/subactor/subllm/pull/216). Oryginalny plik wejściowy zachowano. Raport nie zmienia instalacji operatora ani locków konsumentów.
 
 <!-- docs:section method -->
 ## Metoda
 
-Sprawdzono obecne źródła, PyPI i archiwum projektu dostarczające pierwotną łatę. Użyto semcod/search oraz istniejącego HOME native_http zamiast kopiować transport. Native allocator 0.20.147 wydzielił zakresy przy zachowaniu cudzej zmiany resolver.py i istniejących worktree. Metadane, własność, testy i publikacja pozostają oddzielnymi dowodami.
+Sprawdzono źródła, PyPI i dostarczone archiwum. Wyszukiwanie semcod/search wskazało istniejący HOME native_http do ponownego użycia. Natywny allocator rozdzielił zakresy; zachowano cudzą zmianę resolver.py. Odbiór obejmuje niezależne CI, chroniony merge, kwalifikację dystrybucji i kontrolę indeksu PyPI.
 
 <!-- docs:section evidence -->
 ## Dowody
 
 | Zadanie | Zgłoszenie | Bieżący wynik |
 |---|---|---|
-| S1 HTTP | [#208](https://github.com/subactor/subllm/issues/208) | Roboczy PR #216; 88 testów transportu PASS, Ruff i governance PASS; odbiór klientów otwarty. |
-| S2 release | [#20](https://github.com/subactor/subllm/issues/20) | Kandydat: wheel/sdist, offline venv, pip check i testy na Pythonie 3.11/3.12 PASS; [macierz migracji](../information/subllm-api-generations.md); brak nowego release. |
+| S1 HTTP | [#208](https://github.com/subactor/subllm/issues/208) | Scalony PR #216; issue zamknięte. Fixture gateway/client scalone w [#219](https://github.com/subactor/subllm/pull/219) i [#220](https://github.com/subactor/subllm/pull/220). |
+| S2 release | [#20](https://github.com/subactor/subllm/issues/20) | Finalne wheel/sdist zakwalifikowane; offline i pip check PASS. Publikacja oczekuje na zależność PyPI; [macierz migracji](../information/subllm-api-generations.md). |
 | S3 budżet | [#209](https://github.com/subactor/subllm/issues/209) | Backlog; brak publicznego generation_limits. |
 | S4 receipt | [#210](https://github.com/subactor/subllm/issues/210) | Backlog; zachować obecny native archive/journal. |
 | S5 cache | [#211](https://github.com/subactor/subllm/issues/211) | Propozycja opt-in; bez deklaracji wdrożenia. |
 | S6 stream | [#212](https://github.com/subactor/subllm/issues/212) | Propozycja iteratora i terminal receipt. |
-| S7 snapshot | [#213](https://github.com/subactor/subllm/issues/213) | Przegląd źródła; fault test i implementacja niewykonane. |
+| S7 snapshot | [#213](https://github.com/subactor/subllm/issues/213) | Fault test potwierdził przeżycie workera po śmierci rodzica; implementacja pozostaje otwarta. |
 
 <!-- docs:section facts -->
 ## Fakty
 
-Kandydat S1 blokuje redirect/proxy, ogranicza body do 1 MB dla OpenAI-worker i 4 MB dla native HTTP, odrzuca JSON głębszy niż 64 poziomy oraz wymaga skończonych timeoutów obsługiwanych przez platformę. Nie ponawia HTTP po TypeError. Fixture TLS potwierdza jeden native attempt i jeden wpis usage, bez ruchu do redirect targetu.
+S1 blokuje redirect/proxy, ogranicza body do 1 MB dla OpenAI-worker i 4 MB dla native HTTP, odrzuca JSON głębszy niż 64 poziomy i wymaga skończonych timeoutów. Nie ponawia HTTP po TypeError. Lokalny TLS potwierdza pojedynczy attempt/usage bez ruchu do redirect targetu.
 
-Head PR #216 `c5fd4dfc9553797dd3a988e0efc1bec11739c865` zawiera obecną bazę main. Zestaw transportu i klientów/usage uruchomiony przez przypięty Wellman 0.23.0: 179 PASS i 3 FAIL. Przypadek czasowy Cursor przeszedł wcześniej osobno i na bazie. Dwa deterministyczne błędy dotyczą starych sygnatur atrap w tests/test_client.py, zarezerwowanym przez ticket-199. Minimalna poprawka atrap przechodzi oba testy w izolowanej kopii; asercji nie osłabiono, pliku rezerwowanego nie zmieniono.
+Merge `986a99b58ad19152c1fdad76c7eed3711386e754` zaakceptował niezależny Validator. Pełny zestaw CI: **1408 PASS, 2 SKIP na każdym Pythonie 3.11, 3.12 i 3.13**; sześć lokalnych bramek OneDev PASS. Lokalnie 182 testy transportu/klientów/usage PASS. Poprawki sygnatur fixture zachowują asercje; stary konflikt rezerwacji ticket-199 rozwiązano za zgodą użytkownika i przez kontroler przejęcia.
 
-Wheel z commitu `8e0ca7720f8789f5add793be164468f925b9ca91` zaliczył po 87 testów transportu i dodatkowy fixture publicznego complete() na Pythonie 3.11 i 3.12. Fixture nie zastępuje workera atrapą: lokalne HTTP uruchamia rzeczywisty subprocess, a zapisany wynik jest odczytywany z native archive. Artefakty i ich hashe są opisane w macierzy API.
+[Istniejący workflow](https://github.com/subactor/subllm/actions/runs/43282789586) zakwalifikował dystrybucje dokładnie z tego merge. Instalacja offline w pustych venv, pip check i **90 testów na każdym Pythonie 3.11/3.12** przeszły dla pobranego wheel. Publiczne complete() uruchamia rzeczywisty subprocess i lokalne HTTP, a odpowiedź jest odczytywana z native archive. Hashe zapisano w macierzy API.
+
+[Fault test S7](https://github.com/subactor/subllm/issues/213#issuecomment-6831094844) po SIGTERM i SIGKILL rodzica wykazał działający subprocess po 200 ms. Każdą własną grupę procesów zakończono po obserwacji; nie dowodzi to osierocenia bez limitu czasu.
 
 <!-- docs:section hypotheses -->
 ## Hipotezy
 
-Udany test izolowany sugeruje zależność przypadku Cursor od czasu startu procesu; nie stanowi rozstrzygnięcia przyczyny ani powodu do usunięcia testu.
+Migawka rozwiązanej polityki i jawne powiązanie życia dziecka z rodzicem wymagają implementacji oraz osobnej kwalifikacji; fault test nie dowodzi gotowego rozwiązania.
 
 <!-- docs:section limitations -->
 ## Ograniczenia
 
-Pełny odbiór S1 i niezależna publikacja pozostają otwarte. Aktualny kontroler dopuszcza przejęcie bezczynnych zadań, lecz klasyfikuje ticket-199 jako INVALID_LEASE: historyczny repositoryRef nie spełnia kontraktu kanonicznego. Wymaga to naprawy przez kontroler; samego lease nie nadpisano. Lokalny PASS, utworzenie issue i zmiana statusu dokumentu nie oznaczają merge, wydania PyPI ani realizacji S3–S7. Nie wykonywano płatnych wywołań providerów.
+Nowego wydania PyPI nie opublikowano: wymagane subactor-procache==0.1.0 nie występuje w indeksie (HTTP 404). Test wyścigu polityki i odbiór równoległych profili konsumentów: NOT_RUN. S3–S7 pozostają otwarte. Nie wykonywano płatnych wywołań providerów.
 
 <!-- docs:section recommendations -->
 ## Następny krok
 
-Uzgodnić testowe fixture z właścicielem ticket-199, zachowując cel wcześniejszej pracy, oraz wykonać oryginalny zestaw testów i chronioną walidację dokładnego head/base. Następnie opublikować kwalifikowany release przez istniejącą ścieżkę S2. Realizować S3–S7 z natywnym audytem, budżetem wszystkich prób i wymaganymi testami fault, bez nowych wrapperów omijających politykę.
+Spełnić warunek dostępności zależności i niezależnej weryfikacji jej Trusted Publisher, następnie użyć istniejącej ścieżki S2 i porównać opublikowane hashe. Kontynuować S3–S7 z natywnym audytem, budżetem wszystkich prób i testami fault.
