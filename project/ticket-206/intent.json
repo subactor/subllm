@@ -1,0 +1,80 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-206",
+  "summary": "Synchronize authoritative version with existing package metadata",
+  "workstream": "integration",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-206/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "VERSION"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "89f81f99793120c45caa49bcaf632810541b85cb",
+    "targetBranch": "main",
+    "outcome": "PLF-22346: synchronize authoritative VERSION with already-existing package1.14.0, unblocking governed standard adoption22343.",
+    "nonGoals": [
+      "No new release, package-version bump or product change.",
+      "No edits to primary resolver, native202/204/205, managed hashes or existing leases."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 10,
+    "budgets": {
+      "maxImplementationFiles": 1,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Repair drift in the integration-owned version file to match existing package metadata and protected build1.14.0. No responsibility or persistent-data movement.",
+      "components": [
+        {
+          "name": "package-version",
+          "paths": [
+            "VERSION"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Protected revert of version synchronization."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Verify VERSION equals pyproject project.version1.14.0",
+          "./project/governance-check.sh --base origin/main"
+        ],
+        "evidence": "Exact source metadata alignment and governance."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Protected full native OneDev CI and independent Validator merge"
+        ],
+        "evidence": "Fresh exact-head complete profile and authentic terminal receipt."
+      }
+    ]
+  }
+}
