@@ -23,8 +23,7 @@ from subllm import CompletionError, native_http, openai_worker
 @pytest.fixture(scope="module")
 def tls_files(tmp_path_factory):
     executable = shutil.which("openssl")
-    if executable is None:
-        pytest.skip("Loopback TLS fixture requires openssl")
+    assert executable is not None, "Required loopback TLS acceptance fixture needs openssl"
     folder = tmp_path_factory.mktemp("transport-tls")
     cert, key = folder / "certificate.pem", folder / "key.pem"
     subprocess.run([
