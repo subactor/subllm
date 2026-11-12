@@ -13,16 +13,13 @@ ANTHROPIC_VERSION = "2023-06-01"
 DEFAULT_MAX_TOKENS = 4096
 
 
-def invoke(
-    api_base: str,
-    api_key: str,
+def request_body(
     model: str,
     messages: Sequence[Mapping[str, Any]],
-    timeout_seconds: float,
     response_format: Mapping[str, Any] | None,
     model_parameters: Mapping[str, Any] | None = None,
-) -> tuple[str, dict[str, int], str]:
-    """Return (content, usage, finish_reason). Raises NativeHTTPError on transport problems."""
+) -> dict[str, Any]:
+    """Canonical Messages body shared by complete and native streaming."""
     mode, schema = response_mode(response_format, name="Anthropic")
     system: list[str] = []
     turns: list[dict[str, str]] = []
@@ -48,6 +45,11 @@ def invoke(
     for name in ("temperature", "top_p"):
         if name in parameters:
             body[name] = parameters[name]
+    return body
+
+
+def invoke(api_base, api_key, model, messages, timeout_seconds, response_format, model_parameters=None):
+    body = request_body(model, messages, response_format, model_parameters)
     raw = post_json(f"{api_base.rstrip('/')}/messages", body,
                     {"x-api-key": api_key, "anthropic-version": ANTHROPIC_VERSION}, timeout_seconds,
                     quota_provider="claude")

@@ -26,7 +26,8 @@ MAX_OPENAI_WORKER_REQUEST_BYTES = 4_000_000
 MAX_OPENAI_RESPONSE_BYTES = 1_000_000
 
 
-def _request(source: Any) -> Mapping[str, Any]:
+def _request(source: Any, *, transports=frozenset({"openai-compatible"}),
+             schema="subllm.openai-worker-request/v1") -> Mapping[str, Any]:
     fields = {
         "schema", "provider", "api_base", "wire_model", "api_key", "messages",
         "model_parameters", "request_fields", "extra_headers", "response_format",
@@ -34,6 +35,8 @@ def _request(source: Any) -> Mapping[str, Any]:
     optional = {"capture_exchange", "timeout_seconds", "max_tokens"}
     if not isinstance(source, Mapping) or set(source) - optional != fields:
         raise CompletionError("OpenAI worker request must be a closed JSON object")
+    if source.get("schema") != schema:
+        raise CompletionError("API worker request schema is not supported")
     if "capture_exchange" in source and type(source["capture_exchange"]) is not bool:
         raise CompletionError("capture_exchange must be boolean")
     if "timeout_seconds" in source:
@@ -49,7 +52,7 @@ def _request(source: Any) -> Mapping[str, Any]:
         raise CompletionError("max_tokens must be a positive integer")
     provider = source.get("provider")
     spec = PROVIDERS.get(provider) if isinstance(provider, str) else None
-    if spec is None or spec.transport != "openai-compatible" or source.get("api_base") != spec.api_base:
+    if spec is None or spec.transport not in transports or source.get("api_base") != spec.api_base:
         raise CompletionError("OpenAI worker provider base is not policy-approved")
     wire_model = source.get("wire_model")
     if not isinstance(wire_model, str) or not wire_model or "\x00" in wire_model:
@@ -133,7 +136,7 @@ def _error(outcome: str, *, provider_level: bool, retryable: bool, message: str 
     return result
 
 
-def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
+def request_body(source: Mapping[str, Any]) -> dict[str, Any]:
     body: dict[str, Any] = {
         "model": source["wire_model"],
         "messages": source["messages"],
@@ -150,6 +153,24 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
         body["max_completion_tokens" if source["provider"] == "codex" else "max_tokens"] = limit
     if source["response_format"] is not None:
         body["response_format"] = dict(source["response_format"])
+    return body
+
+
+def http_request(source, body):
+    return Request(
+        f"{str(source['api_base']).rstrip('/')}/chat/completions",
+        data=json.dumps(body, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),
+        headers={
+            "Content-Type": "application/json",
+            **({"Authorization": f"Bearer {source['api_key']}"} if source.get("api_key") else {}),
+            **dict(source["extra_headers"]),
+        },
+        method="POST",
+    )
+
+
+def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
+    body = request_body(source)
     def finish(result, response=None):
         if not source.get("capture_exchange"):
             return result
@@ -166,16 +187,7 @@ def _execute(source: Mapping[str, Any]) -> Mapping[str, Any]:
             return value
         return {**result, "exchange": scrub(exchange)}
 
-    request = Request(
-        f"{str(source['api_base']).rstrip('/')}/chat/completions",
-        data=json.dumps(body, ensure_ascii=True, separators=(",", ":")).encode("utf-8"),
-        headers={
-            "Content-Type": "application/json",
-            **({"Authorization": f"Bearer {source['api_key']}"} if source.get("api_key") else {}),
-            **dict(source["extra_headers"]),
-        },
-        method="POST",
-    )
+    request = http_request(source, body)
     timeout = normalize_timeout(source.get("timeout_seconds", DEFAULT_TIMEOUT_SECONDS))
     try:
         with urlopen(request, timeout=timeout) as response:

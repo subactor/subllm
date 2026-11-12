@@ -7,12 +7,18 @@ from .client import (
     CompletionCache,
     CompletionCacheReceipt,
     CompletionResponse,
+    CompletionStream,
     GenerationBudget,
     GenerationLimits,
     GenerationUsage,
     JournalReference,
+    StreamCapabilities,
+    StreamEvent,
+    StreamFeedbackReceipt,
+    StreamMetrics,
     complete,
     execute_code_edit,
+    stream_complete,
 )
 from .credential_env import (
     POLICY_ENV_NAMES,
@@ -109,6 +115,12 @@ from .types import (
 )
 
 __all__ = [
+    "CompletionStream",
+    "StreamCapabilities",
+    "StreamEvent",
+    "StreamFeedbackReceipt",
+    "StreamMetrics",
+    "stream_complete",
     "CompletionCache",
     "CompletionCacheReceipt",
     "GenerationBudget",

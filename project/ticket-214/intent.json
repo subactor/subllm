@@ -1,0 +1,63 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-214",
+  "summary": "Add native inference streams with cancellation feedback and proxy delivery (S6)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-214/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "src/subllm/anthropic_api.py",
+    "src/subllm/client.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_workers.py",
+    "src/subllm/gemini_api.py",
+    "src/subllm/openai_worker.py",
+    "src/subllm/proxy.py",
+    "src/subllm/proxy_stream.py",
+    "src/subllm/stream_protocol.py",
+    "src/subllm/stream_transport.py",
+    "src/subllm/stream_worker.py",
+    "src/subllm/streaming.py",
+    "tests/test_streaming.py",
+    "tests/test_streaming_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "ff85519c3b72babddfeba8218069e9389fe6d429",
+    "targetBranch": "main",
+    "outcome": "Native incremental inference with bounded backpressure, attributed terminal receipts, explicit cancel/restart feedback and live OpenAI/Ollama proxy delivery.",
+    "nonGoals": ["No tool execution, automatic paid restart, prefix resume, cache replay or adaptive/CLI streaming.", "No atomic code-patch authority, whole-Forge performance claim, S7 repair or PyPI release."],
+    "complexity": "L", "estimatedMinutes": 85,
+    "budgets": {"maxImplementationFiles": 15, "maxAffectedComponents": 1, "maxPublicInterfaceChanges": 1, "maxRuntimeDependencies": 0},
+    "architecture": {
+      "status": "accepted",
+      "decision": "Compose existing complete/_complete_route and provider request builders with a policy-validated stream worker. A bounded pipe/queue carries provisional native events. Existing native writers acknowledge final success/error/cancel; no inference retry after provider output. Proxy adapters consume the same interface and controller feedback never changes acceptance.",
+      "components": [{"name": "inference-stream", "paths": ["src/subllm/streaming.py", "src/subllm/stream_transport.py", "src/subllm/stream_protocol.py", "src/subllm/stream_worker.py", "src/subllm/proxy_stream.py", "src/subllm/client_routes.py", "src/subllm/client_workers.py", "src/subllm/openai_worker.py", "src/subllm/anthropic_api.py", "src/subllm/gemini_api.py", "src/subllm/proxy.py", "src/subllm/client.py", "src/subllm/__init__.py", "tests/test_streaming.py", "tests/test_streaming_proxy.py"]}],
+      "responsibilityChanges": false,
+      "interfaceChanges": ["Add stream_complete, immutable StreamEvent/capabilities/feedback/metrics and incremental proxy event formatting with final native receipts."],
+      "dataChanges": [],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Revert the additive stream facade/worker and proxy streaming branch; preserve complete(), native persistence and existing non-streaming contracts."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {"criterion": "AC-01", "commands": ["Synthetic native SSE fixtures for three dialects"], "evidence": "First deltas precede terminal generation; exact wire parameters, native IDs and persisted usage/readback."},
+      {"criterion": "AC-02", "commands": ["Malformed/truncated/disconnected SSE, ordering/deduplication, queue saturation and cancellation faults"], "evidence": "Bounded resources and no success or hidden retry after partial output; unknown usage remains unknown."},
+      {"criterion": "AC-03", "commands": ["Feedback identity/epoch tests and loopback timing/invalidated-output observations"], "evidence": "Only current delivered feedback is accepted; no automatic tools or inference restart; no unmeasured end-to-end claim."},
+      {"criterion": "AC-04", "commands": ["OpenAI/Ollama proxy loopback", "Affected regression, Ruff, docs/log/governance", "Protected OneDev and independent exact-head review/merge"], "evidence": "Live flush and bounded client disconnect cleanup, preserved ordinary complete and S3-S5 behavior."}
+    ]
+  }
+}

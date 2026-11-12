@@ -35,6 +35,14 @@ from .policy_config import load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
 from .quality_schema import declared_schema_gate, schema_gate
 from .resolver import available_routes, configured_routes
+from .stream_transport import (
+    ACTIVE_STREAM,
+    attach_capture,
+    invoke_stream,
+    require_supported,
+    stream_error,
+    supported_routes,
+)
 from .types import ResolvedRoute
 from .usage import record_attempt
 
@@ -98,6 +106,11 @@ def _invoke_route(
     cwd: Path,
     policy_file: Path | None = None,
 ) -> CompletionResponse:
+    if ACTIVE_STREAM.get() is not None:
+        return invoke_stream(route, messages, timeout_seconds=timeout_seconds, request_id=request_id,
+                             response_format=_codex_response_format(response_format)
+                             if route.provider == "codex" else response_format,
+                             cwd=cwd, policy_file=policy_file)
     if route.transport in CLI_EXECUTABLES:
         from . import agy_cli, claude_cli, codex_cli, cursor_cli
 
@@ -152,6 +165,7 @@ def _complete_route(
     policy_file: Path | None = None,
     quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
+    require_supported(route)
     quality_gate = declared_schema_gate(response_format, quality_gate)
     with generation_attempt(route, policy_file) as reservation:
         route = reservation.route
@@ -172,6 +186,19 @@ def _complete_route(
                 return replace(response, generation=reservation.scope.receipt())
             except Exception as exc:
                 attempt_error = exc
+                active = ACTIVE_STREAM.get()
+                if active is not None:
+                    response = response or getattr(exc, "partial_response", None)
+                    if response is not None:
+                        reservation.finish(response.usage)
+                        exc.partial_response = response
+                    if active.observed and isinstance(exc, _RetryableAttemptError):
+                        fixed = CompletionError("stream response rejected after provider output",
+                                                diagnostic_code=exc.diagnostic_code)
+                        fixed.partial_response = response
+                        attempt_error = fixed
+                        diagnostic = fixed.diagnostic_code or "SUBLLM-STREAM-REJECTED"
+                        raise fixed from None
                 # Never persist exception messages, raw provider errors or headers.
                 if isinstance(exc, _RetryableAttemptError):
                     diagnostic = exc.diagnostic_code or _attempt_diagnostic_code(exc.outcome)
@@ -261,6 +288,8 @@ def _complete(
     adaptive_policy = adaptive.policy(environ)
     requirement = adaptive_policy and adaptive_policy.get("routes", {}).get(f"{application}/{function}")
     if requirement:
+        if ACTIVE_STREAM.get() is not None:
+            raise stream_error("UNSUPPORTED-ADAPTIVE")
         if model is not None:
             raise CompletionError("explicit model selection is not supported by this adaptive route")
         from .proxy import _build_model_resolved_routes
@@ -282,7 +311,7 @@ def _complete(
         configured = configured_routes(application, function, environ=environ)
         required = ", ".join(sorted({route.api_key_env for route in configured}))
         raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
-    routes = _requested_model_routes(routes, model)
+    routes = _requested_model_routes(supported_routes(routes), model)
     runtime_policy = _runtime_policy or load_policy_config(environ={**os.environ, **(environ or {})})
     execution = runtime_policy.execution
     timeout_environment = merged_environment(environ=environ)
@@ -428,6 +457,7 @@ def complete(
         generation_scope(generation_limits, generation_budget, runtime_policy.execution) as generation,
         capture_audit(request_id, correlation_id) as capture,
     ):
+        attach_capture(capture, generation)
         def invoke(routes=None, timeout=timeout_seconds):
             response = _complete(
                 application, function, messages, timeout_seconds=timeout,

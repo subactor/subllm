@@ -133,7 +133,7 @@ def _complete_cursor(
     )
 
 
-def _complete_openai_compatible(
+def api_worker_request(
     route: ResolvedRoute,
     messages: Sequence[Mapping[str, Any]],
     *,
@@ -141,7 +141,7 @@ def _complete_openai_compatible(
     request_id: str | None,
     response_format: Mapping[str, Any] | None,
     policy_file: Path | None = None,
-) -> CompletionResponse:
+) -> dict[str, Any]:
     worker_request: dict[str, Any] = {
         "schema": "subllm.openai-worker-request/v1",
         **({"capture_exchange": True} if ACTIVE_ARCHIVE.get() is not None else {}),
@@ -160,6 +160,14 @@ def _complete_openai_compatible(
         from .generation import token_limit
 
         worker_request["max_tokens"] = token_limit(route.model_parameters["max_tokens"], legacy_string=True)
+    return worker_request
+
+
+def _complete_openai_compatible(
+    route, messages, *, timeout_seconds, request_id, response_format, policy_file=None,
+) -> CompletionResponse:
+    worker_request = api_worker_request(route, messages, timeout_seconds=timeout_seconds,
+                                        request_id=request_id, response_format=response_format)
     result = _run_openai_worker(
         worker_request,
         timeout_seconds=timeout_seconds,

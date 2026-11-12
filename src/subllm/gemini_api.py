@@ -32,16 +32,13 @@ def _generated_tokens(meta):
     return counts[0]
 
 
-def invoke(
-    api_base: str,
-    api_key: str,
+def request_body(
     model: str,
     messages: Sequence[Mapping[str, Any]],
-    timeout_seconds: float,
     response_format: Mapping[str, Any] | None,
     model_parameters: Mapping[str, Any] | None = None,
-) -> tuple[str, dict[str, int | None], str]:
-    """Return (content, usage, finish_reason). Raises NativeHTTPError on transport problems."""
+) -> dict[str, Any]:
+    """Canonical generateContent body shared by complete and native streaming."""
     mode, schema = response_mode(response_format, name="Gemini")
     system: list[str] = []
     contents: list[dict[str, Any]] = []
@@ -71,6 +68,12 @@ def invoke(
         body["systemInstruction"] = {"parts": [{"text": "\n\n".join(system)}]}
     if generation:
         body["generationConfig"] = generation
+    return body
+
+
+def invoke(api_base, api_key, model, messages, timeout_seconds, response_format, model_parameters=None):
+    parameters = dict(model_parameters or {})
+    body = request_body(model, messages, response_format, parameters)
     raw = post_json(
         f"{api_base.rstrip('/')}/models/{quote(model, safe='')}:generateContent",
         body, {"x-goog-api-key": api_key}, timeout_seconds,
@@ -84,6 +87,11 @@ def invoke(
     if not text:
         raise NativeHTTPError("invalid_response")
     meta = raw.get("usageMetadata") if isinstance(raw, Mapping) else None
+    return (text, usage_from_metadata(meta, bounded="max_tokens" in parameters),
+            str(candidate.get("finishReason", "STOP")).lower())
+
+
+def usage_from_metadata(meta, *, bounded=False, strict=False):
     usage: dict[str, int | None] = {}
     if isinstance(meta, Mapping):
         for source, target in (("promptTokenCount", "input_tokens"), ("candidatesTokenCount", "output_tokens"),
@@ -91,14 +99,14 @@ def invoke(
             value = meta.get(source)
             if type(value) is int and value >= 0:
                 usage[target] = value
-    if "max_tokens" in parameters:
+    if bounded:
         # Candidate counts omit thinking. Do not invent zero for missing usage.
         generated = _generated_tokens(meta)
-        if generation_accounting_active():
+        if strict or generation_accounting_active():
             usage["generation_output_tokens"] = generated
             if "output_tokens" in usage:
                 usage["visible_output_tokens"] = usage["output_tokens"]
             usage["output_tokens"] = generated
         elif generated is not None:
             usage["output_tokens"] = generated
-    return text, usage, str(candidate.get("finishReason", "STOP")).lower()
+    return usage
