@@ -1,0 +1,95 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-202",
+  "summary": "Bind authenticated gateway attempts to durable business cost observations",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-202/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "src/subllm/gateway.py",
+    "tests/test_gateway_kpi.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "171989a48fee1bcd2f3882032dd76933b5186dd2",
+    "targetBranch": "main",
+    "outcome": "PLF-22330 / PLF-22321 slice2: bind authenticated gateway requests to trusted server-registered business case references, persist every actual provider attempt through the merged durable cost journal, and preserve paid results when observation delivery fails.",
+    "nonGoals": [
+      "No production activation, routing/model priority change, prices, implicit FX or provider request replay.",
+      "Do not change active primary resolver.py, managed standard files, existing lease projections or global CI policy.",
+      "No business goal success claim; dedicated cost stream joins execution evidence in PLF-22322."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 25,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse the merged GatewayCostObserver and current actual-attempt seam. Authenticate an opaque server-granted case reference before admission; ContextVar carries that binding within the existing worker thread. Unknown fees and pending observation state stay in the journal; exceptions in new telemetry cannot cause another paid attempt.",
+      "components": [
+        {
+          "name": "gateway-cost-binding",
+          "paths": [
+            "src/subllm/client_routes.py",
+            "src/subllm/gateway.py",
+            "tests/test_gateway_kpi.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "create_app optional trusted cost_observer argument",
+        "Optional authenticated business-case reference and cost-observation HTTP response headers"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert bounded source integration via protected publication; preserve journal and active user work."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest tests/test_gateway_kpi.py tests/test_kpi_usage.py tests/test_kpi_ledger.py -q"
+        ],
+        "evidence": "Actual gateway transport seam, auth/grants, failover, durable cost and failure-injection tests."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m ruff check src/subllm/client_routes.py src/subllm/gateway.py tests/test_gateway_kpi.py",
+          "./project/governance-check.sh --base origin/main"
+        ],
+        "evidence": "Real checked-in source; diagnostic142 regression report and baseline-known failures tracked in PLF22332."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "Protected native OneDev full verification and independent Validator exact-head merge"
+        ],
+        "evidence": "Required native full suite, build and terminal merge receipt; no skipped/waived required checks."
+      }
+    ]
+  }
+}
