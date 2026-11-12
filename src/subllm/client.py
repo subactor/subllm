@@ -9,8 +9,10 @@ from .client_types import (
     CompletionAttempt,
     CompletionResponse,
 )
+from .generation import GenerationBudget, GenerationLimits, GenerationUsage
 
 __all__ = [
+    "GenerationBudget", "GenerationLimits", "GenerationUsage",
     "ArchiveReference", "AuditAttempt", "CompletionAudit", "JournalReference",
     "CodeEditResponse", "CompletionAttempt", "CompletionResponse", "code_edit_main", "complete",
     "completion_main", "execute_code_edit",

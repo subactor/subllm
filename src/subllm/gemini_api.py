@@ -7,11 +7,29 @@ from urllib.parse import quote
 
 from .cli_common import JSON_OBJECT_INSTRUCTION, response_mode
 from .errors import CompletionError
+from .generation import generation_accounting_active, token_limit
 from .native_http import NativeHTTPError, plain_messages, post_json
 
 _ROLES = {"user": "user", "assistant": "model"}
 # 503 UNAVAILABLE means this model is overloaded right now; another Gemini model is usually fine.
 _MODEL_SCOPED_STATUSES = frozenset({503})
+
+
+def _generated_tokens(meta):
+    if not isinstance(meta, Mapping):
+        return None
+    fields = ("candidatesTokenCount", "thoughtsTokenCount", "totalTokenCount",
+              "promptTokenCount", "toolUsePromptTokenCount")
+    if any(key in meta and (type(meta[key]) is not int or meta[key] < 0) for key in fields):
+        return None
+    counts = []
+    if "candidatesTokenCount" in meta and "thoughtsTokenCount" in meta:
+        counts.append(meta["candidatesTokenCount"] + meta["thoughtsTokenCount"])
+    if "totalTokenCount" in meta and "promptTokenCount" in meta:
+        counts.append(meta["totalTokenCount"] - meta["promptTokenCount"] - meta.get("toolUsePromptTokenCount", 0))
+    if not counts or len(set(counts)) != 1 or counts[0] < meta.get("candidatesTokenCount", 0):
+        return None
+    return counts[0]
 
 
 def invoke(
@@ -22,7 +40,7 @@ def invoke(
     timeout_seconds: float,
     response_format: Mapping[str, Any] | None,
     model_parameters: Mapping[str, Any] | None = None,
-) -> tuple[str, dict[str, int], str]:
+) -> tuple[str, dict[str, int | None], str]:
     """Return (content, usage, finish_reason). Raises NativeHTTPError on transport problems."""
     mode, schema = response_mode(response_format, name="Gemini")
     system: list[str] = []
@@ -40,7 +58,8 @@ def invoke(
     parameters = dict(model_parameters or {})
     for source, target in (("temperature", "temperature"), ("top_p", "topP"), ("max_tokens", "maxOutputTokens")):
         if source in parameters:
-            generation[target] = parameters[source]
+            generation[target] = (token_limit(parameters[source], legacy_string=True)
+                                  if source == "max_tokens" else parameters[source])
     if mode == "json_object":
         generation["responseMimeType"] = "application/json"
         system.append(JSON_OBJECT_INSTRUCTION)
@@ -65,11 +84,21 @@ def invoke(
     if not text:
         raise NativeHTTPError("invalid_response")
     meta = raw.get("usageMetadata") if isinstance(raw, Mapping) else None
-    usage: dict[str, int] = {}
+    usage: dict[str, int | None] = {}
     if isinstance(meta, Mapping):
         for source, target in (("promptTokenCount", "input_tokens"), ("candidatesTokenCount", "output_tokens"),
                                ("cachedContentTokenCount", "cached_input_tokens")):
             value = meta.get(source)
             if type(value) is int and value >= 0:
                 usage[target] = value
+    if "max_tokens" in parameters:
+        # Candidate counts omit thinking. Do not invent zero for missing usage.
+        generated = _generated_tokens(meta)
+        if generation_accounting_active():
+            usage["generation_output_tokens"] = generated
+            if "output_tokens" in usage:
+                usage["visible_output_tokens"] = usage["output_tokens"]
+            usage["output_tokens"] = generated
+        elif generated is not None:
+            usage["output_tokens"] = generated
     return text, usage, str(candidate.get("finishReason", "STOP")).lower()

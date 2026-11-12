@@ -6,6 +6,7 @@ from typing import Any
 
 from .cli_common import JSON_OBJECT_INSTRUCTION, response_mode
 from .errors import CompletionError
+from .generation import token_limit
 from .native_http import NativeHTTPError, plain_messages, post_json
 
 ANTHROPIC_VERSION = "2023-06-01"
@@ -40,7 +41,8 @@ def invoke(
     elif mode == "json_schema":
         system.append(f"{JSON_OBJECT_INSTRUCTION} It must satisfy this JSON Schema: {schema}")
     body: dict[str, Any] = {"model": model, "messages": turns,
-                            "max_tokens": int(parameters.get("max_tokens", DEFAULT_MAX_TOKENS))}
+                            "max_tokens": token_limit(parameters.get("max_tokens", DEFAULT_MAX_TOKENS),
+                                                      legacy_string=True)}
     if system:
         body["system"] = "\n\n".join(system)
     for name in ("temperature", "top_p"):

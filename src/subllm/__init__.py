@@ -5,6 +5,9 @@ from .client import (
     CompletionAttempt,
     CompletionAudit,
     CompletionResponse,
+    GenerationBudget,
+    GenerationLimits,
+    GenerationUsage,
     JournalReference,
     complete,
     execute_code_edit,
@@ -104,6 +107,9 @@ from .types import (
 )
 
 __all__ = [
+    "GenerationBudget",
+    "GenerationLimits",
+    "GenerationUsage",
     "ArchiveReference",
     "AuditAttempt",
     "CompletionAudit",

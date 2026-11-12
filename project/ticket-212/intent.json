@@ -1,0 +1,60 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-212",
+  "summary": "Add policy bounded generation limits and shared output token budgets (S3)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-212/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "src/subllm/anthropic_api.py",
+    "src/subllm/client.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_types.py",
+    "src/subllm/client_workers.py",
+    "src/subllm/gemini_api.py",
+    "src/subllm/generation.py",
+    "src/subllm/openai_worker.py",
+    "src/subllm/policy_config.py",
+    "tests/test_generation_limits.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "39f4d08d02bc405b7231c466db6db6df33c492ad",
+    "targetBranch": "main",
+    "outcome": "Add explicit per-call output generation limits, operator maxima and an optional shared campaign output-token budget accounting for every actual attempt, including quality rejection and unknown usage.",
+    "nonGoals": ["No input-token or currency spending cap is claimed.", "No provider calls with real credentials, dependency migration, PyPI publication or implementation of S5-S7."],
+    "complexity": "L",
+    "estimatedMinutes": 80,
+    "budgets": {"maxImplementationFiles": 11, "maxAffectedComponents": 1, "maxPublicInterfaceChanges": 1, "maxRuntimeDependencies": 0},
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse native complete/_complete_route, transport model parameters, S4 audit and usage writers. A context-local generation scope reserves shared output allowance before effect, settles provider usage before quality acceptance and exposes immutable accounting. Missing usage blocks subsequent budgeted dispatch; CLI/Cursor limits fail explicitly.",
+      "components": [{"name": "bounded-generation", "paths": ["src/subllm/generation.py", "src/subllm/client_types.py", "src/subllm/client_routes.py", "src/subllm/client_workers.py", "src/subllm/openai_worker.py", "src/subllm/anthropic_api.py", "src/subllm/gemini_api.py", "src/subllm/policy_config.py", "src/subllm/client.py", "src/subllm/__init__.py", "tests/test_generation_limits.py"]}],
+      "responsibilityChanges": false,
+      "interfaceChanges": ["Add GenerationLimits, GenerationBudget, generation_limits/generation_budget complete() arguments, immutable response.generation accounting and optional component-owned execution/custom-provider token limit configuration; existing defaults unchanged."],
+      "dataChanges": [],
+      "ui": {"impact": "none", "states": [], "evidence": []},
+      "rollback": "Revert the additive generation scope, optional policy fields and transport mappings; retain existing audit and journal formats."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {"criterion": "AC-01", "commands": ["Local HTTP wire fixtures for both OpenAI token dialects, Anthropic and Gemini"], "evidence": "Exact integer limits, preserved attribution and no silently ignored unsupported flags."},
+      {"criterion": "AC-02", "commands": ["Policy maxima, invalid values and unsupported transport tests"], "evidence": "Caller can lower but cannot raise configured maxima; reject before provider effect."},
+      {"criterion": "AC-03", "commands": ["Fallback, quality rejection, partial response, unknown usage and concurrent campaign tests"], "evidence": "All actual attempts consume shared reservations; unknown is never zero; truncated responses are not successful."},
+      {"criterion": "AC-04", "commands": ["Affected regression tests", "Ruff", "Managed governance", "Protected OneDev and independent exact-head review/merge"], "evidence": "Preserved unlimited behavior and S4 audit integration; exact source independently accepted."}
+    ]
+  }
+}

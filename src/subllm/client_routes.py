@@ -27,6 +27,7 @@ from .errors import (
     CompletionError,
     CursorRunError,
 )
+from .generation import GenerationBudget, GenerationLimits, generation_attempt, generation_scope
 from .health import order_with_last_resort, record_failure, record_success
 from .interaction_context import ACTIVE_ARCHIVE, begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
@@ -151,42 +152,46 @@ def _complete_route(
     quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
     quality_gate = declared_schema_gate(response_format, quality_gate)
-    with audit_attempt(request_id, route) as observation:
-        started = time.monotonic()
-        response = None
-        diagnostic = None
-        attempt_error = None
-        archive = begin_attempt(route, messages, response_format,
-                                request_id=request_id, timeout_seconds=timeout_seconds)
-        try:
-            response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
-                                     request_id=request_id, response_format=response_format, cwd=cwd,
-                                     policy_file=policy_file)
-            validate_response(response, response_format, quality_gate)
-            return response
-        except Exception as exc:
-            attempt_error = exc
-            # Never persist exception messages, raw provider errors or headers.
-            if isinstance(exc, _RetryableAttemptError):
-                diagnostic = exc.diagnostic_code or _attempt_diagnostic_code(exc.outcome)
-            else:
-                diagnostic = getattr(exc, "diagnostic_code", None) or "SUBLLM-ATTEMPT-FAILED"
-            raise
-        finally:
-            from .kpi_usage import record_provider_attempt
+    with generation_attempt(route, policy_file) as reservation:
+        route = reservation.route
+        with audit_attempt(request_id, route) as observation:
+            started = time.monotonic()
+            response = None
+            diagnostic = None
+            attempt_error = None
+            archive = begin_attempt(route, messages, response_format,
+                                    request_id=request_id, timeout_seconds=timeout_seconds)
+            try:
+                reservation.dispatched = True
+                response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
+                                         request_id=request_id, response_format=response_format, cwd=cwd,
+                                         policy_file=policy_file)
+                reservation.finish(response.usage)
+                validate_response(response, response_format, quality_gate)
+                return replace(response, generation=reservation.scope.receipt())
+            except Exception as exc:
+                attempt_error = exc
+                # Never persist exception messages, raw provider errors or headers.
+                if isinstance(exc, _RetryableAttemptError):
+                    diagnostic = exc.diagnostic_code or _attempt_diagnostic_code(exc.outcome)
+                else:
+                    diagnostic = getattr(exc, "diagnostic_code", None) or "SUBLLM-ATTEMPT-FAILED"
+                raise
+            finally:
+                from .kpi_usage import record_provider_attempt
 
-            duration_ms = round((time.monotonic() - started) * 1000)
-            status = "success" if response is not None and attempt_error is None else "error"
-            if observation is not None:
-                observation.status = status
-            usage = response.usage if response is not None else {}
-            record_provider_attempt(provider=route.provider, model=route.wire_model,
-                                    status=status, duration_ms=duration_ms, usage=usage)
-            finish_attempt(archive, route, response, attempt_error, duration_ms)
-            record_attempt(request_id=request_id or uuid4().hex,
-                           application=route.application, function=route.function,
-                           provider=route.provider, model=route.wire_model,
-                           status=status, diagnostic_code=diagnostic, duration_ms=duration_ms, usage=usage)
+                duration_ms = round((time.monotonic() - started) * 1000)
+                status = "success" if response is not None and attempt_error is None else "error"
+                if observation is not None:
+                    observation.status = status
+                usage = response.usage if response is not None else {}
+                record_provider_attempt(provider=route.provider, model=route.wire_model,
+                                        status=status, duration_ms=duration_ms, usage=usage)
+                finish_attempt(archive, route, response, attempt_error, duration_ms)
+                record_attempt(request_id=request_id or uuid4().hex,
+                               application=route.application, function=route.function,
+                               provider=route.provider, model=route.wire_model,
+                               status=status, diagnostic_code=diagnostic, duration_ms=duration_ms, usage=usage)
 
 
 def _requested_model_routes(routes: list[ResolvedRoute], model: str | None) -> list[ResolvedRoute]:
@@ -215,6 +220,7 @@ def _complete(
     model: str | None = None,
     quality_gate: ResponseValidator | None = None,
     quality_schema: Mapping[str, Any] | bool | None = None,
+    _runtime_policy=None,
 ) -> CompletionResponse:
     """Execute configured routes; an explicit model restricts, never expands, them.
 
@@ -273,7 +279,7 @@ def _complete(
         required = ", ".join(sorted({route.api_key_env for route in configured}))
         raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
     routes = _requested_model_routes(routes, model)
-    runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
+    runtime_policy = _runtime_policy or load_policy_config(environ={**os.environ, **(environ or {})})
     execution = runtime_policy.execution
     timeout_environment = merged_environment(environ=environ)
     routes = order_with_last_resort(routes, environ=timeout_environment) if execution.failover_enabled else routes[:1]
@@ -377,6 +383,8 @@ def complete(
     model: str | None = None,
     quality_gate: ResponseValidator | None = None,
     quality_schema: Mapping[str, Any] | bool | None = None,
+    generation_limits: GenerationLimits | Mapping[str, Any] | None = None,
+    generation_budget: GenerationBudget | None = None,
 ) -> CompletionResponse:
     """Complete within policy and return immutable native persistence receipts.
 
@@ -384,6 +392,12 @@ def complete(
     references retained. Storage failure never repeats a provider invocation.
     Request/correlation IDs and per-attempt references carry no prompt, response,
     credential or storage path. Existing response fields and routing are retained.
+
+    generation_limits caps each attempt and optionally the whole request output.
+    generation_budget shares an output allowance across calls, including rejected
+    attempts. Missing usage stays unknown and blocks further budgeted dispatch.
+    Input tokens and currency are outside this budget. Unsupported CLI/Cursor
+    limits raise before invocation; callers cannot raise operator ceilings.
     """
     request_id = request_id or uuid4().hex
     parent = ACTIVE_ARCHIVE.get()
@@ -391,11 +405,15 @@ def complete(
         correlation_id = parent[1]["id"] if parent is not None else request_id
     except (KeyError, IndexError, TypeError):
         correlation_id = request_id
-    with capture_audit(request_id, correlation_id) as capture:
+    runtime_policy = load_policy_config(environ={**os.environ, **(environ or {})})
+    with (
+        generation_scope(generation_limits, generation_budget, runtime_policy.execution) as generation,
+        capture_audit(request_id, correlation_id) as capture,
+    ):
         response = _complete(
             application, function, messages, timeout_seconds=timeout_seconds,
             request_id=request_id, response_format=response_format, environ=environ,
             credentials=credentials, cwd=cwd, model=model, quality_gate=quality_gate,
-            quality_schema=quality_schema,
+            quality_schema=quality_schema, _runtime_policy=runtime_policy,
         )
-        return replace(response, audit=capture.receipt())
+        return replace(response, audit=capture.receipt(), generation=generation.receipt())
