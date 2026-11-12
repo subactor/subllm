@@ -5,6 +5,7 @@ from __future__ import annotations
 import logging
 from contextvars import ContextVar
 
+from .audit import ArchiveReference, observe_archive
 from .gateway_diagnostics import diagnostic
 
 ACTIVE_ARCHIVE = ContextVar("subllm_interaction_archive", default=None)
@@ -32,6 +33,9 @@ def _take_usage_archive_reference(request_id, application, function, provider, m
 
 def begin_attempt(route, messages, response_format, request_id=None, timeout_seconds=None, *, native_request=None):
     _NEXT_USAGE_ARCHIVE.set(None)
+    identity = (request_id, *(getattr(route, key, None) for key in
+                             ("application", "function", "provider", "wire_model")))
+    observe_archive(identity, "unavailable")
     try:
         import uuid
 
@@ -53,6 +57,7 @@ def begin_attempt(route, messages, response_format, request_id=None, timeout_sec
 
             store = get_default_interaction_store()
             if store is None:
+                observe_archive(identity, "disabled")
                 return None
             caller, target, correlation = route.application or "direct", f"{route.provider}/{route.wire_model}", (
                 request_id or uuid.uuid4().hex
@@ -60,8 +65,6 @@ def begin_attempt(route, messages, response_format, request_id=None, timeout_sec
         record = store.begin(
             kind="llm_attempt", caller=caller, target=target, request=req_payload, correlation_id=correlation,
         )
-        identity = (request_id, *(getattr(route, key, None) for key in
-                                 ("application", "function", "provider", "wire_model")))
         return store, _AttemptRecord(record, identity)
     except Exception:
         LOG.warning("SUBLLM-ARCHIVE-BEGIN: capture unavailable; upstream call preserved")
@@ -116,14 +119,20 @@ def finish_attempt(entry, route, response, error, duration_ms):
             metadata=metadata,
         )
         identity = getattr(record, "usage_identity", None)
-        if saved is not None and identity and all(isinstance(v, str) and 0 < len(v) <= 256 for v in identity):
+        if saved is not None:
             reference = archive_reference({"id": saved["id"], "day": saved["day"]})
-            if reference != {"id": record["id"], "day": record["day"]}:
+            if (reference != {"id": record["id"], "day": record["day"]}
+                    or any(saved.get(key) != record.get(key) for key in ("caller", "target", "correlation_id"))
+                    or saved.get("status") not in {"success", "error"} or saved.get("finished_at") is None):
                 raise ValueError("Changed archive identity")
-            # Gateway parents can intentionally own a different caller/correlation.
-            # Preserve that graph and link only an actual same-subject attempt.
-            if (saved.get("caller") == identity[1] and saved.get("correlation_id") == identity[0]
-                    and identity[1:] == (route.application, route.function, route.provider, route.wire_model)):
-                _NEXT_USAGE_ARCHIVE.set((identity, (reference["id"], reference["day"])))
+            observe_archive(identity, "stored", ArchiveReference(
+                reference["id"], reference["day"], saved["correlation_id"],
+            ))
+        # Gateway parents can intentionally own a different caller/correlation.
+        # Preserve that graph and link only an actual same-subject attempt.
+        if (saved is not None and identity and all(isinstance(v, str) and 0 < len(v) <= 256 for v in identity)
+                and saved.get("caller") == identity[1] and saved.get("correlation_id") == identity[0]
+                and identity[1:] == (route.application, route.function, route.provider, route.wire_model)):
+            _NEXT_USAGE_ARCHIVE.set((identity, (reference["id"], reference["day"])))
     except Exception:
         LOG.error("SUBLLM-ARCHIVE-WRITE: capture or journal reference unavailable; no upstream retry")

@@ -11,6 +11,7 @@ from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
+from .audit import audit_attempt, capture_audit
 from .cli_common import CLI_EXECUTABLES
 from .client_types import (
     CompletionAttempt,
@@ -27,7 +28,7 @@ from .errors import (
     CursorRunError,
 )
 from .health import order_with_last_resort, record_failure, record_success
-from .interaction_context import begin_attempt, finish_attempt
+from .interaction_context import ACTIVE_ARCHIVE, begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
 from .quality_schema import declared_schema_gate, schema_gate
@@ -150,38 +151,43 @@ def _complete_route(
     quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
     quality_gate = declared_schema_gate(response_format, quality_gate)
-    started = time.monotonic()
-    response = None
-    diagnostic = None
-    attempt_error = None
-    archive = begin_attempt(route, messages, response_format, request_id=request_id, timeout_seconds=timeout_seconds)
-    try:
-        response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
-                                 request_id=request_id, response_format=response_format, cwd=cwd,
-                                 policy_file=policy_file)
-        validate_response(response, response_format, quality_gate)
-        return response
-    except Exception as exc:
-        attempt_error = exc
-        # Never persist exception messages, raw provider errors or headers.
-        if isinstance(exc, _RetryableAttemptError):
-            diagnostic = exc.diagnostic_code or _attempt_diagnostic_code(exc.outcome)
-        else:
-            diagnostic = getattr(exc, "diagnostic_code", None) or "SUBLLM-ATTEMPT-FAILED"
-        raise
-    finally:
-        from .kpi_usage import record_provider_attempt
+    with audit_attempt(request_id, route) as observation:
+        started = time.monotonic()
+        response = None
+        diagnostic = None
+        attempt_error = None
+        archive = begin_attempt(route, messages, response_format,
+                                request_id=request_id, timeout_seconds=timeout_seconds)
+        try:
+            response = _invoke_route(route, messages, timeout_seconds=timeout_seconds,
+                                     request_id=request_id, response_format=response_format, cwd=cwd,
+                                     policy_file=policy_file)
+            validate_response(response, response_format, quality_gate)
+            return response
+        except Exception as exc:
+            attempt_error = exc
+            # Never persist exception messages, raw provider errors or headers.
+            if isinstance(exc, _RetryableAttemptError):
+                diagnostic = exc.diagnostic_code or _attempt_diagnostic_code(exc.outcome)
+            else:
+                diagnostic = getattr(exc, "diagnostic_code", None) or "SUBLLM-ATTEMPT-FAILED"
+            raise
+        finally:
+            from .kpi_usage import record_provider_attempt
 
-        duration_ms = round((time.monotonic() - started) * 1000)
-        status = "success" if response is not None and attempt_error is None else "error"
-        usage = response.usage if response is not None else {}
-        record_provider_attempt(provider=route.provider, model=route.wire_model,
-                                status=status, duration_ms=duration_ms, usage=usage)
-        finish_attempt(archive, route, response, attempt_error, duration_ms)
-        record_attempt(request_id=request_id or uuid4().hex,
-                       application=route.application, function=route.function,
-                       provider=route.provider, model=route.wire_model,
-                       status=status, diagnostic_code=diagnostic, duration_ms=duration_ms, usage=usage)
+            duration_ms = round((time.monotonic() - started) * 1000)
+            status = "success" if response is not None and attempt_error is None else "error"
+            if observation is not None:
+                observation.status = status
+            usage = response.usage if response is not None else {}
+            record_provider_attempt(provider=route.provider, model=route.wire_model,
+                                    status=status, duration_ms=duration_ms, usage=usage)
+            finish_attempt(archive, route, response, attempt_error, duration_ms)
+            record_attempt(request_id=request_id or uuid4().hex,
+                           application=route.application, function=route.function,
+                           provider=route.provider, model=route.wire_model,
+                           status=status, diagnostic_code=diagnostic, duration_ms=duration_ms, usage=usage)
+
 
 def _requested_model_routes(routes: list[ResolvedRoute], model: str | None) -> list[ResolvedRoute]:
     if model is None:
@@ -195,7 +201,7 @@ def _requested_model_routes(routes: list[ResolvedRoute], model: str | None) -> l
     return selected
 
 
-def complete(
+def _complete(
     application: str,
     function: str,
     messages: Sequence[Mapping[str, Any]],
@@ -355,3 +361,41 @@ def complete(
         message,
         diagnostic_code=PROVIDER_CHAIN_EXHAUSTED_CODE,
     ) from last_error
+
+
+def complete(
+    application: str,
+    function: str,
+    messages: Sequence[Mapping[str, Any]],
+    *,
+    timeout_seconds: float = 30.0,
+    request_id: str | None = None,
+    response_format: Mapping[str, Any] | None = None,
+    environ: Mapping[str, str] | None = None,
+    credentials: Mapping[str, str] | None = None,
+    cwd: str | Path | None = None,
+    model: str | None = None,
+    quality_gate: ResponseValidator | None = None,
+    quality_schema: Mapping[str, Any] | bool | None = None,
+) -> CompletionResponse:
+    """Complete within policy and return immutable native persistence receipts.
+
+    ``audit.state`` is unavailable if any enabled write failed, with successful
+    references retained. Storage failure never repeats a provider invocation.
+    Request/correlation IDs and per-attempt references carry no prompt, response,
+    credential or storage path. Existing response fields and routing are retained.
+    """
+    request_id = request_id or uuid4().hex
+    parent = ACTIVE_ARCHIVE.get()
+    try:
+        correlation_id = parent[1]["id"] if parent is not None else request_id
+    except (KeyError, IndexError, TypeError):
+        correlation_id = request_id
+    with capture_audit(request_id, correlation_id) as capture:
+        response = _complete(
+            application, function, messages, timeout_seconds=timeout_seconds,
+            request_id=request_id, response_format=response_format, environ=environ,
+            credentials=credentials, cwd=cwd, model=model, quality_gate=quality_gate,
+            quality_schema=quality_schema,
+        )
+        return replace(response, audit=capture.receipt())

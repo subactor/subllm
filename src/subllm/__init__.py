@@ -1,4 +1,14 @@
-from .client import CodeEditResponse, CompletionAttempt, CompletionResponse, complete, execute_code_edit
+from .client import (
+    ArchiveReference,
+    AuditAttempt,
+    CodeEditResponse,
+    CompletionAttempt,
+    CompletionAudit,
+    CompletionResponse,
+    JournalReference,
+    complete,
+    execute_code_edit,
+)
 from .credential_env import (
     POLICY_ENV_NAMES,
     SUBLLM_ENV_FILE,
@@ -94,6 +104,10 @@ from .types import (
 )
 
 __all__ = [
+    "ArchiveReference",
+    "AuditAttempt",
+    "CompletionAudit",
+    "JournalReference",
     "APPLICATIONS",
     "list_proxy_models",
     "make_proxy_server",

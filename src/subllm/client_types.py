@@ -4,6 +4,7 @@ from collections.abc import Mapping
 from dataclasses import dataclass, field
 from typing import Any
 
+from .audit import CompletionAudit
 from .errors import (
     PROVIDER_RATE_LIMIT_CODE,
     PROVIDER_UNAVAILABLE_CODE,
@@ -30,6 +31,7 @@ class CompletionResponse:
     finish_reason: str = ""
     attempts: tuple[CompletionAttempt, ...] = ()
     raw: Mapping[str, Any] = field(default_factory=dict, repr=False)
+    audit: CompletionAudit | None = None
 
 
 @dataclass(frozen=True)

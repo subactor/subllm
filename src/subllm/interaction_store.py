@@ -315,11 +315,13 @@ class InteractionStore:
             "metadata": metadata or {},
         }
         with self.connect(record["day"], True) as db:
-            self.sql(
+            updated = self.sql(
                 db,
                 "UPDATE interactions SET document=? WHERE day=? AND id=?",
                 (json.dumps(record, ensure_ascii=False), record["day"], record["id"]),
             )
+            if updated.rowcount != 1:
+                raise ValueError("Interaction finish did not persist exactly one record")
             self.append_event(db, record)
         return record
 
