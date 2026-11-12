@@ -33,6 +33,7 @@ from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .provider_order import routing_provider_order
 from .quality_schema import declared_schema_gate
+from .stream_transport import ACTIVE_STREAM, stream_error, supported_routes
 from .types import ResolvedRoute
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
@@ -807,6 +808,8 @@ def _complete_model_direct(
     request_id = request_id or uuid.uuid4().hex
     adaptive_policy = adaptive.policy(environ)
     if adaptive_policy and adaptive.requested_class(adaptive_policy, model_id) is not None:
+        if ACTIVE_STREAM.get() is not None:
+            raise stream_error("UNSUPPORTED-ADAPTIVE")
         return adaptive.execute(adaptive_policy, model_id, messages,
             build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environ),
             invoke=_complete_route, timeout_seconds=timeout_seconds,
@@ -815,6 +818,7 @@ def _complete_model_direct(
     routes = _build_model_resolved_routes(model_id, application, function, environ=environ)
     if not routes:
         raise CompletionError(f"no available provider with valid credentials for model '{model_id}'")
+    routes = supported_routes(routes)
 
     runtime_policy = load_policy_config(environ=environ)
     execution = runtime_policy.execution
@@ -1261,6 +1265,12 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._forward_upstream("POST", "/v1/chat/completions", payload)
             return
 
+        if stream:
+            from .proxy_stream import serve_stream
+            serve_stream(self, payload, clean_model, app, func, timeout, req_id, ticket,
+                         protocol="openai", created=created_ts)
+            return
+
         t0 = time.monotonic()
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, req_id, payload)
@@ -1284,58 +1294,6 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         if ticket:
             extra_headers["X-Subactor-Ticket"] = ticket
 
-        if stream:
-            self.close_connection = True
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "text/event-stream; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "close")
-            for k, v in extra_headers.items():
-                self.send_header(k, v)
-            self.end_headers()
-
-            # Stream text in chunks
-            content = response.content
-            chunk_size = 32
-            for i in range(0, len(content), chunk_size):
-                chunk_text = content[i : i + chunk_size]
-                chunk_payload = {
-                    "id": req_id,
-                    "object": "chat.completion.chunk",
-                    "created": created_ts,
-                    "model": response.model,
-                    "choices": [
-                        {
-                            "index": 0,
-                            "delta": (
-                                {"role": "assistant", "content": chunk_text}
-                                if i == 0
-                                else {"content": chunk_text}
-                            ),
-                            "finish_reason": None,
-                        }
-                    ],
-                }
-                self.wfile.write(f"data: {json.dumps(chunk_payload)}\n\n".encode())
-                self.wfile.flush()
-
-            # Final stop chunk
-            stop_payload = {
-                "id": req_id,
-                "object": "chat.completion.chunk",
-                "created": created_ts,
-                "model": response.model,
-                "choices": [{"index": 0, "delta": {}, "finish_reason": response.finish_reason or "stop"}],
-            }
-            self.wfile.write(f"data: {json.dumps(stop_payload)}\n\n".encode())
-            stream_options = payload.get("stream_options")
-            if isinstance(stream_options, Mapping) and stream_options.get("include_usage") is True:
-                usage_payload = {**stop_payload, "choices": [], "usage": _openai_usage(response.usage)}
-                self.wfile.write(f"data: {json.dumps(usage_payload)}\n\n".encode())
-            self.wfile.write(b"data: [DONE]\n\n")
-            self.wfile.flush()
-            return
 
         result = {
             "id": req_id,
@@ -1378,6 +1336,12 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._forward_upstream("POST", "/api/chat", payload)
             return
 
+        if stream:
+            from .proxy_stream import serve_stream
+            serve_stream(self, payload, clean_model, app, func, timeout, None, ticket,
+                         protocol="ollama", created=now_iso)
+            return
+
         t0 = time.monotonic()
         try:
             response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
@@ -1405,43 +1369,6 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         if ticket:
             extra_headers["X-Subactor-Ticket"] = ticket
 
-        if stream:
-            self.close_connection = True
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "close")
-            for k, v in extra_headers.items():
-                self.send_header(k, v)
-            self.end_headers()
-
-            content = response.content
-            chunk_size = 32
-            for i in range(0, len(content), chunk_size):
-                chunk_text = content[i : i + chunk_size]
-                chunk_line = {
-                    "model": response.model,
-                    "created_at": now_iso,
-                    "message": {"role": "assistant", "content": chunk_text},
-                    "done": False,
-                }
-                self.wfile.write((json.dumps(chunk_line) + "\n").encode("utf-8"))
-                self.wfile.flush()
-
-            done_line = {
-                "model": response.model,
-                "created_at": now_iso,
-                "message": {"role": "assistant", "content": ""},
-                "done": True,
-                "total_duration": total_ns,
-                "load_duration": 1_000_000,
-                "prompt_eval_count": prompt_tokens,
-                "eval_count": eval_tokens,
-            }
-            self.wfile.write((json.dumps(done_line) + "\n").encode("utf-8"))
-            self.wfile.flush()
-            return
 
         self._json(
             200,
