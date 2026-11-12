@@ -45,3 +45,6 @@ uv.lock
 # Generated Python caches remain private under script publication allowlists.
 scripts/**/__pycache__/
 scripts/**/*.py[cod]
+
+# Repository-local worktrees and operational state
+*.egg

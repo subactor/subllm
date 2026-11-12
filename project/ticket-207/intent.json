@@ -1,0 +1,91 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-207",
+  "summary": "Document SubLLM API generations and integration delivery status",
+  "workstream": "integration",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-207/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/README.md",
+    "docs/analysis/subllm-integration-tickets.md",
+    "docs/information/subllm-api-generations.md"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "89f81f99793120c45caa49bcaf632810541b85cb",
+    "targetBranch": "main",
+    "outcome": "Deliver the S2 API generation/migration matrix and a canonical evidence-bound S1-S7 integration report. Implementation and release remain separately qualified.",
+    "nonGoals": [
+      "No runtime, dependency, operator policy or managed-standard mutation.",
+      "No claim that backlog entries, local tests, or source references grant merge or PyPI authority."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Use the existing SubLLM documentation home and pinned documentation checker; compare PyPI metadata and static API rather than execute downloaded package code.",
+      "components": [
+        {
+          "name": "integration-documentation",
+          "paths": [
+            "docs/README.md",
+            "docs/analysis/subllm-integration-tickets.md",
+            "docs/information/subllm-api-generations.md"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert this documentation diff; preserve runtime and existing ownership."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Verify PyPI wheel digest and inspect complete signature without executing it"
+        ],
+        "evidence": "Private pypi-wheel-audit.json, public artifact digest and exact source revision."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "Read back issue mappings and documentation index"
+        ],
+        "evidence": "S1 #208, S2 #20, S3-S7 #209-213."
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "Pinned docs checker",
+          "project/governance-check.sh"
+        ],
+        "evidence": "Record product-document findings separately from immutable standard-copy diagnostics."
+      }
+    ]
+  }
+}

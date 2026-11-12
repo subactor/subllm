@@ -2,9 +2,9 @@
 {
   "schema": "subactor.doc/v1",
   "id": "subllm.documentation-index",
-  "version": 8,
+  "version": 9,
   "status": "current",
-  "updated": "2026-10-30"
+  "updated": "2026-11-12"
 }
 ---
 
@@ -33,3 +33,6 @@ Existing documentation retains its historical format.
 
 - [DeepSeek V4.1 cost, latency and backlog audit](analysis/deepseek-v41-routing.md)
 - [Dobór modeli do zadań i bramka jakości odpowiedzi](analysis/task-model-routing.md)
+
+- [Generacje API SubLLM i profile migracji](information/subllm-api-generations.md) — wymagane API, locki i warunki wydania.
+- [Realizacja S1–S7](analysis/subllm-integration-tickets.md) — implementacja, testy, zależności i rzeczywiste zgłoszenia.

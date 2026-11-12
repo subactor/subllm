@@ -1,20 +1,20 @@
 #!/usr/bin/env python3
-"""Safely identify and prune linked worktrees whose branches are already merged.
+"""Prune clean integrated checkouts while preserving changed or declined refs.
 
-Validates that:
-1. The worktree is not the primary checkout.
-2. The worktree is clean (no uncommitted, modified, or untracked changes).
-3. The worktree HEAD is reachable from target branch (default: origin/main or main).
-4. After removing the worktree, deletes the released local branch.
-5. Runs git worktree prune.
+The caller must separately verify ownership, released writers and cleanup
+permission. Git removal releases only the exact checkout registration. Branch
+cleanup verifies the integration target and expected branch tip atomically;
+this helper never forces deletion or globally prunes other registrations.
 """
 
 from __future__ import annotations
 
 import argparse
 import json
+import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from typing import Any
 
@@ -52,7 +52,8 @@ def get_worktrees(repo: Path) -> list[dict[str, str]]:
 
 
 def is_worktree_clean(path: Path) -> bool:
-    res = git_cmd(path, "status", "--porcelain")
+    # Ignored files may contain unique data, so retain their checkout too.
+    res = git_cmd(path, "status", "--porcelain", "--untracked-files=all", "--ignored")
     return res.returncode == 0 and not res.stdout.strip()
 
 
@@ -61,77 +62,170 @@ def is_ancestor(repo: Path, commit: str, target: str) -> bool:
     return res.returncode == 0
 
 
+def _commit(repo: Path, ref: str) -> str | None:
+    result = git_cmd(repo, "rev-parse", "--verify", ref + "^{commit}")
+    value = result.stdout.strip()
+    if result.returncode == 0 and re.fullmatch(r"(?:[0-9a-f]{40}|[0-9a-f]{64})", value):
+        return value
+    return None
+
+
+def _target(repo: Path, name: str) -> tuple[str, str, str]:
+    if name.startswith(("refs/heads/", "refs/remotes/")):
+        candidates = [(name, name)]
+    elif name.startswith("origin/"):
+        candidates = [(name, "refs/remotes/" + name)]
+    else:
+        candidates = [("origin/" + name, "refs/remotes/origin/" + name),
+                      (name, "refs/heads/" + name)]
+    for display, full in candidates:
+        if full.startswith("refs/remotes/") and "/" not in full.removeprefix("refs/remotes/"):
+            continue
+        if git_cmd(repo, "check-ref-format", full).returncode != 0:
+            continue
+        if git_cmd(repo, "symbolic-ref", "--quiet", full).returncode == 0:
+            raise ValueError("Target must identify a direct branch reference, not a symbolic alias")
+        sha = _commit(repo, full)
+        if sha is not None:
+            return display, full, sha
+    raise ValueError(f"Target branch '{name}' not found in {repo}")
+
+
+def _checkout_matches(path: Path, head: str, branch: str) -> bool:
+    if _commit(path, "HEAD") != head:
+        return False
+    symbolic = git_cmd(path, "symbolic-ref", "--quiet", "HEAD")
+    if symbolic.returncode not in (0, 1):
+        return False
+    return (symbolic.stdout.strip() if symbolic.returncode == 0 else "") == branch
+
+
+def _delete_exact_branch(
+    repo: Path, branch: str, head: str, target: str, target_sha: str,
+) -> subprocess.CompletedProcess[str]:
+    # Prepare locks both exact names and verifies their expected OIDs. Inspect
+    # their direct/symbolic type while those locks are held, before committing.
+    command = ["git", "-C", str(repo), "update-ref", "--no-deref", "--stdin"]
+    transaction = (f"start\nverify {target} {target_sha}\n"
+                   f"delete {branch} {head}\nprepare\n")
+    with tempfile.TemporaryFile(mode="w+t", encoding="utf-8", errors="replace") as errors:
+        try:
+            process = subprocess.Popen(
+                command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
+                stderr=errors, text=True, encoding="utf-8", errors="replace",
+            )
+        except OSError as error:
+            return subprocess.CompletedProcess(command, 1, "", str(error))
+        prefix = ""
+        output = ""
+        declined = None
+        try:
+            process.stdin.write(transaction)
+            process.stdin.flush()
+            prefix = process.stdout.readline() + process.stdout.readline()
+            if prefix != "start: ok\nprepare: ok\n":
+                declined = "reference transaction preparation failed"
+            else:
+                for ref in (target, branch):
+                    if git_cmd(repo, "symbolic-ref", "--quiet", ref).returncode != 1:
+                        declined = "reference became symbolic or could not be verified under lock"
+                        break
+            if not declined:
+                try:
+                    if any(item.get("branch") == branch for item in get_worktrees(repo)):
+                        declined = "branch remains checked out elsewhere"
+                except RuntimeError as error:
+                    declined = f"could not verify other checkout registrations: {error}"
+            if process.poll() is None:
+                process.stdin.write("abort\n" if declined else "commit\n")
+                process.stdin.flush()
+            output, _ = process.communicate()
+        except (OSError, ValueError) as error:
+            declined = f"reference transaction outcome unconfirmed: {error}"
+        finally:
+            if process.poll() is None or (process.stdout and not process.stdout.closed):
+                if process.poll() is None:
+                    try:
+                        process.stdin.write("abort\n")
+                        process.stdin.flush()
+                    except (OSError, ValueError):
+                        pass
+                try:
+                    remaining, _ = process.communicate(timeout=5)
+                    output += remaining or ""
+                except subprocess.TimeoutExpired:
+                    if process.poll() is None:
+                        process.kill()
+                        process.wait(timeout=5)
+                    for stream in (process.stdin, process.stdout):
+                        if stream and not stream.closed:
+                            stream.close()
+                    declined = "reference transaction interrupted; reconcile refs before retry"
+        errors.seek(0)
+        detail = errors.read()
+        if declined:
+            return subprocess.CompletedProcess(command, 1, prefix + output, declined + ": " + detail)
+        if process.returncode == 0 and "commit: ok\n" not in output:
+            return subprocess.CompletedProcess(command, 1, prefix + output, "commit outcome unconfirmed: " + detail)
+        return subprocess.CompletedProcess(command, process.returncode, prefix + output, detail)
+
+
 def prune_merged_worktrees(
     repo: Path, target_branch: str = "main", dry_run: bool = False
 ) -> dict[str, Any]:
-    target_ref = target_branch
-    if git_cmd(repo, "rev-parse", "--verify", f"origin/{target_branch}").returncode == 0:
-        target_ref = f"origin/{target_branch}"
-    elif git_cmd(repo, "rev-parse", "--verify", target_branch).returncode != 0:
-        raise ValueError(f"Target branch '{target_branch}' not found in {repo}")
-
+    target_ref, target_full, target_sha = _target(repo, target_branch)
     wts = get_worktrees(repo)
     if not wts:
         return {"pruned": [], "skipped": []}
-
+    target_name = (target_full.removeprefix("refs/heads/")
+                   if target_full.startswith("refs/heads/")
+                   else target_full.removeprefix("refs/remotes/").split("/", 1)[1])
     pruned: list[dict[str, Any]] = []
     skipped: list[dict[str, Any]] = []
-
     for wt in wts[1:]:
-        wt_path = Path(wt.get("worktree", ""))
-        wt_head = wt.get("HEAD", "")
-        wt_branch_raw = wt.get("branch", "")
-        branch_name = wt_branch_raw.removeprefix("refs/heads/") if wt_branch_raw else None
+        path = Path(wt.get("worktree", ""))
+        head = wt.get("HEAD", "")
+        branch = wt.get("branch", "")
+        name = branch.removeprefix("refs/heads/") if branch else None
 
-        if not wt_path.exists():
-            skipped.append({"path": str(wt_path), "reason": "directory missing"})
+        def skip(reason: str, **extra: Any) -> None:
+            skipped.append({"path": str(path), "branch": name, "reason": reason, **extra})
+
+        if not path.exists():
+            skip("directory missing")
             continue
-
-        if not is_worktree_clean(wt_path):
-            skipped.append(
-                {
-                    "path": str(wt_path),
-                    "branch": branch_name,
-                    "reason": "dirty (uncommitted changes)",
-                }
-            )
+        if branch and (not branch.startswith("refs/heads/")
+                       or git_cmd(repo, "check-ref-format", branch).returncode != 0):
+            skip("invalid branch reference")
             continue
-
-        if not is_ancestor(repo, wt_head, target_ref):
-            skipped.append(
-                {
-                    "path": str(wt_path),
-                    "branch": branch_name,
-                    "head": wt_head,
-                    "reason": f"not merged into {target_ref}",
-                }
-            )
+        if name == target_name or branch == target_full:
+            skip("target branch checkout")
             continue
-
+        if not is_worktree_clean(path):
+            skip("dirty (uncommitted, untracked or ignored data)")
+            continue
+        if not is_ancestor(repo, head, target_sha):
+            skip(f"not merged into {target_ref}", head=head)
+            continue
+        if (_commit(repo, target_full) != target_sha
+                or not _checkout_matches(path, head, branch)
+                or (branch and _commit(repo, branch) != head)):
+            skip("checkout, branch or target changed since observation")
+            continue
         if dry_run:
-            pruned.append({"path": str(wt_path), "branch": branch_name, "action": "would_remove"})
-        else:
-            rm_res = git_cmd(repo, "worktree", "remove", str(wt_path))
-            if rm_res.returncode != 0:
-                skipped.append(
-                    {
-                        "path": str(wt_path),
-                        "branch": branch_name,
-                        "reason": f"remove failed: {rm_res.stderr.strip()}",
-                    }
-                )
-                continue
-
-            if branch_name:
-                del_res = git_cmd(repo, "branch", "-d", branch_name)
-                if del_res.returncode != 0:
-                    git_cmd(repo, "branch", "-D", branch_name)
-
-            pruned.append({"path": str(wt_path), "branch": branch_name, "action": "removed"})
-
-    if not dry_run and pruned:
-        git_cmd(repo, "worktree", "prune")
-
+            pruned.append({"path": str(path), "branch": name, "action": "would_remove"})
+            continue
+        # Git also refuses removal if tracked/untracked data appeared after
+        # inspection; never turn its refusal into a force removal.
+        removed = git_cmd(repo, "worktree", "remove", str(path))
+        if removed.returncode != 0:
+            skip(f"remove failed: {removed.stderr.strip()}")
+            continue
+        if branch:
+            deleted = _delete_exact_branch(repo, branch, head, target_full, target_sha)
+            if deleted.returncode != 0:
+                skip(f"branch cleanup declined or unconfirmed: {deleted.stderr.strip()}")
+        pruned.append({"path": str(path), "branch": name, "action": "removed"})
     return {"target": target_ref, "pruned": pruned, "skipped": skipped}
 
 
