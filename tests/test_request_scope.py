@@ -114,12 +114,14 @@ def test_late_policy_change_never_produces_a_success_from_another_snapshot(monke
 
     with http_provider(on_request=changed) as (base, requests, *_):
         policy(monkeypatch, tmp_path, base)
-        with request_scope() as scope:
+        store = InteractionStore(directory=tmp_path / "archive")
+        journal = tmp_path / "late-policy.sqlite3"
+        with request_scope(audit=RequestAuditContext(store, journal)) as scope:
             snapshot_digest = scope.snapshot.digest
             with pytest.raises(InvalidPolicyError, match="source changed"):
                 complete("onedev-agent", "code-edit", [{"role": "user", "content": "fixture"}])
     assert len(requests) == 1
-    summary = usage.query_usage({})["summary"]
+    summary = usage.query_usage({}, database=journal)["summary"]
     assert summary["attempts"] == summary["errors"] == 1
     records = InteractionStore(directory=tmp_path / "archive").query(
         datetime.now(UTC).date().isoformat(), include_payloads=True)

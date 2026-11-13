@@ -13,7 +13,7 @@ import pytest
 from test_request_scope import http_provider
 from test_streaming import policy
 
-from subllm import CompletionError, complete, request_scope
+from subllm import CompletionError, RequestAuditContext, complete, request_scope
 from subllm.worker_lifetime import owned_communicate, worker_environment
 
 pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux ownership capability")
@@ -22,7 +22,7 @@ pytestmark = pytest.mark.skipif(sys.platform != "linux", reason="Linux ownership
 def living(pid):
     try:
         return Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0] not in {"Z", "X"}
-    except FileNotFoundError:
+    except (FileNotFoundError, ProcessLookupError):
         return False
 
 
@@ -36,14 +36,14 @@ def stopped(pid, seconds=5):
 PARENT = '''
 import json,sys,time,subprocess
 from pathlib import Path
-from subllm import complete,stream_complete,request_scope
+from subllm import RequestAuditContext,complete,stream_complete,request_scope
 original=subprocess.Popen
 def spawn(*a,**kw):
     child=original(*a,**kw)
     Path(sys.argv[1]).write_text(str(child.pid))
     return child
 subprocess.Popen=spawn
-with request_scope(timeout_seconds=30):
+with request_scope(timeout_seconds=30,audit=RequestAuditContext(None,sys.argv[1]+".sqlite3")):
     function=stream_complete if sys.argv[2]=="stream" else complete
     result=function("onedev-agent","code-edit",[{"role":"user","content":"fixture"}])
     if sys.argv[2]=="stream":result.result()
@@ -121,6 +121,7 @@ def test_request_lifetime_is_shorter_than_attempt_timeout(monkeypatch, tmp_path,
     with http_provider(blocked=True) as (base, requests, started, release):
         policy(monkeypatch, tmp_path, base)
         with request_scope(timeout_seconds=5 if reason == "cancel" else 2,
+                           audit=RequestAuditContext(None, tmp_path / "lifetime.sqlite3"),
                            environ={"SUBLLM_ATTEMPT_TIMEOUT_SECONDS": "30",
                                     "SUBLLM_SLOW_RESPONSE_SECONDS": "1"}) as scope:
             def cancel():
