@@ -33,6 +33,38 @@ def stopped(pid, seconds=5):
     return not living(pid)
 
 
+def test_cursor_worker_cannot_load_an_old_subllm_before_the_owned_source(monkeypatch, tmp_path):
+    from subllm.client_workers import _run_cursor_worker
+
+    folder = tmp_path / "foreign"
+    old = folder / "subllm"
+    old.mkdir(parents=True)
+    (old / "__init__.py").write_text("")
+    marker = tmp_path / "old-worker-ran"
+    (old / "cursor_worker.py").write_text(f"from pathlib import Path\nPath({str(marker)!r}).touch()\n")
+    (folder / "cursor_sdk.py").write_text('''
+from types import SimpleNamespace
+class Options:
+    def __init__(self, **kwargs): self.values = kwargs
+AgentOptions = LocalAgentOptions = Options
+class Agent:
+    @staticmethod
+    def create(options):
+        assert options.values["tools"] == []
+        return Agent()
+    def __enter__(self): return self
+    def __exit__(self, *args): pass
+    def send(self, prompt):
+        return SimpleNamespace(wait=lambda: SimpleNamespace(status="finished", result="owned-cursor", usage={}))
+''')
+    monkeypatch.setenv("PYTHONPATH", str(folder))
+    with request_scope():
+        result = _run_cursor_worker({"schema": "subllm.cursor-worker-request/v1", "model": "gpt-5.6-sol",
+                                     "api_key": "test-cursor_test-not-a-secret", "cwd": str(tmp_path),
+                                     "name": "test", "prompt": "fixture"}, timeout_seconds=10, cwd=tmp_path)
+    assert result["content"] == "owned-cursor" and not marker.exists()
+
+
 PARENT = '''
 import json,sys,time,subprocess
 from pathlib import Path

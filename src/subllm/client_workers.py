@@ -143,6 +143,8 @@ def api_worker_request(
     if scope is not None:
         scope.before_effect()
         worker_request["policy_sha256"] = scope.snapshot.policy.source_sha256
+        from .request_scope import catalog_digest
+        worker_request["catalog_sha256"] = catalog_digest()
     if "max_tokens" in route.model_parameters:
         from .generation import token_limit
 
@@ -198,13 +200,6 @@ def _run_openai_worker(
         # The subprocess independently validates the same policy selected by
         # the caller, without changing the parent's global environment.
         env["SUBLLM_POLICY_FILE"] = str(policy_file)
-    subllm_src = str(Path(__file__).resolve().parents[1])
-    cur_pypath = env.get("PYTHONPATH", "")
-    # A stale checkout earlier on PYTHONPATH must not replace this worker with
-    # another SubLLM release that sees a different policy or request contract.
-    other_paths = [path for path in cur_pypath.split(os.pathsep) if path and path != subllm_src]
-    env["PYTHONPATH"] = os.pathsep.join([subllm_src, *other_paths])
-
     process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
         [sys.executable, "-m", "subllm.openai_worker"],
         stdin=subprocess.PIPE,

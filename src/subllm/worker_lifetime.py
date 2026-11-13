@@ -24,12 +24,19 @@ OWNER_ENV = "SUBLLM_WORKER_OWNER_PID"
 
 def worker_environment(environment=None):
     env = dict(os.environ if environment is None else environment)
+    # Every native worker must load the same installed/candidate source as its
+    # parent, including Cursor when an inherited PYTHONPATH names an old release.
+    source = str(Path(__file__).resolve().parents[1])
+    other = [p for p in env.get("PYTHONPATH", "").split(os.pathsep) if p and p != source]
+    env["PYTHONPATH"] = os.pathsep.join([source, *other])
     if sys.platform == "linux":
         env.update({OWNER_ENV: str(os.getpid()), "SUBLLM_WORKER_OWNER_TID": str(get_native_id())})
     from .request_scope import current_scope
     scope = current_scope()
     if scope is not None:
+        from .request_scope import catalog_digest
         env["SUBLLM_WORKER_POLICY_SHA256"] = scope.snapshot.policy.source_sha256
+        env["SUBLLM_WORKER_CATALOG_SHA256"] = catalog_digest()
         if scope.snapshot.policy.source is not None:
             env["SUBLLM_POLICY_FILE"] = str(scope.snapshot.policy.source)
     return env
@@ -147,3 +154,6 @@ def verify_worker_policy():
         from .policy_config import load_policy_config
         if load_policy_config().source_sha256 != expected:
             raise CompletionError("worker resolved policy digest mismatch")
+        from .request_scope import catalog_digest
+        if os.environ.get("SUBLLM_WORKER_CATALOG_SHA256") != catalog_digest():
+            raise CompletionError("worker resolved catalog digest mismatch")

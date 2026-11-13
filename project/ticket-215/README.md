@@ -43,3 +43,13 @@ the existing SubLLM Cursor subreaper/worker cleanup. No external implementation
 was copied and no dependency was added. The shared lifetime helper now owns
 native worker pipes and group cleanup before reaping the original leader.
 Full CI and protected exact-head publication receipts remain external.
+
+Final ownership/policy integrity suite: 20 PASS. Worker/transport regression:
+145 PASS, with overlapping selections. All native workers pin the parent's
+candidate/installed source ahead of inherited PYTHONPATH; a synthetic older
+Cursor worker is never executed. Snapshot identity includes the immutable base
+catalog and custom overlays, and worker-side validation checks both policy and
+catalog digests. The absolute deadline includes policy capture. First hosted
+3.11 failure was a procfs observation race (the process had already disappeared);
+the reader now accepts both missing-file and missing-process results. Synthetic
+audit profiles are explicit and independent of CI PostgreSQL discovery.

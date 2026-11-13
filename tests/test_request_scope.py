@@ -6,12 +6,14 @@ import os
 import subprocess
 import sys
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import contextmanager
 from dataclasses import FrozenInstanceError, replace
 from datetime import UTC, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from types import MappingProxyType
 
 import pytest
 from test_streaming import openai_frames, policy, provider
@@ -141,6 +143,18 @@ def test_context_catalog_drift_cannot_dispatch(monkeypatch, tmp_path):
     assert requests == []
 
 
+def test_base_catalog_change_invalidates_the_captured_snapshot(monkeypatch, tmp_path):
+    from subllm.policy import PROVIDERS
+    with http_provider() as (base, requests, *_):
+        policy(monkeypatch, tmp_path, base)
+        with request_scope():
+            replacement = {**PROVIDERS._base, "zai": replace(PROVIDERS._base["zai"], api_base="https://invalid.test")}
+            monkeypatch.setattr(PROVIDERS, "_base", MappingProxyType(replacement))
+            with pytest.raises(InvalidPolicyError, match="snapshot changed"):
+                complete("onedev-agent", "code-edit", [{"role": "user", "content": "fixture"}])
+    assert requests == []
+
+
 def test_explicit_audit_context_cannot_cross_a_callers_archive(tmp_path):
     first = InteractionStore(directory=tmp_path / "first")
     second = InteractionStore(directory=tmp_path / "second")
@@ -232,3 +246,18 @@ def test_cancelled_scope_cannot_start_another_call(monkeypatch, tmp_path):
             with pytest.raises(CompletionError, match="cancelled"):
                 complete("onedev-agent", "code-edit", [{"role": "user", "content": "fixture"}])
     assert len(requests) == 1
+
+
+def test_absolute_deadline_includes_policy_capture(monkeypatch):
+    import importlib
+    module = importlib.import_module("subllm.request_scope")
+    original = module.capture_policy
+
+    def slow_capture(**kwargs):
+        snapshot = original(**kwargs)
+        time.sleep(0.2)
+        return snapshot
+
+    monkeypatch.setattr(module, "capture_policy", slow_capture)
+    with pytest.raises(CompletionError, match="deadline expired"), request_scope(timeout_seconds=0.1):
+        pytest.fail("policy capture consumed the entire inference lifetime")

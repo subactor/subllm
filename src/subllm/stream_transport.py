@@ -9,7 +9,6 @@ import sys
 import time
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-from pathlib import Path
 
 from .client_types import CompletionResponse, _RetryableAttemptError
 from .client_workers import api_worker_request
@@ -57,12 +56,9 @@ def supported_routes(routes):
 
 
 def _worker_environment(policy_file):
-    env = dict(os.environ)
+    env = worker_environment()
     if policy_file is not None:
         env["SUBLLM_POLICY_FILE"] = str(policy_file)
-    src = str(Path(__file__).resolve().parents[1])
-    other = [path for path in env.get("PYTHONPATH", "").split(os.pathsep) if path and path != src]
-    env["PYTHONPATH"] = os.pathsep.join([src, *other])
     return env
 
 
@@ -100,7 +96,7 @@ def invoke_stream(route, messages, *, timeout_seconds, request_id, response_form
         raise stream_error("CANCELLED" if controller.cancelled.is_set() else "TIMEOUT")
     process = subprocess.Popen(
         [sys.executable, "-m", "subllm.stream_worker"], stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-        stderr=subprocess.DEVNULL, env=worker_environment(_worker_environment(policy_file)), start_new_session=True,
+        stderr=subprocess.DEVNULL, env=_worker_environment(policy_file), start_new_session=True,
     )
     text, usage, finish, tools = "", {}, "", False
     controller.worker = process

@@ -60,8 +60,24 @@ def _primitive(value):
 
 
 def _digest(policy, providers, models):
-    return hashlib.sha256(json.dumps(_primitive((policy, providers, models)), sort_keys=True,
+    return hashlib.sha256(json.dumps(_primitive((policy, providers, models, catalog_digest())), sort_keys=True,
                                     separators=(",", ":"), allow_nan=False).encode()).hexdigest()
+
+
+_CATALOG_CACHE = None
+
+
+def catalog_digest():
+    global _CATALOG_CACHE
+    from .policy import APPLICATIONS, MODELS, PROVIDERS, ROUTES
+    references = (PROVIDERS._base, MODELS._base, APPLICATIONS, ROUTES)
+    cached = _CATALOG_CACHE
+    if cached is None or any(a is not b for a, b in zip(references, cached[0], strict=True)):
+        data = (*references[:3], tuple(ROUTES[k] for k in sorted(ROUTES)))
+        digest = hashlib.sha256(json.dumps(_primitive(data), sort_keys=True, separators=(",", ":")).encode())
+        cached = (references, digest.hexdigest())
+        _CATALOG_CACHE = cached
+    return cached[1]
 
 
 @dataclass(frozen=True, slots=True, init=False)
@@ -150,6 +166,7 @@ class RequestScope:
         self.snapshot.verify()
         if PROVIDERS._custom != self.snapshot.providers or MODELS._custom != self.snapshot.models:
             raise InvalidPolicyError("request catalog changed after resolution")
+        self.remaining()
 
 
 def policy_override(environ):
@@ -180,6 +197,10 @@ def request_scope(*, policy=None, environ=None, audit=None, timeout_seconds=30, 
     if cancel is not None and not isinstance(cancel, Event):
         raise CompletionError("invalid cancellation event")
     parent = current_scope()
+    deadline = time.monotonic() + normalize_timeout(timeout_seconds)
+    if parent is not None:
+        parent.remaining()
+        deadline = min(deadline, parent.deadline)
     environment = {**request_environment(), **(environ or {})}
     if audit is None and parent is not None:
         audit = parent.audit
@@ -199,13 +220,11 @@ def request_scope(*, policy=None, environ=None, audit=None, timeout_seconds=30, 
         raise InvalidPolicyError("request cannot switch its resolved policy")
     if snapshot.policy.source is not None:
         environment["SUBLLM_POLICY_FILE"] = str(snapshot.policy.source)
-    deadline = time.monotonic() + normalize_timeout(timeout_seconds)
-    if parent is not None:
-        deadline = min(deadline, parent.deadline)
-        if cancel is not None and cancel is not parent.cancelled:
-            raise CompletionError("nested request must share cancellation")
+    if parent is not None and cancel is not None and cancel is not parent.cancelled:
+        raise CompletionError("nested request must share cancellation")
     scope = RequestScope(snapshot, deadline, cancel or (parent.cancelled if parent else Event()),
-                         MappingProxyType(environment), audit, require_owner)
+                         MappingProxyType(environment), audit,
+                         require_owner or (parent.require_owner if parent is not None else False))
     token = _CURRENT.set(scope)
     provider_token = PROVIDERS._context.set(snapshot.providers)
     model_token = MODELS._context.set(snapshot.models)

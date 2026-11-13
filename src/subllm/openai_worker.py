@@ -32,7 +32,7 @@ def _request(source: Any, *, transports=frozenset({"openai-compatible"}),
         "schema", "provider", "api_base", "wire_model", "api_key", "messages",
         "model_parameters", "request_fields", "extra_headers", "response_format",
     }
-    optional = {"capture_exchange", "timeout_seconds", "max_tokens", "policy_sha256"}
+    optional = {"capture_exchange", "timeout_seconds", "max_tokens", "policy_sha256", "catalog_sha256"}
     if not isinstance(source, Mapping) or set(source) - optional != fields:
         raise CompletionError("OpenAI worker request must be a closed JSON object")
     if source.get("schema") != schema:
@@ -106,6 +106,10 @@ def _request(source: Any, *, transports=frozenset({"openai-compatible"}),
         raise CompletionError("OpenAI worker policy is unavailable")
     if "policy_sha256" in source and source["policy_sha256"] != runtime.source_sha256:
         raise CompletionError("worker resolved policy digest mismatch")
+    if "catalog_sha256" in source:
+        from .request_scope import catalog_digest
+        if source["catalog_sha256"] != catalog_digest():
+            raise CompletionError("worker resolved catalog digest mismatch")
     ceilings = [value for value in (runtime.execution.max_output_tokens,
                                    runtime.execution.max_total_output_tokens) if value is not None]
     custom = runtime.custom_providers.get(provider)
