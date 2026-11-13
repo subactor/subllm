@@ -34,6 +34,7 @@ from .interaction_context import ACTIVE_ARCHIVE, begin_attempt, finish_attempt
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
 from .quality_schema import declared_schema_gate, schema_gate
+from .request_scope import bind_complete, bind_response, current_scope, verify_current
 from .resolver import available_routes, configured_routes
 from .stream_transport import (
     ACTIVE_STREAM,
@@ -106,6 +107,12 @@ def _invoke_route(
     cwd: Path,
     policy_file: Path | None = None,
 ) -> CompletionResponse:
+    scope = current_scope()
+    if scope is not None:
+        scope.before_effect()
+        if scope.require_owner and route.transport in CLI_EXECUTABLES:
+            raise CompletionError("request ownership does not support CLI transports")
+        timeout_seconds = min(timeout_seconds, scope.remaining())
     if ACTIVE_STREAM.get() is not None:
         return invoke_stream(route, messages, timeout_seconds=timeout_seconds, request_id=request_id,
                              response_format=_codex_response_format(response_format)
@@ -182,6 +189,8 @@ def _complete_route(
                                          request_id=request_id, response_format=response_format, cwd=cwd,
                                          policy_file=policy_file)
                 reservation.finish(response.usage)
+                response = bind_response(response)
+                verify_current()
                 validate_response(response, response_format, quality_gate)
                 return replace(response, generation=reservation.scope.receipt())
             except Exception as exc:
@@ -476,3 +485,6 @@ def complete(
             runtime_policy=runtime_policy, generation=generation, capture=capture,
             timeout_seconds=timeout_seconds, force_generation=force_generation,
         )
+
+
+complete = bind_complete(complete)

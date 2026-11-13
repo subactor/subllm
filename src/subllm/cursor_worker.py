@@ -146,6 +146,9 @@ def _execute(request: Mapping[str, Any]) -> Mapping[str, Any]:
 
 
 def main() -> int:
+    from .worker_lifetime import install_owner_guard, verify_worker_policy
+    install_owner_guard()
+    verify_worker_policy()
     try:
         _enable_child_subreaper()
         if os.name == "posix":

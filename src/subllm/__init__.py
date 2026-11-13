@@ -115,6 +115,7 @@ from .types import (
 )
 
 __all__ = [
+    "RequestAuditContext", "ResolvedPolicySnapshot", "capture_policy", "request_scope",
     "CompletionStream",
     "StreamCapabilities",
     "StreamEvent",
@@ -215,3 +216,5 @@ __all__ = [
     "normalize_timeout_key_part",
     "resolve_attempt_timeout",
 ]
+
+from .request_scope import RequestAuditContext, ResolvedPolicySnapshot, capture_policy, request_scope

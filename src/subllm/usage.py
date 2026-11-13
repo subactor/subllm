@@ -15,6 +15,7 @@ from pathlib import Path
 from typing import Any
 
 from .poa.errors import PoaContractError
+from .request_scope import request_environment
 
 LOG = logging.getLogger(__name__)
 _WRITE_LOCK = threading.Lock()
@@ -34,10 +35,10 @@ CREATE INDEX IF NOT EXISTS attempts_provider ON attempts(provider, id);
 
 
 def journal_path(override: str | Path | None = None) -> Path:
-    override = override or os.environ.get("SUBLLM_USAGE_DB")
+    override = override or request_environment().get("SUBLLM_USAGE_DB")
     if override:
         return Path(override).expanduser().absolute()
-    root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
+    root = Path(request_environment().get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
     return root / "subllm" / "usage.sqlite3"
 
 
@@ -182,7 +183,7 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
     if source != "journal":
         if isinstance(database, str) and database.startswith(("postgresql://", "postgres://")):
             postgres_dsn = database
-        elif database is None and (source == "archive" or not os.environ.get("SUBLLM_USAGE_DB")):
+        elif database is None and (source == "archive" or not request_environment().get("SUBLLM_USAGE_DB")):
             postgres_dsn = default_postgres_dsn()
     where: list[str] = []
     values: list[Any] = []
@@ -252,7 +253,8 @@ def query_usage(filters: Mapping[str, Any], database: str | Path | None = None) 
         try:
             from .interaction_store import InteractionStore
 
-            root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
+            root = Path(request_environment().get("XDG_STATE_HOME") or Path.home() / ".local/state")
+            root = root.expanduser().absolute()
             store = InteractionStore(directory=root / "subllm" / "archive", postgres_dsn=postgres_dsn)
             pg_res = store.query_attempts(
                 application=filters.get("application"),
