@@ -1,0 +1,125 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-215",
+  "summary": "Bind native requests to immutable policy, isolated audit profiles and owned worker lifetime (S7)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-215/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/client_workers.py",
+    "src/subllm/cursor_worker.py",
+    "src/subllm/interaction_store.py",
+    "src/subllm/openai_worker.py",
+    "src/subllm/policy.py",
+    "src/subllm/policy_config.py",
+    "src/subllm/request_scope.py",
+    "src/subllm/stream_transport.py",
+    "src/subllm/stream_worker.py",
+    "src/subllm/usage.py",
+    "src/subllm/worker_lifetime.py",
+    "tests/test_request_scope.py",
+    "tests/test_worker_ownership.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "420500ea944ed9b0fe86a26d425dccdec0435cb8",
+    "targetBranch": "main",
+    "outcome": "Explicit immutable resolved-policy and per-request audit/deadline/cancel scopes, with native worker policy digest checks and Linux parent-death/group cleanup.",
+    "nonGoals": [
+      "No resolver.py edits, provider execution bypass, arbitrary code executor, new dependency, PyPI publication or global catalog-profile migration.",
+      "Linux parent-death protection is explicit; unsupported platforms fail closed when that capability is required."
+    ],
+    "complexity": "L",
+    "estimatedMinutes": 110,
+    "budgets": {
+      "maxImplementationFiles": 15,
+      "maxAffectedComponents": 3,
+      "maxPublicInterfaceChanges": 3,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse policy parser/route validation and native audit writers. Catalog overlays become copy-on-write ContextVars. A request scope pins parsed policy/catalog and checks raw source digest before dispatch; workers independently compare the selected policy digest. An owned pipe runner polls the shared absolute deadline/cancellation, keeps group leader unreaped through cleanup and installs Linux parent-death protection.",
+      "components": [
+        {
+          "name": "request-scope",
+          "paths": [
+            "src/subllm/request_scope.py",
+            "src/subllm/worker_lifetime.py",
+            "src/subllm/policy.py",
+            "src/subllm/policy_config.py",
+            "src/subllm/client_routes.py",
+            "src/subllm/client_workers.py",
+            "src/subllm/openai_worker.py",
+            "src/subllm/cursor_worker.py",
+            "src/subllm/stream_transport.py",
+            "src/subllm/stream_worker.py",
+            "src/subllm/__init__.py",
+            "src/subllm/interaction_store.py",
+            "src/subllm/usage.py",
+            "tests/test_request_scope.py",
+            "tests/test_worker_ownership.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "ResolvedPolicySnapshot capture and activation",
+        "RequestAuditContext for explicit store/journal selection",
+        "request_scope absolute deadline/cancel lifetime"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert additive request scopes and worker lifetime adapters while preserving native policy validation and persistence contracts."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Policy mutation between resolution and dispatch; worker startup digest mismatch"
+        ],
+        "evidence": "No request reaches an unaccepted route and no success is attributed to another policy."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Concurrent thread/process profiles, nested audit and stream contexts"
+        ],
+        "evidence": "Distinct providers, archives and journals without global environment mutation."
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "SIGTERM/SIGKILL parent during slow HTTP, normal leader exit with live descendant, absolute cancellation/deadline"
+        ],
+        "evidence": "Owned worker/descendants stop and cancelled/expired calls never succeed."
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "Affected regression; Ruff/docs/logs/governance; protected full CI and exact-head independent merge"
+        ],
+        "evidence": "Existing complete/stream/cache/worker contracts remain compatible."
+      }
+    ]
+  }
+}

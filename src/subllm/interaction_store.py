@@ -28,7 +28,8 @@ DEFAULT_LOCAL_POSTGRES_DSN = (
 
 
 def default_postgres_dsn(environ: Mapping[str, str] | None = None) -> str | None:
-    env = os.environ if environ is None else environ
+    from .request_scope import request_environment
+    env = request_environment() if environ is None else environ
     candidates = ("SUBLLM_POSTGRES_DSN", "SUBLLM_DATABASE_URL", "SUBLLM_GATEWAY_DATABASE_URL")
     for name in candidates:
         val = env.get(name, "").strip()
@@ -37,7 +38,7 @@ def default_postgres_dsn(environ: Mapping[str, str] | None = None) -> str | None
     try:
         from .credential_env import merged_environment
 
-        merged = merged_environment(environ=environ)
+        merged = merged_environment(environ=env)
         for name in candidates:
             val = merged.get(name, "").strip()
             if val:
@@ -61,21 +62,34 @@ def default_postgres_dsn(environ: Mapping[str, str] | None = None) -> str | None
 
 
 _DEFAULT_STORE: InteractionStore | None = None
+_CACHED_STORE = None
 
 
 def get_default_interaction_store(environ: Mapping[str, str] | None = None) -> InteractionStore | None:
-    global _DEFAULT_STORE
-    if _DEFAULT_STORE is not None:
+    global _DEFAULT_STORE, _CACHED_STORE
+    from .request_scope import current_scope
+    scope = current_scope()
+    if scope is not None and scope.audit is not None:
+        return scope.audit.store
+    if _DEFAULT_STORE is not None and (scope is None or _DEFAULT_STORE is not _CACHED_STORE):
         return _DEFAULT_STORE
+    if scope is not None:
+        if "archive" in scope._stores:
+            return scope._stores["archive"]
+        environ = scope.environment if environ is None else environ
     dsn = default_postgres_dsn(environ=environ)
     env = os.environ if environ is None else environ
     archive_dir = env.get("SUBLLM_ARCHIVE_DIR")
     if not dsn and not archive_dir:
         return None
-    root = Path(os.environ.get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
+    root = Path(env.get("XDG_STATE_HOME") or Path.home() / ".local/state").expanduser().absolute()
     directory = Path(archive_dir).expanduser().absolute() if archive_dir else root / "subllm" / "archive"
-    _DEFAULT_STORE = InteractionStore(directory=directory, postgres_dsn=dsn)
-    return _DEFAULT_STORE
+    store = InteractionStore(directory=directory, postgres_dsn=dsn)
+    if scope is not None:
+        scope._stores["archive"] = store
+        return store
+    _DEFAULT_STORE = _CACHED_STORE = store
+    return store
 
 
 def set_default_interaction_store(store: InteractionStore | None) -> None:

@@ -9,13 +9,13 @@ import sys
 import time
 from contextlib import contextmanager, suppress
 from contextvars import ContextVar
-from pathlib import Path
 
 from .client_types import CompletionResponse, _RetryableAttemptError
-from .client_workers import _terminate_worker_process_group, api_worker_request
+from .client_workers import api_worker_request
 from .errors import CompletionError
 from .native_http import decode_response_json
 from .stream_protocol import MAX_EVENT, MAX_OUTPUT, MAX_STREAM
+from .worker_lifetime import stop_group, wait_exit, worker_environment
 
 SUPPORTED = frozenset({"openai-compatible", "anthropic", "gemini-sdk"})
 ACTIVE_STREAM = ContextVar("subllm_active_stream", default=None)
@@ -56,12 +56,9 @@ def supported_routes(routes):
 
 
 def _worker_environment(policy_file):
-    env = dict(os.environ)
+    env = worker_environment()
     if policy_file is not None:
         env["SUBLLM_POLICY_FILE"] = str(policy_file)
-    src = str(Path(__file__).resolve().parents[1])
-    other = [path for path in env.get("PYTHONPATH", "").split(os.pathsep) if path and path != src]
-    env["PYTHONPATH"] = os.pathsep.join([src, *other])
     return env
 
 
@@ -82,6 +79,11 @@ def _write_request(process, encoded, controller, deadline):
 
 def invoke_stream(route, messages, *, timeout_seconds, request_id, response_format, cwd, policy_file=None):
     controller = ACTIVE_STREAM.get()
+    from .request_scope import current_scope
+    scope = current_scope()
+    if scope is not None:
+        scope.before_effect()
+        controller.deadline = min(controller.deadline, scope.deadline)
     controller.begin_attempt(route)
     request = api_worker_request(route, messages, timeout_seconds=timeout_seconds,
                                  request_id=request_id, response_format=response_format)
@@ -105,6 +107,8 @@ def invoke_stream(route, messages, *, timeout_seconds, request_id, response_form
             selector.register(process.stdout, selectors.EVENT_READ)
             ended = False
             while not ended:
+                if scope is not None:
+                    scope.remaining()
                 if controller.cancelled.is_set():
                     raise stream_error("CANCELLED")
                 remaining = deadline - time.monotonic()
@@ -163,8 +167,8 @@ def invoke_stream(route, messages, *, timeout_seconds, request_id, response_form
                     controller.emit(kind, text=frame["text"], data=frame["data"],
                                     native_id=frame["native_id"], native_type=frame["native_type"])
                     # Only provider-final counters settle a debit on disconnect.
-        process.wait(timeout=max(0.01, deadline - time.monotonic()))
-        if process.returncode != 0 or controller.cancelled.is_set():
+        status = wait_exit(process, deadline, scope.remaining if scope is not None else lambda: None)
+        if status != 0 or controller.cancelled.is_set():
             raise stream_error("CANCELLED" if controller.cancelled.is_set() else "WORKER-FAILED")
         return CompletionResponse(text, route.provider, route.wire_model, usage, finish,
                                   raw={"stream": True, "tool_calls_present": tools})
@@ -176,10 +180,7 @@ def invoke_stream(route, messages, *, timeout_seconds, request_id, response_form
                                                         "tool_calls_present": tools})
         raise error from None
     finally:
-        if process.poll() is None:
-            _terminate_worker_process_group(process)
-        else:
-            process.wait()
+        stop_group(process)
         process.stdout.close()
         if not process.stdin.closed:
             process.stdin.close()

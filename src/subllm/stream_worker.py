@@ -51,6 +51,8 @@ def request(source, transport):
 
 
 def main():
+    from .worker_lifetime import install_owner_guard
+    install_owner_guard()
     state = None
     failure = {"outcome": "invalid_response", "retryable": False, "provider_level": False}
     try:

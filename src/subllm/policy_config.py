@@ -573,6 +573,10 @@ def load_policy_config(
     scope_root: Path | None = None,
     defaults_only: bool = False,
 ) -> RuntimePolicyConfig:
+    from .request_scope import policy_override
+    pinned = policy_override(environ)
+    if pinned is not None:
+        return pinned
     source = find_policy_file(environ=environ, cwd=cwd, scope_root=scope_root, defaults_only=defaults_only)
     if source is None:
         clear_custom_providers()

@@ -2,11 +2,9 @@ from __future__ import annotations
 
 import json
 import os
-import signal
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
-from contextlib import suppress
 from pathlib import Path
 from typing import Any
 
@@ -19,32 +17,15 @@ from .errors import (
 )
 from .interaction_context import ACTIVE_ARCHIVE
 from .types import ResolvedRoute
+from .worker_lifetime import owned_communicate, worker_environment
 
 MAX_CURSOR_WORKER_RESULT_BYTES = 1_000_000
 MAX_OPENAI_WORKER_RESULT_BYTES = 1_000_000
 
 
-def _terminate_worker_process_group(process: subprocess.Popen[bytes]) -> None:
-    """Terminate an isolated attempt worker and every descendant."""
-    try:
-        if os.name == "posix":
-            os.killpg(process.pid, signal.SIGTERM)
-        else:  # pragma: no cover - production runners are POSIX
-            process.terminate()
-    except ProcessLookupError:
-        return
-    with suppress(subprocess.TimeoutExpired):
-        process.wait(timeout=1.0)
-    try:
-        if os.name == "posix":
-            # The worker may have exited while its bridge descendants retained
-            # the process group, so always reap the remaining group members.
-            os.killpg(process.pid, signal.SIGKILL)
-        else:  # pragma: no cover - production runners are POSIX
-            process.kill()
-    except ProcessLookupError:
-        pass
-    process.wait()
+def _terminate_worker_process_group(process):
+    from .worker_lifetime import stop_group
+    stop_group(process)
 
 
 def _run_cursor_worker(
@@ -57,13 +38,14 @@ def _run_cursor_worker(
     process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
         [sys.executable, "-m", "subllm.cursor_worker"],
         cwd=str(cwd),
+        env=worker_environment(),
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
         start_new_session=True,
     )
     try:
-        output, _ = process.communicate(input=encoded, timeout=timeout_seconds)
+        output, _ = owned_communicate(process, encoded, timeout_seconds)
     except subprocess.TimeoutExpired as exc:
         _terminate_worker_process_group(process)
         raise CompletionError(
@@ -156,6 +138,13 @@ def api_worker_request(
         "response_format": dict(response_format) if response_format is not None else None,
         "timeout_seconds": timeout_seconds,
     }
+    from .request_scope import current_scope
+    scope = current_scope()
+    if scope is not None:
+        scope.before_effect()
+        worker_request["policy_sha256"] = scope.snapshot.policy.source_sha256
+        from .request_scope import catalog_digest
+        worker_request["catalog_sha256"] = catalog_digest()
     if "max_tokens" in route.model_parameters:
         from .generation import token_limit
 
@@ -211,23 +200,16 @@ def _run_openai_worker(
         # The subprocess independently validates the same policy selected by
         # the caller, without changing the parent's global environment.
         env["SUBLLM_POLICY_FILE"] = str(policy_file)
-    subllm_src = str(Path(__file__).resolve().parents[1])
-    cur_pypath = env.get("PYTHONPATH", "")
-    # A stale checkout earlier on PYTHONPATH must not replace this worker with
-    # another SubLLM release that sees a different policy or request contract.
-    other_paths = [path for path in cur_pypath.split(os.pathsep) if path and path != subllm_src]
-    env["PYTHONPATH"] = os.pathsep.join([subllm_src, *other_paths])
-
     process = subprocess.Popen(  # noqa: S603 - fixed interpreter/module invocation
         [sys.executable, "-m", "subllm.openai_worker"],
         stdin=subprocess.PIPE,
         stdout=subprocess.PIPE,
         stderr=subprocess.DEVNULL,
-        env=env,
+        env=worker_environment(env),
         start_new_session=True,
     )
     try:
-        output, _ = process.communicate(input=encoded, timeout=timeout_seconds)
+        output, _ = owned_communicate(process, encoded, timeout_seconds)
     except subprocess.TimeoutExpired as exc:
         _terminate_worker_process_group(process)
         raise _RetryableAttemptError(

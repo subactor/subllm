@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 from collections.abc import Iterator, Mapping, Sequence
+from contextvars import ContextVar
 from dataclasses import replace
 from types import MappingProxyType
 
@@ -19,6 +20,13 @@ def _provider_models(**values: ProviderModelSpec) -> MappingProxyType[str, Provi
     return MappingProxyType(values)
 
 
+_CREDENTIAL_ENVIRONMENTS = MappingProxyType({
+    "zai": "ZAI_API_KEY", "agy": "GEMINI_API_KEY", "codex": "OPENAI_API_KEY",
+    "claude": "ANTHROPIC_API_KEY", "cursor": "CURSOR_API_KEY", "ollama": "OLLAMA_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
+})
+
+
 # Credential source → provider → transport. Cursor Sol is never an OpenRouter
 # wire id. Catalog twin: wellmanifest/policy-dsl profiles/llm-credential and
 # wellmanifest/env-dsl examples/valid/subllm-credential-strategies.env.
@@ -27,12 +35,12 @@ _BASE_PROVIDERS = MappingProxyType(
         "zai": ProviderSpec(
             id="zai",
             api_base="https://api.z.ai/api/coding/paas/v4",
-            api_key_env="ZAI_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["zai"],
         ),
         "agy": ProviderSpec(
             id="agy",
             api_base="https://generativelanguage.googleapis.com/v1beta",
-            api_key_env="GEMINI_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["agy"],
             transport="gemini-sdk",
         ),
         "cursor-cli": ProviderSpec(
@@ -50,31 +58,31 @@ _BASE_PROVIDERS = MappingProxyType(
         "codex": ProviderSpec(
             id="codex",
             api_base="https://api.openai.com/v1",
-            api_key_env="OPENAI_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["codex"],
             transport="openai-compatible",
         ),
         "claude": ProviderSpec(
             id="claude",
             api_base="https://api.anthropic.com/v1",
-            api_key_env="ANTHROPIC_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["claude"],
             transport="anthropic",
         ),
         "cursor": ProviderSpec(
             id="cursor",
             api_base="https://api.cursor.com",
-            api_key_env="CURSOR_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["cursor"],
             transport="cursor-sdk",
         ),
         "ollama": ProviderSpec(
             id="ollama",
             api_base="http://127.0.0.1:11434/v1",
-            api_key_env="OLLAMA_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["ollama"],
             transport="openai-compatible",
         ),
         "openrouter": ProviderSpec(
             id="openrouter",
             api_base="https://openrouter.ai/api/v1",
-            api_key_env="OPENROUTER_API_KEY",
+            api_key_env=_CREDENTIAL_ENVIRONMENTS["openrouter"],
             attribution_headers=True,
         ),
     }
@@ -468,13 +476,17 @@ _BASE_MODELS = MappingProxyType(
 class _ProvidersCatalog(Mapping[str, ProviderSpec]):
     def __init__(self, base: Mapping[str, ProviderSpec]) -> None:
         self._base = base
-        self._custom: dict[str, ProviderSpec] = {}
+        self._context = ContextVar("subllm_custom_providers", default=MappingProxyType({}))
+
+    @property
+    def _custom(self):
+        return self._context.get()
 
     def register_custom(self, provider_spec: ProviderSpec) -> None:
-        self._custom[provider_spec.id] = provider_spec
+        self._context.set(MappingProxyType({**self._custom, provider_spec.id: provider_spec}))
 
     def clear_custom(self) -> None:
-        self._custom.clear()
+        self._context.set(MappingProxyType({}))
 
     def __getitem__(self, key: str) -> ProviderSpec:
         if key in self._custom:
@@ -502,22 +514,28 @@ class _ProvidersCatalog(Mapping[str, ProviderSpec]):
 class _ModelsCatalog(Mapping[str, ModelSpec]):
     def __init__(self, base: Mapping[str, ModelSpec]) -> None:
         self._base = base
-        self._custom: dict[str, ModelSpec] = {}
+        self._context = ContextVar("subllm_custom_models", default=MappingProxyType({}))
+
+    @property
+    def _custom(self):
+        return self._context.get()
 
     def register_custom(self, model_spec: ModelSpec) -> None:
         if model_spec.id in self._base:
             base_model = self._base[model_spec.id]
             merged_providers = {**base_model.providers, **model_spec.providers}
-            self._custom[model_spec.id] = replace(base_model, providers=MappingProxyType(merged_providers))
+            self._context.set(MappingProxyType({**self._custom, model_spec.id:
+                replace(base_model, providers=MappingProxyType(merged_providers))}))
         elif model_spec.id in self._custom:
             existing = self._custom[model_spec.id]
             merged_providers = {**existing.providers, **model_spec.providers}
-            self._custom[model_spec.id] = replace(existing, providers=MappingProxyType(merged_providers))
+            self._context.set(MappingProxyType({**self._custom, model_spec.id:
+                replace(existing, providers=MappingProxyType(merged_providers))}))
         else:
-            self._custom[model_spec.id] = model_spec
+            self._context.set(MappingProxyType({**self._custom, model_spec.id: model_spec}))
 
     def clear_custom(self) -> None:
-        self._custom.clear()
+        self._context.set(MappingProxyType({}))
 
     def __getitem__(self, key: str) -> ModelSpec:
         if key in self._custom:
