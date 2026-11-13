@@ -1,0 +1,80 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-216",
+  "summary": "Preserve scoped request environment in streaming",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-216/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/streaming.py",
+    "tests/test_request_scope.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "fd4b5fe7d2e51313e018bd37eba5f785fcd14f30",
+    "targetBranch": "main",
+    "outcome": "Streaming inherits the request-scoped environment at generation initialization; scoped endpoints and credentials remain bound by the native worker JSON contract.",
+    "nonGoals": [
+      "No worker environment expansion, resolver changes, dependency changes or PyPI upload."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse request_environment rather than rebuilding process-global policy during stream startup. Keep closed worker JSON and pinned policy checks.",
+      "components": [
+        {
+          "name": "request-scope",
+          "paths": [
+            "src/subllm/streaming.py",
+            "tests/test_request_scope.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the scoped stream environment selection."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Real loopback complete/stream endpoints and synthetic auth header readback under a different global profile"
+        ],
+        "evidence": "Both transports use their explicit scope without mutating os.environ."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Conflicting explicit policy rejection, affected tests, governance and protected independent publication"
+        ],
+        "evidence": "Policy switching still fails closed and exact-head native CI/review passes."
+      }
+    ]
+  }
+}

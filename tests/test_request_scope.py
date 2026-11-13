@@ -34,7 +34,7 @@ from subllm.interaction_store import InteractionStore
 
 
 @contextmanager
-def http_provider(content="ok", *, blocked=False, on_request=None):
+def http_provider(content="ok", *, blocked=False, on_request=None, authorization=None):
     requests, started, release = [], threading.Event(), threading.Event()
 
     class Handler(BaseHTTPRequestHandler):
@@ -43,6 +43,8 @@ def http_provider(content="ok", *, blocked=False, on_request=None):
 
         def do_POST(self):
             requests.append(json.loads(self.rfile.read(int(self.headers["Content-Length"]))))
+            if authorization is not None:
+                authorization.append(self.headers.get("Authorization"))
             if on_request is not None:
                 on_request()
             started.set()
@@ -50,9 +52,12 @@ def http_provider(content="ok", *, blocked=False, on_request=None):
                 release.wait(30)
             body = json.dumps({"choices": [{"message": {"content": content}, "finish_reason": "stop"}],
                                "usage": {"prompt_tokens": 3, "completion_tokens": 2}}).encode()
+            streaming = bool(requests[-1].get("stream"))
+            if streaming:
+                body = b"".join(openai_frames())
             try:
                 self.send_response(200)
-                self.send_header("Content-Type", "application/json")
+                self.send_header("Content-Type", "text/event-stream" if streaming else "application/json")
                 self.send_header("Content-Length", str(len(body)))
                 self.end_headers()
                 self.wfile.write(body)
@@ -69,6 +74,57 @@ def http_provider(content="ok", *, blocked=False, on_request=None):
         server.shutdown()
         server.server_close()
         thread.join(3)
+
+
+@pytest.mark.parametrize("streaming", [False, True])
+def test_scoped_profiles_bind_real_worker_endpoints_and_credentials(monkeypatch, tmp_path, streaming):
+    left_headers, right_headers = [], []
+    monkeypatch.setenv("SCOPED_PROBE_CREDENTIAL", "test-global-credential")
+    with (http_provider(authorization=left_headers) as (left, left_requests, *_),
+          http_provider(authorization=right_headers) as (right, right_requests, *_)):
+        profiles = []
+        for label, base in (("left", left), ("right", right)):
+            folder = tmp_path / label
+            folder.mkdir()
+            policy(monkeypatch, folder, base)
+            source = folder / "policy.toml"
+            source.write_text(source.read_text().replace(
+                "[custom_providers.stream_fixture]",
+                '[custom_providers.stream_fixture]\napi_key_env = "SCOPED_PROBE_CREDENTIAL"'))
+            profiles.append((label, source))
+        global_policy = os.environ["SUBLLM_POLICY_FILE"]
+        for label, source in profiles:
+            environment = {"SUBLLM_POLICY_FILE": str(source),
+                           "SCOPED_PROBE_CREDENTIAL": f"test-{label}-credential"}
+            journal = tmp_path / f"{label}.sqlite3"
+            with request_scope(environ=environment, audit=RequestAuditContext(None, journal)) as scope:
+                invoke = stream_complete if streaming else complete
+                result = invoke("onedev-agent", "code-edit", [{"role": "user", "content": "fixture"}])
+                response = result.result() if streaming else result
+                assert response.content == ('{"value":1}' if streaming else "ok")
+                assert response.raw["resolved_policy_sha256"] == scope.snapshot.digest
+            assert usage.query_usage({}, database=journal)["summary"]["attempts"] == 1
+            assert os.environ["SUBLLM_POLICY_FILE"] == global_policy
+            assert os.environ["SCOPED_PROBE_CREDENTIAL"] == "test-global-credential"
+    assert len(left_requests) == len(right_requests) == 1
+    assert left_headers == ["Bearer test-left-credential"]
+    assert right_headers == ["Bearer test-right-credential"]
+
+
+def test_stream_cannot_explicitly_switch_scoped_policy(monkeypatch, tmp_path):
+    with provider(openai_frames()) as (base, requests, *_):
+        policy(monkeypatch, tmp_path, base)
+        source = tmp_path / "policy.toml"
+        other = tmp_path / "other.toml"
+        other.write_text(source.read_text())
+        with request_scope(audit=RequestAuditContext(None, tmp_path / "journal.sqlite3")):
+            stream = stream_complete("onedev-agent", "code-edit", [{"role": "user", "content": "fixture"}],
+                                     environ={"SUBLLM_POLICY_FILE": str(other)})
+            with pytest.raises(CompletionError):
+                stream.result()
+            assert isinstance(stream._failure, InvalidPolicyError)
+            assert "cannot switch" in str(stream._failure)
+    assert requests == []
 
 
 def test_snapshot_is_immutable_and_changed_source_cannot_dispatch(monkeypatch, tmp_path):

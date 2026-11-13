@@ -9,7 +9,6 @@ Metrics cover this SDK operation, not a whole Forge coding/test/deployment cycle
 """
 from __future__ import annotations
 
-import os
 import time
 from collections.abc import Mapping
 from contextvars import copy_context
@@ -25,6 +24,7 @@ from .generation import generation_scope, output_count
 from .interaction_context import ACTIVE_ARCHIVE
 from .native_http import normalize_timeout
 from .policy_config import load_policy_config
+from .request_scope import request_environment
 from .stream_transport import attach_capture, stream_error, stream_scope
 
 
@@ -178,7 +178,7 @@ class CompletionStream:
     def _run(self):
         response = error = None
         try:
-            runtime = load_policy_config(environ={**os.environ, **(self._environ or {})})
+            runtime = load_policy_config(environ={**request_environment(), **(self._environ or {})})
             parent = ACTIVE_ARCHIVE.get()
             correlation = parent[1]["id"] if parent is not None else self.request_id
             with (stream_scope(self), generation_scope(self._limits, self._budget, runtime.execution) as generation,
