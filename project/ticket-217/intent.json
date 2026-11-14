@@ -1,0 +1,80 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-217",
+  "summary": "Decouple usage ingestion from route policy availability",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-217/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/poa/bus.py",
+    "tests/test_usage.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "c5eef6d7bb2e9d37d90df73b2c38f6dd30038b0a",
+    "targetBranch": "main",
+    "outcome": "Record validated, already completed provider-attempt metadata through the canonical journal even when current route policy or credential observation is unavailable. Retain schema, registry, idempotency, journal failure and all policy-operation controls.",
+    "nonGoals": [
+      "No resolver edits, policy repair, provider calls, paid retries, credential access, backfill or runtime deployment."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Select a truthful metadata-only observation for the fixed RECORD_USAGE_REF; retain full policy/credential observations for every other registered process. Reuse existing plan, binding, strict journal and event path.",
+      "components": [
+        {
+          "name": "usage-ingest",
+          "paths": [
+            "src/subllm/poa/bus.py",
+            "tests/test_usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the reviewed process-specific observation selection."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Actual loopback HTTP ingest under invalid routing policy and unavailable credential observation, including duplicate replay."
+        ],
+        "evidence": "One metadata row and completed event are stored; no provider or credential operation occurs."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Invalid metadata and journal-unavailable rejection, unaffected policy process rejection, full tests, native governance, current-base OneDev and trusted Validator."
+        ],
+        "evidence": "All existing input, storage, registry and policy controls remain fail-closed; frozen head independently approved and merged."
+      }
+    ]
+  }
+}
