@@ -399,7 +399,9 @@ class PolicyBus:
             # nor determine whether its strictly validated metadata is valid.
             facts = {"process_ref": RECORD_USAGE_REF, "policy_status": "not_applicable"}
         else:
-            facts = self._query_observe_credentials({"schema": "subllm.query/v1", "process_uri": OBSERVE_CREDENTIALS_URI})
+            facts = self._query_observe_credentials(
+                {"schema": "subllm.query/v1", "process_uri": OBSERVE_CREDENTIALS_URI}
+            )
             facts["policy_status"] = "ok"
             validate_policy()
         digest = digest_document(facts)
