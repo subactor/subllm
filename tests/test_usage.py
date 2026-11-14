@@ -148,7 +148,7 @@ def test_complete_logs_fallback_and_success_without_payload(monkeypatch):
                                   {"input_tokens": 2, "output_tokens": 1})
     monkeypatch.setattr(client_routes, "_invoke_route", invoke)
     result = complete("todo2code", "semantic", [{"role": "user", "content": "NEVER-SAVE-PROMPT"}],
-                      environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "sk-or-v1-testkey"})
+                      environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "test-openrouter-key"})
     assert result.provider == "openrouter"
     rows = query_usage({})["attempts"]
     assert len(rows) == 2
@@ -507,4 +507,108 @@ def test_ingest_rejects_malformed_archive_references(reference):
         PolicyBus().command(document)
     assert caught.value.code == "USAGE-EVENT-001" and "PRIVATE" not in str(caught.value)
     assert not journal_path().exists()
+
+
+def _validator_usage_command():
+    return {
+        "schema": "subllm.command/v1",
+        "process_uri": "subllm://local/policy/command/record-usage",
+        "subject": "service:validator-agent",
+        "idempotency_key": "usage.validator-isolation",
+        "attempt": {
+            "request_id": "validator-attempt", "application": "validator-agent",
+            "function": "review", "provider": "openrouter", "model": "z-ai/glm-5.2",
+            "status": "success", "duration_ms": 42,
+            "usage": {"input_tokens": 12, "output_tokens": 4},
+        },
+    }
+
+
+@pytest.mark.parametrize("unavailable", ["policy", "credentials"])
+def test_http_ingest_survives_unrelated_policy_failure(server, monkeypatch, unavailable):
+    from subllm.errors import InvalidPolicyError
+    from subllm.poa.registry import LIST_ROUTES_REF, RECORD_USAGE_REF
+
+    def reject(*args, **kwargs):
+        raise InvalidPolicyError("PRIVATE-POLICY-DETAIL")
+
+    if unavailable == "policy":
+        monkeypatch.setattr("subllm.poa.bus.validate_policy", reject)
+    else:
+        monkeypatch.setattr(PolicyBus, "_query_observe_credentials", reject)
+
+    def post(path, payload):
+        request = Request(server + path, data=json.dumps(payload).encode(),
+                          headers={"Content-Type": "application/json"})
+        with urlopen(request, timeout=5) as response:
+            return json.load(response)
+
+    inspection = post("/v1/inspect", {"process_ref": RECORD_USAGE_REF})
+    assert inspection["observation"]["facts"] == {
+        "process_ref": RECORD_USAGE_REF, "policy_status": "not_applicable",
+    }
+    for duplicate in (False, True):
+        result = post("/v1/commands", _validator_usage_command())
+        assert result == {"schema": "subllm.usage-ingest/v1", "accepted": True, "duplicate": duplicate}
+    rows = query_usage({})
+    assert rows["summary"]["attempts"] == 1
+    assert rows["summary"]["input_tokens"] == 12
+    with urlopen(server + "/v1/events", timeout=5) as response:
+        events = json.load(response)["events"]
+    assert len(events) == 1
+    assert events[0]["event_type"] == "completed"
+    assert events[0]["process_ref"] == RECORD_USAGE_REF
+    assert b"PRIVATE-POLICY-DETAIL" not in journal_path().read_bytes()
+
+    # The exemption belongs only to the fixed metadata-ingest process.
+    with pytest.raises(HTTPError) as caught:
+        post("/v1/inspect", {"process_ref": LIST_ROUTES_REF})
+    assert caught.value.code == 422
+    error = json.load(caught.value)
+    assert error["error"]["code"] == "SUBLLM-POLICY-001"
+    assert "PRIVATE-POLICY-DETAIL" not in json.dumps(error)
+
+
+@pytest.mark.parametrize("mutation", ["tokens", "secret", "subject"])
+def test_ingest_policy_isolation_preserves_input_validation(monkeypatch, mutation):
+    def unexpected(*args, **kwargs):
+        raise AssertionError("Metadata validation must precede policy observation")
+
+    monkeypatch.setattr("subllm.poa.bus.validate_policy", unexpected)
+    document = _validator_usage_command()
+    if mutation == "tokens":
+        document["attempt"]["usage"]["input_tokens"] = True
+    elif mutation == "secret":
+        document["attempt"]["api_key"] = "test-placeholder-rejected"
+    else:
+        document["subject"] = "unscoped"
+    bus = PolicyBus()
+    with pytest.raises(PoaContractError):
+        bus.command(document)
+    assert not journal_path().exists()
+    assert bus.store.sequence == 0
+
+
+def test_ingest_policy_isolation_does_not_hide_storage_failure(monkeypatch, tmp_path):
+    blocked = tmp_path / "not-a-directory"
+    blocked.write_text("blocked")
+    monkeypatch.setenv("SUBLLM_USAGE_DB", str(blocked / "usage.sqlite3"))
+    bus = PolicyBus()
+    with pytest.raises(PoaContractError) as caught:
+        bus.command(_validator_usage_command())
+    assert caught.value.code == "USAGE-STORAGE-001"
+    assert bus.store.sequence == 0
+
+
+def test_ingest_policy_isolation_preserves_adapter_allowlist(monkeypatch):
+    from subllm.poa.registry import BINDINGS, CAP_JOURNAL
+
+    monkeypatch.setitem(BINDINGS, CAP_JOURNAL,
+                        BINDINGS[CAP_JOURNAL] | {"adapter_ref": "adapter://unknown/metadata/v1"})
+    bus = PolicyBus()
+    with pytest.raises(PoaContractError) as caught:
+        bus.command(_validator_usage_command())
+    assert caught.value.code == "POA-EXEC-001"
+    assert not journal_path().exists()
+    assert bus.store.sequence == 0
 

@@ -224,7 +224,7 @@ class PolicyBus:
     def _query_inspect(self, document: dict[str, Any]) -> dict[str, Any]:
         payload = exact(document, {"schema", "process_uri", "process_ref"})
         process = get_process(payload["process_ref"])
-        observation = self._observation()
+        observation = self._observation(process_ref=payload["process_ref"])
         binding = binding_for_process(payload["process_ref"], observation["facts_sha256"])
         return {
             "schema": "poa.request/v1",
@@ -391,11 +391,19 @@ class PolicyBus:
             "result": proposal,
         }
 
-    def _observation(self) -> dict[str, Any]:
+    def _observation(self, *, process_ref: str | None = None) -> dict[str, Any]:
         observed = _now()
-        facts = self._query_observe_credentials({"schema": "subllm.query/v1", "process_uri": OBSERVE_CREDENTIALS_URI})
-        facts["policy_status"] = "ok"
-        validate_policy()
+        if process_ref == RECORD_USAGE_REF:
+            # This process journals metadata from an already completed attempt.
+            # Current routing/credentials neither authorize that past attempt
+            # nor determine whether its strictly validated metadata is valid.
+            facts = {"process_ref": RECORD_USAGE_REF, "policy_status": "not_applicable"}
+        else:
+            facts = self._query_observe_credentials(
+                {"schema": "subllm.query/v1", "process_uri": OBSERVE_CREDENTIALS_URI}
+            )
+            facts["policy_status"] = "ok"
+            validate_policy()
         digest = digest_document(facts)
         return {
             "schema": "poa.observation/v1",
@@ -415,7 +423,7 @@ class PolicyBus:
         process = get_process(process_ref)
         input_ref = require_pattern(payload["input_ref"], "input_ref", ARTIFACT_REF)
         input_sha256 = require_pattern(payload["input_sha256"], "input_sha256", SHA256)
-        observation = self._observation()
+        observation = self._observation(process_ref=process_ref)
         binding = binding_for_process(process_ref, observation["facts_sha256"])
         request = {
             "schema": "poa.request/v1",
