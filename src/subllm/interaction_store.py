@@ -158,9 +158,11 @@ if hasattr(os, 'register_at_fork'):
 
 
 @contextmanager
-def _sqlite_write_slot(path: Path, write: bool):
+def _sqlite_write_slot(path: Path, write: bool, *, budget_seconds: float = 5):
+    if type(budget_seconds) not in (int, float) or not 0 < budget_seconds <= 5:
+        raise ValueError('SQLite admission budget must be positive and at most five seconds')
     if not write:
-        yield 5
+        yield budget_seconds
         return
     identity = path.stat()
     key = (identity.st_dev, identity.st_ino)
@@ -170,12 +172,12 @@ def _sqlite_write_slot(path: Path, write: bool):
             gate = _SQLiteWriteGate()
             _SQLITE_WRITE_GATES[key] = gate
     started = time.monotonic()
-    if not gate.acquire(timeout=5):
+    if not gate.acquire(timeout=budget_seconds):
         raise sqlite3.OperationalError('database is locked')
     try:
-        # Queueing and the interprocess SQLite busy wait share the original5s
-        # budget. Strong local references retain the weak gate while waiting.
-        yield max(0, 5 - (time.monotonic() - started))
+        # Queueing and the SQLite busy wait share one existing caller budget.
+        # Strong local references retain the weak gate while waiting.
+        yield max(0, budget_seconds - (time.monotonic() - started))
     finally:
         gate.release()
 
