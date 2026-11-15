@@ -1,0 +1,86 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-219",
+  "summary": "Load public API on demand so native workers avoid unrelated SDK imports; preserve all public aliases and process deadlines.",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "regression"
+  },
+  "allowedPaths": [
+    "project/ticket-219/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/__init__.py",
+    "tests/test_package_imports.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "973936e35d93c95d0c526f22e4405c74525ce2c7",
+    "targetBranch": "main",
+    "outcome": "Start native workers without loading unrelated completion/client, proxy, decision or ledger code; retain all103 SDK exports and exact canonical identities.",
+    "nonGoals": [
+      "No resolver, provider policy, credential, runtime, dependency or deadline changes.",
+      "No guarantee of OS scheduling or persistent disk latency."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Resolve public exports through module __getattr__ and cache canonical objects. Eagerly bind only provider_order and request_scope export groups to preserve function/submodule name collisions. Keep __all__ names/order and discoverability.",
+      "components": [
+        {
+          "name": "public-sdk-import-boundary",
+          "paths": [
+            "src/subllm/__init__.py"
+          ]
+        },
+        {
+          "name": "isolated-import-regressions",
+          "paths": [
+            "tests/test_package_imports.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the reviewed import-boundary change; preserve operational evidence and running service files."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Fresh process forbidden-import tests, all103 canonical export identities, star import, dir and callable alias import ordering."
+        ],
+        "evidence": "Three baseline boundary tests fail on published base; seven fresh-process cases and all103 identities pass on candidate."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Existing fixed-deadline real descendant/owner tests, affected testless coverage, scripts/verify, current-base OneDev and independent App publication."
+        ],
+        "evidence": "84 affected tests pass without a new skip or changed deadline; remaining protected verification must pass before merge."
+      }
+    ]
+  }
+}
