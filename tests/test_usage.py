@@ -731,7 +731,6 @@ def _forked_usage_write(sender):
     sender.close()
 
 
-@pytest.mark.skipif("fork" not in multiprocessing.get_all_start_methods(), reason="Requires real fork inheritance")
 def test_usage_admission_does_not_inherit_a_parent_writer_after_fork(paused_usage_writer):
     context = multiprocessing.get_context("fork")
     receiver, sender = context.Pipe(duplex=False)
