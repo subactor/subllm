@@ -1,0 +1,90 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-218",
+  "summary": "Bound usage journal admission and preserve fork safety",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-218/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/interaction_store.py",
+    "src/subllm/usage.py",
+    "tests/test_usage.py",
+    "tests/test_usage_indexes.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "69e33df6525a620947538ff28b013c14b97c347c",
+    "targetBranch": "main",
+    "outcome": "Bound native usage journal admission by its existing 0.5-second SQLite budget; preserve independent-journal progress, fork safety, strict failure and already-produced provider results using the existing inode-scoped SQLite gate.",
+    "nonGoals": [
+      "No provider invocation or paid retry, timeout expansion, resolver edit, credential access, live database mutation or runtime promotion.",
+      "Do not claim every cold SQLite failure or worker-start timing issue is resolved."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 4,
+      "maxAffectedComponents": 2,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Reuse interaction_store._sqlite_write_slot, preserving its default archive budget and fork reset. Allow an explicit private budget for the usage journal so local queueing and SQLite waiting share the existing half-second budget, with inode isolation and normal strict/best-effort failure paths.",
+      "components": [
+        {
+          "name": "usage-journal",
+          "paths": [
+            "src/subllm/usage.py",
+            "tests/test_usage.py"
+          ]
+        },
+        {
+          "name": "sqlite-admission",
+          "paths": [
+            "src/subllm/interaction_store.py",
+            "tests/test_usage_indexes.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert reviewed source changes; retain fixtures and operational evidence."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "Deterministic paused-writer regressions: unrelated journal progress, bounded strict failure and completed provider-result preservation."
+        ],
+        "evidence": "Real record_attempt and complete calls cannot wait indefinitely behind an unrelated or busy writer; no paid request is retried."
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "Real fork child write while the parent writer is paused, native SQLite default-budget regressions, affected coverage, scripts/verify, current-base OneDev and independent App merge."
+        ],
+        "evidence": "Child and parent can both persist their own metadata; archive admission retains its existing five-second default and data/privacy invariants."
+      }
+    ]
+  }
+}
