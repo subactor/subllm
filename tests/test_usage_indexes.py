@@ -390,6 +390,26 @@ def test_sqlite_local_queue_shares_the_existing_busy_budget(monkeypatch, tmp_pat
         assert observed == remaining
 
 
+@pytest.mark.parametrize(('elapsed', 'remaining'), [(0, 0.5), (0.2, 0.3), (0.5, 0), (0.7, 0)])
+def test_sqlite_usage_budget_is_shared_with_local_admission(monkeypatch, tmp_path, elapsed, remaining):
+    from subllm import interaction_store
+    path = tmp_path / 'usage.sqlite3'
+    path.touch(mode=0o600)
+    clock = iter([0, elapsed])
+    monkeypatch.setattr(interaction_store, 'time', SimpleNamespace(monotonic=lambda: next(clock)))
+    with interaction_store._sqlite_write_slot(path, True, budget_seconds=0.5) as observed:
+        assert observed == pytest.approx(remaining)
+
+
+@pytest.mark.parametrize('budget', [True, 0, -1, 6, float('inf'), float('nan'), '0.5'])
+def test_sqlite_admission_budget_cannot_expand_the_existing_limit(tmp_path, budget):
+    from subllm import interaction_store
+    path = tmp_path / 'must-not-exist.sqlite3'
+    with pytest.raises(ValueError), interaction_store._sqlite_write_slot(path, True, budget_seconds=budget):
+        pytest.fail('Invalid admission budget must fail before accessing a journal')
+    assert not path.exists()
+
+
 @pytest.mark.parametrize(('elapsed', 'remaining'), [(3, 2), (7, 0)])
 def test_sqlite_connect_uses_only_the_budget_left_after_admission(monkeypatch, tmp_path, elapsed, remaining):
     from subllm import interaction_store
@@ -401,7 +421,7 @@ def test_sqlite_connect_uses_only_the_budget_left_after_admission(monkeypatch, t
         calls.append((path, uri, timeout))
         raise sqlite3.OperationalError('database is locked')
 
-    monkeypatch.setattr(interaction_store.sqlite3, 'connect', locked_connect)
+    monkeypatch.setattr(interaction_store, 'sqlite3', SimpleNamespace(**(vars(sqlite3) | {'connect': locked_connect})))
     store = interaction_store.InteractionStore(tmp_path / 'private')
     with pytest.raises(sqlite3.OperationalError, match='^database is locked$'), \
             store.connect('2026-01-01', True):

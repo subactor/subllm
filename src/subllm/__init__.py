@@ -1,118 +1,157 @@
-from .client import (
-    ArchiveReference,
-    AuditAttempt,
-    CodeEditResponse,
-    CompletionAttempt,
-    CompletionAudit,
-    CompletionCache,
-    CompletionCacheReceipt,
-    CompletionResponse,
-    CompletionStream,
-    GenerationBudget,
-    GenerationLimits,
-    GenerationUsage,
-    JournalReference,
-    StreamCapabilities,
-    StreamEvent,
-    StreamFeedbackReceipt,
-    StreamMetrics,
-    complete,
-    execute_code_edit,
-    stream_complete,
-)
-from .credential_env import (
-    POLICY_ENV_NAMES,
-    SUBLLM_ENV_FILE,
-    allowed_env_names,
-    credential_is_valid,
-    credential_names,
-    credential_value,
-    cursor_api_key,
-    find_env_file,
-    import_credentials,
-    is_allowed_env_name,
-    load_env_file,
-    load_shared_environment,
-    merged_environment,
-)
-from .decisions import (
-    DECISION_MODELS,
-    DEFAULT_DECISION_MODEL,
-    DecisionError,
-    decide,
-    decide_legacy,
-    resolve_decision_model,
-)
-from .errors import (
-    CURSOR_WORKER_TIMEOUT_CODE,
-    PROVIDER_CHAIN_EXHAUSTED_CODE,
-    PROVIDER_RATE_LIMIT_CODE,
-    PROVIDER_UNAVAILABLE_CODE,
-    CompletionError,
-    CredentialFileError,
-    InvalidPolicyError,
-    MissingCredentialError,
-    SubLLMError,
-    UnknownRouteError,
-)
-from .health import ProviderHealthReceipt, provider_health, reset_provider_health
-from .kpi_ledger import (
-    CALCULATION_METHODS,
-    COST_CATEGORIES,
-    HEYASA_OPS_SCHEMA,
-    PRICING_SOURCES,
-    CostAuditRecord,
-    DeploymentContext,
-    IncompleteCostMeasurementError,
-    KpiCostLedger,
-    KpiLedgerError,
-)
-from .policy import (
-    APPLICATIONS,
-    CURSOR_API_KEY_ENV,
-    EXTRA_CREDENTIAL_ENV,
-    MODELS,
-    ORDERABLE_PROVIDER_IDS,
-    PROVIDERS,
-    ROUTES,
-    SUBLLM_PROVIDER_ORDER,
-)
-from .policy_config import (
-    SUBLLM_POLICY_FILE,
-    SUBLLM_UNCREDITED_COOLDOWN_SECONDS,
-    ApplicationPolicyConfig,
-    ExecutionPolicyConfig,
-    ProviderPolicyConfig,
-    RuntimePolicyConfig,
-    find_policy_file,
-    load_policy_config,
-    normalize_timeout_key_part,
-    resolve_attempt_timeout,
-)
+"""Public SDK exports without loading completion transports at worker startup."""
+
+from importlib import import_module as _import_module
+
+# These callable exports share their names with submodules. Bind them eagerly
+# so importing another SDK module cannot replace them with module objects.
 from .provider_order import (
     available_provider_order,
     parse_provider_order,
     provider_order,
 )
-from .proxy import list_proxy_models, make_proxy_server, serve_proxy
-from .resolver import (
-    available_routes,
-    configured_route,
-    configured_routes,
-    resolve,
-    route_policy,
-    validate_policy,
+from .request_scope import (
+    RequestAuditContext,
+    ResolvedPolicySnapshot,
+    capture_policy,
+    request_scope,
 )
-from .types import (
-    ApplicationSpec,
-    ConfiguredRoute,
-    ModelSpec,
-    ProviderModelSpec,
-    ProviderSpec,
-    ResolvedRoute,
-    RouteCandidate,
-    RoutePolicy,
-)
+
+_EXPORT_MODULES = {
+    'client': (
+        'ArchiveReference',
+        'AuditAttempt',
+        'CodeEditResponse',
+        'CompletionAttempt',
+        'CompletionAudit',
+        'CompletionCache',
+        'CompletionCacheReceipt',
+        'CompletionResponse',
+        'CompletionStream',
+        'GenerationBudget',
+        'GenerationLimits',
+        'GenerationUsage',
+        'JournalReference',
+        'StreamCapabilities',
+        'StreamEvent',
+        'StreamFeedbackReceipt',
+        'StreamMetrics',
+        'complete',
+        'execute_code_edit',
+        'stream_complete',
+    ),
+    'credential_env': (
+        'POLICY_ENV_NAMES',
+        'SUBLLM_ENV_FILE',
+        'allowed_env_names',
+        'credential_is_valid',
+        'credential_names',
+        'credential_value',
+        'cursor_api_key',
+        'find_env_file',
+        'import_credentials',
+        'is_allowed_env_name',
+        'load_env_file',
+        'load_shared_environment',
+        'merged_environment',
+    ),
+    'decisions': (
+        'DECISION_MODELS',
+        'DEFAULT_DECISION_MODEL',
+        'DecisionError',
+        'decide',
+        'decide_legacy',
+        'resolve_decision_model',
+    ),
+    'errors': (
+        'CURSOR_WORKER_TIMEOUT_CODE',
+        'PROVIDER_CHAIN_EXHAUSTED_CODE',
+        'PROVIDER_RATE_LIMIT_CODE',
+        'PROVIDER_UNAVAILABLE_CODE',
+        'CompletionError',
+        'CredentialFileError',
+        'InvalidPolicyError',
+        'MissingCredentialError',
+        'SubLLMError',
+        'UnknownRouteError',
+    ),
+    'health': (
+        'ProviderHealthReceipt',
+        'provider_health',
+        'reset_provider_health',
+    ),
+    'kpi_ledger': (
+        'CALCULATION_METHODS',
+        'COST_CATEGORIES',
+        'HEYASA_OPS_SCHEMA',
+        'PRICING_SOURCES',
+        'CostAuditRecord',
+        'DeploymentContext',
+        'IncompleteCostMeasurementError',
+        'KpiCostLedger',
+        'KpiLedgerError',
+    ),
+    'policy': (
+        'APPLICATIONS',
+        'CURSOR_API_KEY_ENV',
+        'EXTRA_CREDENTIAL_ENV',
+        'MODELS',
+        'ORDERABLE_PROVIDER_IDS',
+        'PROVIDERS',
+        'ROUTES',
+        'SUBLLM_PROVIDER_ORDER',
+    ),
+    'policy_config': (
+        'SUBLLM_POLICY_FILE',
+        'SUBLLM_UNCREDITED_COOLDOWN_SECONDS',
+        'ApplicationPolicyConfig',
+        'ExecutionPolicyConfig',
+        'ProviderPolicyConfig',
+        'RuntimePolicyConfig',
+        'find_policy_file',
+        'load_policy_config',
+        'normalize_timeout_key_part',
+        'resolve_attempt_timeout',
+    ),
+    'proxy': (
+        'list_proxy_models',
+        'make_proxy_server',
+        'serve_proxy',
+    ),
+    'resolver': (
+        'available_routes',
+        'configured_route',
+        'configured_routes',
+        'resolve',
+        'route_policy',
+        'validate_policy',
+    ),
+    'types': (
+        'ApplicationSpec',
+        'ConfiguredRoute',
+        'ModelSpec',
+        'ProviderModelSpec',
+        'ProviderSpec',
+        'ResolvedRoute',
+        'RouteCandidate',
+        'RoutePolicy',
+    ),
+}
+_EXPORTS = {name: module for module, names in _EXPORT_MODULES.items() for name in names}
+
+
+def __getattr__(name: str):
+    try:
+        module = _EXPORTS[name]
+    except KeyError:
+        raise AttributeError(f"module {__name__!r} has no attribute {name!r}") from None
+    value = getattr(_import_module(f".{module}", __name__), name)
+    globals()[name] = value
+    return value
+
+
+def __dir__() -> list[str]:
+    return sorted(set(globals()) | set(__all__))
+
 
 __all__ = [
     "RequestAuditContext", "ResolvedPolicySnapshot", "capture_policy", "request_scope",
@@ -216,5 +255,3 @@ __all__ = [
     "normalize_timeout_key_part",
     "resolve_attempt_timeout",
 ]
-
-from .request_scope import RequestAuditContext, ResolvedPolicySnapshot, capture_policy, request_scope

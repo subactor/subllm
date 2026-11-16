@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import multiprocessing
 import os
 import sqlite3
 import subprocess
@@ -16,7 +17,7 @@ from urllib.request import Request, urlopen
 
 import pytest
 
-from subllm import client_routes, complete, proxy
+from subllm import client_routes, complete, proxy, request_scope
 from subllm.client_types import CompletionResponse, _RetryableAttemptError
 from subllm.errors import CompletionError
 from subllm.poa import PolicyBus, make_server
@@ -611,4 +612,144 @@ def test_ingest_policy_isolation_preserves_adapter_allowlist(monkeypatch):
     assert caught.value.code == "POA-EXEC-001"
     assert not journal_path().exists()
     assert bus.store.sequence == 0
+
+
+@pytest.fixture
+def paused_usage_writer(monkeypatch):
+    """Pause a real writer after admission, before it can lock SQLite itself."""
+    entered, release = threading.Event(), threading.Event()
+    errors = []
+    parent_pid, connect = os.getpid(), sqlite3.connect
+
+    def paused_connect(*args, **kwargs):
+        if os.getpid() == parent_pid and threading.current_thread() is writer:
+            entered.set()
+            if not release.wait(30):
+                raise AssertionError("Parent usage writer was not released")
+        return connect(*args, **kwargs)
+
+    def write():
+        try:
+            record(request_id="paused-parent", strict=True)
+        except BaseException as exc:
+            errors.append(exc)
+
+    writer = threading.Thread(target=write)
+    monkeypatch.setattr("subllm.usage.sqlite3", SimpleNamespace(**(vars(sqlite3) | {"connect": paused_connect})))
+    writer.start()
+    try:
+        assert entered.wait(15), "Parent writer did not reach its SQLite boundary"
+        yield SimpleNamespace(release=release, thread=writer)
+    finally:
+        release.set()
+        writer.join(15)
+        assert not writer.is_alive()
+        assert not errors
+
+
+def _start_usage_call(call):
+    outcome, done = {}, threading.Event()
+
+    def run():
+        try:
+            outcome["value"] = call()
+        except BaseException as exc:
+            outcome["error"] = exc
+        finally:
+            done.set()
+
+    thread = threading.Thread(target=run)
+    thread.start()
+    return SimpleNamespace(thread=thread, done=done, outcome=outcome)
+
+
+def test_usage_admission_keeps_unrelated_journals_independent(paused_usage_writer, tmp_path):
+    unrelated = tmp_path / "other.sqlite3"
+
+    def write_other():
+        with request_scope(environ={"SUBLLM_USAGE_DB": str(unrelated)}, require_owner=False):
+            record(request_id="other-journal", strict=True)
+
+    call = _start_usage_call(write_other)
+    try:
+        assert call.done.wait(3), "An unrelated journal waited for the paused writer"
+        assert "error" not in call.outcome
+        assert query_usage({}, database=unrelated)["summary"]["attempts"] == 1
+    finally:
+        paused_usage_writer.release.set()
+        call.thread.join(15)
+        assert not call.thread.is_alive()
+
+
+def test_usage_admission_rejects_a_busy_journal_within_its_existing_budget(paused_usage_writer):
+    call = _start_usage_call(lambda: record(request_id="expired-waiter", strict=True))
+    try:
+        assert call.done.wait(3), "Strict usage admission waited without a bound"
+        error = call.outcome.get("error")
+        assert isinstance(error, PoaContractError)
+        assert error.code == "USAGE-STORAGE-001"
+        assert str(journal_path()) not in str(error)
+    finally:
+        paused_usage_writer.release.set()
+        call.thread.join(15)
+        assert not call.thread.is_alive()
+    paused_usage_writer.thread.join(15)
+    assert query_usage({})["summary"]["attempts"] == 1
+
+
+def test_usage_admission_preserves_a_completed_result_without_retry(paused_usage_writer, monkeypatch, caplog):
+    calls = []
+
+    def invoke(route, *args, **kwargs):
+        calls.append(route)
+        return CompletionResponse("provider-result", route.provider, route.wire_model)
+
+    monkeypatch.setattr(client_routes, "_invoke_route", invoke)
+    call = _start_usage_call(lambda: complete(
+        "todo2code", "semantic", [{"role": "user", "content": "test-input"}],
+        environ={"ZAI_API_KEY": "id.secret"},
+    ))
+    try:
+        assert call.done.wait(3), "A completed provider result waited on the busy journal"
+        assert "error" not in call.outcome
+        assert call.outcome["value"].content == "provider-result"
+        assert call.outcome["value"].audit.state == "unavailable"
+        assert call.outcome["value"].audit.attempts[0].journal_state == "unavailable"
+        assert call.outcome["value"].audit.attempts[0].journal is None
+        assert len(calls) == 1
+        assert "usage journal unavailable; completion result preserved" in caplog.text
+    finally:
+        paused_usage_writer.release.set()
+        call.thread.join(15)
+        assert not call.thread.is_alive()
+
+
+def _forked_usage_write(sender):
+    sender.send("started")
+    record(request_id="fork-child", strict=True)
+    sender.send("written")
+    sender.close()
+
+
+def test_usage_admission_does_not_inherit_a_parent_writer_after_fork(paused_usage_writer):
+    context = multiprocessing.get_context("fork")
+    receiver, sender = context.Pipe(duplex=False)
+    child = context.Process(target=_forked_usage_write, args=(sender,))
+    child.start()
+    sender.close()
+    try:
+        assert receiver.poll(15), "Child did not start"
+        assert receiver.recv() == "started"
+        assert receiver.poll(3), "Child inherited an admission lock owned by a parent thread"
+        assert receiver.recv() == "written"
+        child.join(15)
+        assert child.exitcode == 0
+    finally:
+        if child.is_alive():
+            child.terminate()
+        child.join(15)
+        receiver.close()
+        paused_usage_writer.release.set()
+    paused_usage_writer.thread.join(15)
+    assert query_usage({})["summary"]["attempts"] == 2
 

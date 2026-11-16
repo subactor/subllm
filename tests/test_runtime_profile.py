@@ -147,7 +147,8 @@ def gateway_servers():
                 if not release.wait(timeout=5):
                     self.send_error(504)
                     return
-            body = json.dumps({"model": payload["model"], "ok": True}).encode()
+            body = json.dumps({"model": payload["model"], "ok": True,
+                               "message": {"role": "assistant", "content": "test"}}).encode()
             self.send_response(self.server.result_status)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
@@ -210,6 +211,16 @@ def test_gateway_failure_does_not_attempt_another_provider(gateway_servers):
     assert error.value.status == 503
     assert len(seen) == 1
     assert seen[0]["path"] == "/v1/speech/transcribe"
+
+
+@pytest.mark.parametrize("protocol", ["openai", "ollama"])
+def test_role_settings_preserve_the_application_output_cap(gateway_servers, protocol):
+    servers, seen, _entered, _release = gateway_servers
+    profile = configured(f"http://127.0.0.1:{servers[0].server_port}")
+    profile["roles"]["llm"]["parameters"] = {"protocol": protocol, "max_tokens": 128}
+    GatewayClient(profile).infer("llm", {"messages": [], "max_tokens": 17})
+    request = seen[0]["payload"]
+    assert (request["max_tokens"] if protocol == "openai" else request["options"]["num_predict"]) == 17
 
 
 def test_disabled_profile_cannot_make_an_inference_request():

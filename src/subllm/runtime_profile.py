@@ -409,6 +409,9 @@ class GatewayClient:
             if type(budget) not in (int, float) or not math.isfinite(budget) or budget <= 0:
                 raise ProfileError("Invalid caller inference deadline")
             timeout = min(timeout, budget)
+        if role == "llm" and "max_tokens" in payload:
+            caller_cap = validate_parameters("llm", {"max_tokens": payload["max_tokens"]})["max_tokens"]
+            parameters["max_tokens"] = min(caller_cap, parameters.get("max_tokens", caller_cap))
         protocol = parameters.pop("protocol", "openai") if role == "llm" else None
         if role == "llm" and protocol == "ollama":
             names = {"max_tokens": "num_predict", "context_size": "num_ctx"}

@@ -7,7 +7,6 @@ import logging
 import os
 import re
 import sqlite3
-import threading
 from collections.abc import Mapping
 from contextlib import closing
 from datetime import UTC, datetime
@@ -18,7 +17,6 @@ from .poa.errors import PoaContractError
 from .request_scope import request_environment
 
 LOG = logging.getLogger(__name__)
-_WRITE_LOCK = threading.Lock()
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 FILTERS = {"application", "provider", "status", "since", "until", "before", "limit", "search", "source"}
 _SCHEMA = """
@@ -87,6 +85,7 @@ def record_attempt(
 ) -> bool:
     """Logging failure must never retry a paid request or replace its result."""
     from .audit import JournalReference, observe_journal
+    from .interaction_store import _sqlite_write_slot
 
     identity = (request_id, application, function, provider, model)
     try:
@@ -105,7 +104,8 @@ def record_attempt(
             pass
         else:
             os.close(fd)
-        with _WRITE_LOCK, closing(sqlite3.connect(path, timeout=0.5)) as db, db:
+        with _sqlite_write_slot(path, True, budget_seconds=0.5) as timeout, \
+                closing(sqlite3.connect(path, timeout=timeout)) as db, db:
             db.execute("PRAGMA journal_mode=WAL").fetchone()
             db.execute("BEGIN IMMEDIATE")
             for statement in _SCHEMA.split(";"):
