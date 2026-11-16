@@ -1,0 +1,29 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-220",
+  "summary": "Serve configured speech inference and shared runtime profiles through the SubLLM proxy",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-220/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/audio.py",
+    "src/subllm/proxy.py",
+    "src/subllm/client_routes.py",
+    "src/subllm/runtime_profile.py",
+    "tests/test_audio_proxy.py",
+    "tests/test_runtime_profile.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}
