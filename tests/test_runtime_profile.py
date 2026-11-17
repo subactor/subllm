@@ -249,7 +249,7 @@ def test_sampling_controls_reach_canonical_invocation_without_raising_operator_c
         wire_model="test-model",
         extra_headers={},
         transport="openai-compatible",
-        api_key="test-key",
+        api_key="",
         model_parameters={"max_tokens": ceiling},
     )
     seen = []
