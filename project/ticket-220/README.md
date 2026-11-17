@@ -35,6 +35,24 @@ path free; this remains the same requested all-role configuration outcome.
 Operator token ceilings, request snapshots, audit and cache correctness remain
 mandatory.
 
+Continuation authorization (2026-11-17): the user requested continued work,
+tests and protected merge. Managed idle takeover transferred this checkout to
+codex-ai-control-resume-20261117t0009z with fencing token 4.
+
+Bounded validation refinement: a fresh work-start observation admitted
+`tests/test_usage.py` without a competing owner. The current main deliberately
+bounds usage admission at 0.5 seconds and reports denied writes as unavailable;
+the former all-40-writes assertion assumed unbounded admission. Verify exact
+persisted identities for every accepted concurrent write and explicit failure
+for denied writes, including deterministic best-effort denial. Do not expand
+runtime timeouts, retry providers or change usage-storage implementation.
+
+Continuation validation: 391 usage, profile, speech, proxy, generation-limit,
+native-transport and cache regressions pass on the persistent checkout
+filesystem. One existing multithreaded-fork deprecation warning is retained.
+The former all-40 result and its raw warnings remain in the external receipt;
+it is not relabeled as a successful run.
+
 ## Acceptance criteria
 
 - [x] AC-01: A shared versioned profile describes gateway, all four model roles

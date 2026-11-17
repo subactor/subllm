@@ -17,7 +17,8 @@
     "src/subllm/client_routes.py",
     "src/subllm/runtime_profile.py",
     "tests/test_audio_proxy.py",
-    "tests/test_runtime_profile.py"
+    "tests/test_runtime_profile.py",
+    "tests/test_usage.py"
   ],
   "forbiddenPaths": [
     "project/ticket-*/user-*.md"

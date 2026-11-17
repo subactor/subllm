@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import multiprocessing
 import os
@@ -31,7 +32,7 @@ def record(**kwargs):
     values = dict(request_id="same-request", application="todo2code", function="semantic", provider="zai",
                   model="glm-5.3", status="success", diagnostic_code=None, duration_ms=14,
                   usage={"prompt_tokens": 12, "completion_tokens": 4})
-    record_attempt(**(values | kwargs))
+    return record_attempt(**(values | kwargs))
 
 
 def test_empty_query_is_pure_and_bus_registers_usage():
@@ -66,10 +67,21 @@ def test_persistence_redaction_and_null_usage():
     assert run.stdout.strip() == "2"
 
 
-def test_concurrent_first_writes_are_not_lost():
+def test_concurrent_first_writes_persist_every_admitted_attempt(caplog):
     with ThreadPoolExecutor(max_workers=8) as pool:
-        list(pool.map(lambda i: record(request_id=str(i)), range(40)))
-    assert query_usage({})["summary"]["attempts"] == 40
+        admitted = list(pool.map(lambda i: record(request_id=str(i)), range(40)))
+    # Admission is bounded, including on a slow filesystem. Every True return
+    # must identify a persisted row; False must be reported as unavailable.
+    assert all(type(value) is bool for value in admitted)
+    assert any(admitted), "A writable journal must admit at least one attempt"
+    persisted = query_usage({"limit": 500})
+    assert persisted["summary"]["attempts"] == sum(admitted)
+    expected_ids = {hashlib.sha256(str(i).encode()).hexdigest()[:24]
+                    for i, accepted in enumerate(admitted) if accepted}
+    assert {row["request_id"] for row in persisted["attempts"]} == expected_ids
+    failures = [item for item in caplog.records if item.name == "subllm.usage"
+                and item.getMessage() == "SubLLM usage journal unavailable; completion result preserved"]
+    assert len(failures) == admitted.count(False)
 
 
 def test_held_panel_read_does_not_discard_a_new_usage_write():
@@ -689,6 +701,21 @@ def test_usage_admission_rejects_a_busy_journal_within_its_existing_budget(pause
         assert isinstance(error, PoaContractError)
         assert error.code == "USAGE-STORAGE-001"
         assert str(journal_path()) not in str(error)
+    finally:
+        paused_usage_writer.release.set()
+        call.thread.join(15)
+        assert not call.thread.is_alive()
+    paused_usage_writer.thread.join(15)
+    assert query_usage({})["summary"]["attempts"] == 1
+
+
+def test_usage_best_effort_denial_never_claims_persistence(paused_usage_writer, caplog):
+    call = _start_usage_call(lambda: record(request_id="denied-best-effort"))
+    try:
+        assert call.done.wait(3), "Best-effort usage admission waited without a bound"
+        assert "error" not in call.outcome
+        assert call.outcome["value"] is False
+        assert "usage journal unavailable; completion result preserved" in caplog.text
     finally:
         paused_usage_writer.release.set()
         call.thread.join(15)
