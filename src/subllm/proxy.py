@@ -965,6 +965,11 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         parsed = urlparse(self.path)
         path = parsed.path
 
+        if path == "/v1/ai/capabilities":
+            from .audio import speech_capabilities
+            self._json(200, speech_capabilities())
+            return
+
         if path in {"", "/", "/health"}:
             self._json(200, {
                 "status": "ok",
@@ -1033,6 +1038,18 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         path = parsed.path
         payload = self._read_json()
         if payload is None:
+            return
+
+        if path in {"/v1/speech/transcribe", "/v1/speech/synthesize"}:
+            from .audio import SpeechError, synthesize, transcribe
+            try:
+                result = (transcribe if path.endswith("transcribe") else synthesize)(payload)
+            except SpeechError as error:
+                self._error(error.status, error.code, str(error))
+            except Exception:
+                self._error(503, "SPEECH_BACKEND_UNAVAILABLE", "Speech inference could not be completed")
+            else:
+                self._json(200, result)
             return
 
         if path in {"/v1/decide", "/v1/system-one/decide", "/v1/chat/completions", "/api/chat", "/api/generate"}:
@@ -1235,6 +1252,14 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         )
 
     def _handle_openai_chat_completions(self, payload: Mapping[str, Any]) -> None:
+        from .runtime_profile import ProfileError, request_parameter_scope
+        try:
+            with request_parameter_scope(payload):
+                self._handle_openai_chat_completions_with_parameters(payload)
+        except ProfileError as error:
+            self._error(400, "INVALID_REQUEST", str(error))
+
+    def _handle_openai_chat_completions_with_parameters(self, payload: Mapping[str, Any]) -> None:
         raw_model = str(payload.get("model") or "glm-5.3")
         clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
         messages = payload.get("messages")
@@ -1315,6 +1340,22 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         self._json(200, result, extra_headers=extra_headers)
 
     def _handle_ollama_chat(self, payload: Mapping[str, Any]) -> None:
+        from .runtime_profile import ProfileError, ollama_parameter_scope
+        options = payload.get("options", {})
+        clean_model, _ticket = _extract_ticket(str(payload.get("model") or "glm-5.3"), self.headers, payload)
+        if not options:
+            return self._handle_ollama_chat_with_parameters(payload)
+        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
+                and is_upstream_ollama_alive(self.ollama_upstream)):
+            self._forward_upstream("POST", "/api/chat", payload)
+            return
+        try:
+            with ollama_parameter_scope(options):
+                self._handle_ollama_chat_with_parameters(payload)
+        except ProfileError as error:
+            self._error(400, "INVALID_REQUEST", str(error))
+
+    def _handle_ollama_chat_with_parameters(self, payload: Mapping[str, Any]) -> None:
         raw_model = str(payload.get("model") or "glm-5.3")
         clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
         messages = payload.get("messages")
@@ -1631,6 +1672,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._error(400, "INVALID_REQUEST", str(error))
         elif getattr(error, "diagnostic_code", None) == QUALITY_VALIDATOR_ERROR_CODE:
             self._error(500, "COMPLETION_FAILED", str(error))
+        elif getattr(error, "diagnostic_code", None) == "SUBLLM-PARAMETERS-UNSUPPORTED":
+            self._error(400, "INVALID_REQUEST", str(error))
         else:
             return False
         return True

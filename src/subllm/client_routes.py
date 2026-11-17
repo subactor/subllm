@@ -173,6 +173,8 @@ def _complete_route(
     quality_gate: ResponseValidator | None = None,
 ) -> CompletionResponse:
     require_supported(route)
+    from .runtime_profile import apply_request_parameters
+    route = apply_request_parameters(route)
     quality_gate = declared_schema_gate(response_format, quality_gate)
     with generation_attempt(route, policy_file) as reservation:
         route = reservation.route
@@ -476,7 +478,8 @@ def complete(
             )
             return replace(response, audit=capture.receipt(), generation=generation.receipt())
 
-        if cache is None:
+        from .runtime_profile import request_parameters_active
+        if cache is None or request_parameters_active():
             return invoke()
         return cached_complete(
             cache, invoke, application=application, function=function, messages=messages,
