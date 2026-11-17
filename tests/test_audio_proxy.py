@@ -98,6 +98,144 @@ def test_invalid_audio_never_loads_a_model(assets, monkeypatch):
     with pytest.raises(audio.SpeechError) as error:
         audio.transcribe({"model": str(model), "audio_base64": "not base64"})
     assert error.value.code == "SPEECH_AUDIO_INVALID"
+
+
+@pytest.fixture
+def compressed_decoder(monkeypatch):
+    observed = {"frames": [], "consumed": 0, "closed": False, "streams": 1}
+
+    class Clip:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args):
+            observed["closed"] = True
+
+        @property
+        def streams(self):
+            return types.SimpleNamespace(audio=[object()] * observed["streams"])
+
+        def decode(self, **kwargs):
+            for frame in observed["frames"]:
+                observed["consumed"] += 1
+                if isinstance(frame, Exception):
+                    raise frame
+                yield frame
+
+    def open_clip(source, **kwargs):
+        observed["raw"] = source.read()
+        observed["format"] = kwargs["format"]
+        return Clip()
+
+    monkeypatch.setitem(sys.modules, "av", types.SimpleNamespace(open=open_clip))
+    return observed
+
+
+def audio_frame(samples=48000, rate=48000, channels=1):
+    return types.SimpleNamespace(
+        samples=samples, sample_rate=rate, layout=types.SimpleNamespace(channels=[0] * channels)
+    )
+
+
+@pytest.mark.parametrize(
+    "signature,media,container", [(b"OggS", "audio/ogg", "ogg"), (b"\x1aE\xdf\xa3", "audio/webm", "matroska")]
+)
+@pytest.mark.parametrize("declared", [False, True])
+def test_browser_container_without_type_or_with_codec_parameter_is_decoded(
+    compressed_decoder, signature, media, container, declared
+):
+    raw = signature + b"\0" * 64
+    compressed_decoder["frames"] = [audio_frame()]
+    payload = {"audio_base64": base64.b64encode(raw).decode()}
+    if declared:
+        payload["media_type"] = media + ";codecs=opus"
+    assert audio._audio(payload) == (raw, media)
+    assert compressed_decoder["format"] == container
+    assert compressed_decoder["closed"] is True
+
+
+def test_compressed_duration_stops_decoding_before_model_inference(assets, monkeypatch, compressed_decoder):
+    model, _ = assets
+    compressed_decoder["frames"] = [
+        audio_frame(48000 * 60),
+        audio_frame(48000 * 60),
+        audio_frame(),
+        RuntimeError("must not consume"),
+    ]
+    monkeypatch.setattr(audio, "_model_path", lambda *_: pytest.fail("invalid audio reached the model"))
+    with pytest.raises(audio.SpeechError) as error:
+        audio.transcribe({"model": str(model), "audio_base64": base64.b64encode(b"OggS" + b"\0" * 64).decode()})
+    assert error.value.code == "SPEECH_AUDIO_INVALID"
+    assert compressed_decoder["consumed"] == 3
+    assert compressed_decoder["closed"] is True
+
+
+@pytest.mark.parametrize(
+    "frames,streams",
+    [
+        ([], 1),
+        ([audio_frame()], 0),
+        ([audio_frame()], 2),
+        ([audio_frame(rate=0)], 1),
+        ([audio_frame(rate=384000)], 1),
+        ([audio_frame(channels=6)], 1),
+        ([audio_frame(samples=0)], 1),
+        ([ValueError("corrupt stream")], 1),
+    ],
+)
+def test_invalid_compressed_audio_never_reaches_remote_inference(monkeypatch, compressed_decoder, frames, streams):
+    compressed_decoder.update(frames=frames, streams=streams)
+    monkeypatch.setattr(audio, "_remote_transcribe", lambda *_: pytest.fail("invalid audio reached a provider"))
+    with pytest.raises(audio.SpeechError) as error:
+        audio.transcribe(
+            {
+                "model": "test",
+                "engine": "openai",
+                "media_type": "audio/ogg",
+                "audio_base64": base64.b64encode(b"OggS" + b"\0" * 64).decode(),
+            }
+        )
+    assert error.value.code == "SPEECH_AUDIO_INVALID"
+    assert compressed_decoder["closed"] is True
+
+
+@pytest.mark.parametrize("media", ["audio/wav", "audio/webm", "application/octet-stream", None, 42])
+def test_explicit_media_type_must_match_the_audio_container(media, compressed_decoder):
+    with pytest.raises(audio.SpeechError) as error:
+        audio._audio({"audio_base64": base64.b64encode(b"OggS" + b"\0" * 64).decode(), "media_type": media})
+    assert error.value.code == "SPEECH_AUDIO_INVALID"
+    assert compressed_decoder["consumed"] == 0
+
+
+def test_unavailable_compressed_decoder_fails_without_inference(monkeypatch):
+    monkeypatch.setitem(sys.modules, "av", None)
+    with pytest.raises(audio.SpeechError) as error:
+        audio._audio({"audio_base64": base64.b64encode(b"OggS" + b"\0" * 64).decode()})
+    assert error.value.code == "SPEECH_BACKEND_UNAVAILABLE"
+
+
+def test_exact_duration_boundary_does_not_depend_on_float_rounding(compressed_decoder):
+    compressed_decoder["frames"] = [audio_frame(samples=441, rate=44100)] * 12000
+    raw = b"OggS" + b"\0" * 64
+    assert audio._audio({"audio_base64": base64.b64encode(raw).decode()}) == (raw, "audio/ogg")
+    assert compressed_decoder["consumed"] == 12000
+
+
+@pytest.mark.parametrize(
+    "signature,media,extension", [(b"OggS", "audio/ogg", "ogg"), (b"\x1aE\xdf\xa3", "audio/webm", "webm")]
+)
+def test_remote_transcription_preserves_the_validated_browser_format(
+    monkeypatch, compressed_decoder, signature, media, extension
+):
+    compressed_decoder["frames"] = [audio_frame()]
+    raw = signature + b"\0" * 64
+    requests = []
+    monkeypatch.setattr(audio, "_remote_request", lambda *args: requests.append(args) or b'{"text":"result"}')
+    result = audio.transcribe({"engine": "openai", "model": "test", "audio_base64": base64.b64encode(raw).decode()})
+    assert result["text"] == "result"
+    assert f'filename="speech.{extension}"'.encode() in requests[0][1]
+    assert f"Content-Type: {media}".encode() in requests[0][1]
+    assert raw in requests[0][1]
     assert audio._WHISPER_MODEL is None
 
 
@@ -166,14 +304,21 @@ def test_proxy_preserves_explicit_backend_unavailability(http_proxy, monkeypatch
 def test_policy_chat_receives_native_sampling_controls_and_rejects_ignored_options(http_proxy, monkeypatch):
     from subllm.client_types import CompletionResponse
     from subllm.runtime_profile import _REQUEST_PARAMETERS
+
     seen = []
     monkeypatch.setattr("subllm.proxy.is_upstream_ollama_alive", lambda *_args, **_kwargs: False)
+
     def execute(*_args, **_kwargs):
         seen.append(dict(_REQUEST_PARAMETERS.get()))
         return CompletionResponse("test", "test", "test")
+
     monkeypatch.setattr(SubLLMProxyHandler, "_execute_model_or_route", execute)
-    payload = {"model": "qwen2.5", "stream": False, "messages": [{"role": "user", "content": "test"}],
-               "options": {"temperature": 0.3, "num_predict": 21}}
+    payload = {
+        "model": "qwen2.5",
+        "stream": False,
+        "messages": [{"role": "user", "content": "test"}],
+        "options": {"temperature": 0.3, "num_predict": 21},
+    }
     assert post(http_proxy, payload, "/api/chat")[0] == 200
     assert seen == [{"temperature": 0.3, "max_tokens": 21}]
     payload["options"]["num_ctx"] = 4096
@@ -185,16 +330,24 @@ def test_native_ollama_request_keeps_context_and_sampling_options(http_proxy, mo
     seen = []
     probes = []
     monkeypatch.setattr("subllm.proxy.adaptive.policy", lambda: None)
+
     def alive(*_args, **_kwargs):
         probes.append(True)
         assert len(probes) == 1, "Native route must use the observed liveness result once"
         return True
+
     monkeypatch.setattr("subllm.proxy.is_upstream_ollama_alive", alive)
+
     def forward(handler, method, path, payload):
         seen.append((method, path, payload))
         handler._json(200, {"message": {"content": "test"}})
+
     monkeypatch.setattr(SubLLMProxyHandler, "_forward_upstream", forward)
-    payload = {"model": "test-native-unregistered", "stream": False,
-               "messages": [{"role": "user", "content": "test"}], "options": {"num_ctx": 4096, "top_k": 20}}
+    payload = {
+        "model": "test-native-unregistered",
+        "stream": False,
+        "messages": [{"role": "user", "content": "test"}],
+        "options": {"num_ctx": 4096, "top_k": 20},
+    }
     assert post(http_proxy, payload, "/api/chat")[0] == 200
     assert seen == [("POST", "/api/chat", payload)]

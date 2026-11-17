@@ -14,6 +14,7 @@ import tempfile
 import threading
 import uuid
 import wave
+from fractions import Fraction
 from pathlib import Path
 from urllib.error import HTTPError, URLError
 from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_opener
@@ -21,6 +22,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 from .runtime_profile import PARAMETERS, ProfileError, capabilities, validate_parameters
 
 MAX_AUDIO_BYTES = 7 * 1024 * 1024
+MAX_AUDIO_SECONDS = 120
 _MODEL_LOCK = threading.RLock()
 _WHISPER_MODEL = None
 _WHISPER_KEY = None
@@ -126,6 +128,37 @@ def _parameters(payload, role, input_name):
         raise SpeechError("SPEECH_PARAMETER_INVALID", str(error)) from None
 
 
+def _compressed_audio(raw, media_type):
+    try:
+        import av
+    except ImportError:
+        raise SpeechError(
+            "SPEECH_BACKEND_UNAVAILABLE", "Compressed audio validation requires the speech decoder", 503
+        ) from None
+    try:
+        container = "ogg" if media_type == "audio/ogg" else "matroska"
+        with av.open(io.BytesIO(raw), mode="r", format=container) as clip:
+            if len(clip.streams.audio) != 1:
+                raise ValueError("A single audio stream is required")
+            duration = Fraction()
+            frames = 0
+            for frame in clip.decode(audio=0):
+                if (
+                    not 0 < frame.sample_rate <= 192000
+                    or len(frame.layout.channels) not in {1, 2}
+                    or frame.samples <= 0
+                ):
+                    raise ValueError("Invalid decoded audio shape")
+                frames += 1
+                duration += Fraction(frame.samples, frame.sample_rate)
+                if duration > MAX_AUDIO_SECONDS:
+                    raise ValueError("Excessive decoded audio duration")
+            if not frames:
+                raise ValueError("Empty audio stream")
+    except Exception:
+        raise SpeechError("SPEECH_AUDIO_INVALID", "Invalid or excessive compressed audio") from None
+
+
 def _audio(payload):
     encoded = payload.get("audio_base64")
     if not isinstance(encoded, str) or len(encoded) > (MAX_AUDIO_BYTES * 4 // 3 + 8):
@@ -136,8 +169,17 @@ def _audio(payload):
         raise SpeechError("SPEECH_AUDIO_INVALID", "Invalid audio encoding") from None
     if not 44 <= len(raw) <= MAX_AUDIO_BYTES:
         raise SpeechError("SPEECH_AUDIO_INVALID", "Audio size is outside supported bounds", 413)
-    media_type = payload.get("media_type", "audio/wav")
-    if media_type not in {"audio/wav", "audio/x-wav", "audio/webm", "audio/ogg"}:
+    detected = None
+    if raw[:4] == b"RIFF" and raw[8:12] == b"WAVE":
+        detected = "audio/wav"
+    elif raw[:4] == b"OggS":
+        detected = "audio/ogg"
+    elif raw[:4] == b"\x1aE\xdf\xa3":
+        detected = "audio/webm"
+    declared = payload.get("media_type", detected)
+    media_type = declared.split(";", 1)[0].strip().lower() if isinstance(declared, str) else None
+    canonical = "audio/wav" if media_type == "audio/x-wav" else media_type
+    if detected is None or canonical != detected:
         raise SpeechError("SPEECH_AUDIO_INVALID", "Unsupported audio media type", 415)
     if media_type in {"audio/wav", "audio/x-wav"}:
         try:
@@ -145,11 +187,13 @@ def _audio(payload):
                 if (
                     not 0 < clip.getframerate() <= 192000
                     or clip.getnchannels() not in {1, 2}
-                    or clip.getnframes() / clip.getframerate() > 120
+                    or clip.getnframes() / clip.getframerate() > MAX_AUDIO_SECONDS
                 ):
                     raise ValueError
         except (wave.Error, EOFError, ValueError):
             raise SpeechError("SPEECH_AUDIO_INVALID", "Invalid or excessive PCM WAV duration") from None
+    else:
+        _compressed_audio(raw, media_type)
     return raw, media_type
 
 
@@ -289,6 +333,7 @@ def _remote_transcribe(model, audio, media_type, options, timeout):
     if set(options) - {"language", "temperature", "initial_prompt"}:
         raise SpeechError("SPEECH_PARAMETER_INVALID", "Unsupported remote STT parameters")
     boundary = "subllm-" + uuid.uuid4().hex
+    extension = {"audio/webm": "webm", "audio/ogg": "ogg"}.get(media_type, "wav")
     fields = {"model": model, **options}
     if "initial_prompt" in fields:
         fields["prompt"] = fields.pop("initial_prompt")
@@ -296,8 +341,10 @@ def _remote_transcribe(model, audio, media_type, options, timeout):
     for name, value in fields.items():
         parts.append(f'--{boundary}\r\nContent-Disposition: form-data; name="{name}"\r\n\r\n{value}\r\n'.encode())
     parts.append(
-        (f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="speech.wav"\r\n'
-         f'Content-Type: {media_type}\r\n\r\n').encode()
+        (
+            f'--{boundary}\r\nContent-Disposition: form-data; name="file"; filename="speech.{extension}"\r\n'
+            f"Content-Type: {media_type}\r\n\r\n"
+        ).encode()
         + audio
         + b"\r\n"
     )
