@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import datetime
+import hmac
 import json
 import math
 import os
@@ -18,7 +19,7 @@ from threading import Lock
 from typing import Any
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse
+from urllib.parse import urlparse, urlsplit
 from urllib.request import Request, urlopen
 
 from . import adaptive
@@ -39,6 +40,42 @@ from .types import ResolvedRoute
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
 DEFAULT_PROXY_PORT = 11435
+# Browser access control (SUB-01): only loopback pages and explicitly listed origins may read
+# responses; routed (possibly paid/cloud) completions can additionally require a bearer token.
+PROXY_ALLOWED_ORIGINS_ENV = "SUBLLM_PROXY_ALLOWED_ORIGINS"
+PROXY_BEARER_ENV = "SUBLLM_PROXY_TOKEN"
+_LOOPBACK_ORIGIN_HOSTS = {"127.0.0.1", "localhost", "::1"}
+
+
+class ProxyUnauthorizedError(SubLLMError):
+    """A routed completion was requested without the configured proxy bearer token."""
+
+
+def require_route_bearer(headers: Any) -> None:
+    """Raise ProxyUnauthorizedError when SUBLLM_PROXY_TOKEN is set and the request lacks it."""
+    expected = os.environ.get(PROXY_BEARER_ENV, "")
+    if not expected:
+        return
+    supplied = (headers.get("Authorization") or "") if headers is not None else ""
+    if not hmac.compare_digest(supplied.encode("utf-8"), f"Bearer {expected}".encode()):
+        raise ProxyUnauthorizedError("a valid proxy bearer token is required for routed models")
+
+
+def _normalized_origin(origin: str) -> str:
+    return origin.strip().rstrip("/").lower()
+
+
+def proxy_origin_allowed(origin: str) -> bool:
+    """Loopback browser origins and those listed in SUBLLM_PROXY_ALLOWED_ORIGINS (comma separated)."""
+    try:
+        parts = urlsplit(origin.strip())
+        host = parts.hostname
+    except ValueError:
+        return False
+    if parts.scheme in {"http", "https"} and host in _LOOPBACK_ORIGIN_HOSTS:
+        return True
+    listed = {_normalized_origin(item) for item in os.environ.get(PROXY_ALLOWED_ORIGINS_ENV, "").split(",")}
+    return bool(origin.strip()) and _normalized_origin(origin) in listed - {""}
 SYSTEM_ONE_REQUEST_SCHEMA = "wellmanifest.system-one-request/v1"
 SYSTEM_ONE_RESPONSE_SCHEMA = "wellmanifest.system-one-response/v1"
 _CATALOG_READER_LOCK = Lock()
@@ -934,8 +971,24 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
     def log_message(self, format: str, *args: object) -> None:
         return
 
+    def _request_origin(self) -> str | None:
+        origin = self.headers.get("Origin") if self.headers is not None else None
+        return origin if origin is not None and origin.strip() else None
+
+    def _reject_foreign_origin(self) -> bool:
+        """403 PROXY-ORIGIN for a browser request from an origin that is not allowed."""
+        origin = self._request_origin()
+        if origin is None or proxy_origin_allowed(origin):
+            return False
+        self._error(403, "PROXY-ORIGIN", "request origin is not allowed")
+        return True
+
     def _send_cors_headers(self) -> None:
-        self.send_header("Access-Control-Allow-Origin", "*")
+        self.send_header("Vary", "Origin")
+        origin = self._request_origin()
+        if origin is None or not proxy_origin_allowed(origin):
+            return
+        self.send_header("Access-Control-Allow-Origin", origin.strip())
         self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS, HEAD")
         self.send_header(
             "Access-Control-Allow-Headers",
@@ -945,6 +998,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Max-Age", "86400")
 
     def do_OPTIONS(self) -> None:
+        if self._reject_foreign_origin():
+            return
         self.send_response(204)
         self._send_cors_headers()
         self.end_headers()
@@ -960,6 +1015,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
     def do_GET(self) -> None:
         if not self._local_host():
             self._error(421, "PROXY-001", "host is not a local bind")
+            return
+        if self._reject_foreign_origin():
             return
 
         parsed = urlparse(self.path)
@@ -1032,6 +1089,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
     def do_POST(self) -> None:
         if not self._local_host():
             self._error(421, "PROXY-001", "host is not a local bind")
+            return
+        if self._reject_foreign_origin():
             return
 
         parsed = urlparse(self.path)
@@ -1561,6 +1620,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         req_id: str | None,
         payload: Mapping[str, Any],
     ) -> CompletionResponse:
+        require_route_bearer(getattr(self, "headers", None))
         effective_timeout = timeout
         response_format = payload.get("response_format")
 
@@ -1668,7 +1728,9 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
 
     def _handle_contract_error(self, error: Exception) -> bool:
         """Never send an invalid or unavailable acceptance gate to raw upstream."""
-        if isinstance(error, InvalidResponseContractError):
+        if isinstance(error, ProxyUnauthorizedError):
+            self._error(401, "PROXY-AUTH", str(error))
+        elif isinstance(error, InvalidResponseContractError):
             self._error(400, "INVALID_REQUEST", str(error))
         elif getattr(error, "diagnostic_code", None) == QUALITY_VALIDATOR_ERROR_CODE:
             self._error(500, "COMPLETION_FAILED", str(error))

@@ -198,6 +198,7 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | **ticket-219** | [`README.md`](./ticket-219/README.md) | - | - | - | - | - |
 | **ticket-220** | [`README.md`](./ticket-220/README.md) | - | - | - | - | - |
 | **ticket-221** | [`README.md`](./ticket-221/README.md) | - | - | - | - | - |
+| **ticket-222** | [`README.md`](./ticket-222/README.md) | - | - | - | - | - |
 | **ticket-224** | [`README.md`](./ticket-224/README.md) | - | - | - | - | - |
 <!-- AUTO:TICKET_INDEX:END -->
 

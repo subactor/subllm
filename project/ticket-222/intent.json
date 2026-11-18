@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-222",
+  "summary": "SUB-01 proxy: replace CORS wildcard with an origin allowlist and optional bearer token",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P0",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-222/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "2d7103d49a7dc18989495cc3462a92268c56a678",
+    "targetBranch": "main",
+    "outcome": "subllm proxy no longer answers Access-Control-Allow-Origin: *. Browser requests from origins other than loopback pages and SUBLLM_PROXY_ALLOWED_ORIGINS get 403 PROXY-ORIGIN (preflight and simple requests) before any provider or upstream attempt; allowed origins are echoed with Vary: Origin; requests without Origin (CLI, agents) are unchanged. With SUBLLM_PROXY_TOKEN set, routed (potentially cloud) completions require Authorization: Bearer <token> (401 PROXY-AUTH) while the direct local Ollama forward stays open.",
+    "nonGoals": [
+      "README and docs/operations.md updates are a separate ticket (owned by other workstreams).",
+      "No change to the Host check or bind address."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Origin policy in proxy_origin_allowed (loopback + explicit allowlist; deviation from the plan's empty default so local web UIs such as willmux keep working), enforced in do_GET/do_POST/do_OPTIONS; route token checked at _execute_model_or_route and mapped to 401 by _handle_contract_error so it never falls through to the raw upstream.",
+      "components": [
+        {
+          "name": "proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "SUBLLM_PROXY_ALLOWED_ORIGINS and SUBLLM_PROXY_TOKEN environment variables; 403 PROXY-ORIGIN and 401 PROXY-AUTH responses"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy.py"
+        ],
+        "evidence": "all pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}
