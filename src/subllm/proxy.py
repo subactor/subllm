@@ -8,6 +8,7 @@ import os
 import re
 import shutil
 import sqlite3
+import threading
 import time
 import uuid
 from collections.abc import Mapping, Sequence
@@ -613,13 +614,62 @@ def _model_family(model_id: str) -> str:
     return "custom"
 
 
-def is_upstream_ollama_alive(upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, timeout: float = 0.5) -> bool:
+UPSTREAM_LIVENESS_TTL_ENV = "SUBLLM_UPSTREAM_LIVENESS_TTL"
+UPSTREAM_LIVENESS_TTL_DEFAULT = 2.0
+_LIVENESS: dict[str, tuple[float, str]] = {}
+_LIVENESS_LOCKS: dict[str, threading.Lock] = {}
+_LIVENESS_GUARD = threading.Lock()
+
+
+def _liveness_ttl() -> float:
+    try:
+        ttl = float(os.environ.get(UPSTREAM_LIVENESS_TTL_ENV, UPSTREAM_LIVENESS_TTL_DEFAULT))
+    except ValueError:
+        return UPSTREAM_LIVENESS_TTL_DEFAULT
+    return ttl if math.isfinite(ttl) and 0 <= ttl <= 60 else UPSTREAM_LIVENESS_TTL_DEFAULT
+
+
+def _probe_upstream_state(upstream_url: str, timeout: float) -> str:
     try:
         req = Request(f"{upstream_url.rstrip('/')}/api/tags", headers={"User-Agent": "subllm-proxy"})
         with urlopen(req, timeout=timeout) as resp:
-            return resp.status == 200
+            return "alive" if resp.status == 200 else "dead"
+    except TimeoutError:
+        return "busy"
+    except URLError as exc:
+        return "busy" if isinstance(exc.reason, TimeoutError) else "dead"
     except Exception:
-        return False
+        return "dead"
+
+
+def upstream_ollama_state(upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, timeout: float = 0.5, *,
+                          fresh: bool = False) -> str:
+    """Shared Ollama liveness: ``alive``, ``busy`` (probe timed out) or ``dead`` (SUB-07).
+
+    One probe per upstream per TTL (``SUBLLM_UPSTREAM_LIVENESS_TTL``, default 2 s); concurrent
+    callers wait for the probe in flight instead of starting their own. ``fresh`` (health) always
+    probes and refreshes the shared state.
+    """
+    key = upstream_url.rstrip("/")
+    ttl = _liveness_ttl()
+    cached = None if fresh else _LIVENESS.get(key)
+    if cached is not None and cached[0] > time.monotonic():
+        return cached[1]
+    with _LIVENESS_GUARD:
+        lock = _LIVENESS_LOCKS.setdefault(key, threading.Lock())
+    with lock:
+        cached = None if fresh else _LIVENESS.get(key)
+        if cached is not None and cached[0] > time.monotonic():
+            return cached[1]
+        state = _probe_upstream_state(key, timeout)
+        _LIVENESS[key] = (time.monotonic() + ttl, state)
+        return state
+
+
+def is_upstream_ollama_alive(upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, timeout: float = 0.5, *,
+                             fresh: bool = False) -> bool:
+    """A busy Ollama (slow probe) is still local: forward to it instead of a cloud route (SUB-07)."""
+    return upstream_ollama_state(upstream_url, timeout, fresh=fresh) != "dead"
 
 
 @lru_cache(maxsize=2)
@@ -1119,7 +1169,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 "status": "ok",
                 "service": "subllm-proxy",
                 "version": _package_version(),
-                "upstream_ollama": is_upstream_ollama_alive(self.ollama_upstream),
+                "upstream_ollama": is_upstream_ollama_alive(self.ollama_upstream, fresh=True),
             })
             return
 

@@ -65,8 +65,9 @@ def test_repeated_catalog_uses_actual_canonical_adapter(transport):
 
 def test_health_stays_live_even_when_catalog_is_cached(transport):
     proxy.get_upstream_ollama_models()
-    assert proxy.is_upstream_ollama_alive()
-    assert proxy.is_upstream_ollama_alive()
+    # /health probes live (fresh=True); routing reuses the SUB-07 liveness state.
+    assert proxy.is_upstream_ollama_alive(fresh=True)
+    assert proxy.is_upstream_ollama_alive(fresh=True)
     assert proxy.get_upstream_ollama_models() == MODELS
     assert len(transport) == 3
 
