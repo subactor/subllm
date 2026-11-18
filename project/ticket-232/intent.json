@@ -1,0 +1,85 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-232",
+  "summary": "SUB-07 shared Ollama liveness state instead of a probe per request",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P3",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-232/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_catalog_cache.py",
+    "tests/test_proxy_liveness.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "6687d4367149d307becafe69b0e48822e18543e0",
+    "targetBranch": "main",
+    "outcome": "Ollama liveness is a shared per-upstream state (alive/busy/dead) cached for SUBLLM_UPSTREAM_LIVENESS_TTL (default 2 s, bounded 0-60) with single-flight probing, so routing does one probe per TTL regardless of request count; a probe timeout is 'busy' and still counts as local (forward instead of a cloud route); /health probes live with fresh=True.",
+    "nonGoals": [
+      "No change to the 15 call sites' routing decisions beyond busy-is-local.",
+      "The proxy.py split is SUB-08."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "upstream_ollama_state caches per URL under a per-URL lock; is_upstream_ollama_alive keeps its signature (plus fresh) so existing call sites and test seams stay.",
+      "components": [
+        {
+          "name": "proxy-upstream",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_liveness.py",
+            "tests/test_proxy_catalog_cache.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "SUBLLM_UPSTREAM_LIVENESS_TTL; upstream_ollama_state(); fresh flag"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit, or SUBLLM_UPSTREAM_LIVENESS_TTL=0 for a probe per call."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_liveness.py tests/test_proxy_catalog_cache.py tests/test_proxy.py"
+        ],
+        "evidence": "all pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}
