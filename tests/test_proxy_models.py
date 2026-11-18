@@ -104,3 +104,11 @@ def test_identical_tag_is_shadowed_by_the_catalog():
     catalog_names = {m["name"] for m in models}
     assert "qwen2.5-coder:latest" in catalog_names
     assert all(m["parameter_size"] == "unknown" for m in models)
+
+
+def test_api_show_forwards_a_local_tag_even_when_the_tag_list_is_unavailable(servers, monkeypatch):
+    server, shows = servers
+    monkeypatch.setattr(proxy, "get_upstream_ollama_models", lambda *a, **k: [])  # /api/tags timed out
+    assert _call(server, "POST", "/api/show", {"model": "qwen2.5-coder:7b"}) == SHOW
+    routed = _call(server, "POST", "/api/show", {"model": "qwen2.5-coder:latest"})
+    assert routed["details"]["quantization_level"] == "remote" and len(shows) == 1

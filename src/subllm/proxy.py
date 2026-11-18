@@ -11,6 +11,7 @@ import threading
 import time
 import uuid
 from collections.abc import Mapping, Sequence
+from dataclasses import dataclass
 from functools import lru_cache
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from importlib import metadata
@@ -96,6 +97,45 @@ def _resolve_system_one_ollama_upstream(configured_upstream: str) -> str:
     return configured_upstream
 
 
+_SIZE_PREFERENCES: tuple[tuple[tuple[str, ...], tuple[str, ...]], ...] = (
+    (("0.8b", "0.6b", "0.5b", "322m", "340m", "270m", "laya", "nanojev", "jevlike"),
+     ("qwen3.5:0.8b", "willman-eval:qwen3.5-0.8b", "qwen2.5:1.5b")),
+    (("2b",), ("qwen3.5:2b", "willman-eval:qwen3.5-2b", "qwen3.5:0.8b")),
+    (("4b", "kev", "semif", "jevos"), ("qwen3.5:4b", "willman-eval:qwen3.5-4b", "qwen3.5:0.8b")),
+)
+
+
+def _is_d1(name: str) -> bool:
+    n = name.strip().lower()
+    return n == "d1" or n.startswith("d1:")
+
+
+def _installed_ollama_model_names(upstream_url: str) -> list[str]:
+    names = (str(m.get("name") or m.get("model") or "").strip() for m in get_upstream_ollama_models(upstream_url) or [])
+    return [name for name in names if name]
+
+
+def _first_installed(candidates: Sequence[str], installed: set[str]) -> str | None:
+    return next((candidate for candidate in candidates if candidate in installed), None)
+
+
+def _exact_installed_model(req: str, installed: set[str], exclude_d1: bool) -> str | None:
+    """The requested tag itself, or its ``:latest`` form (never for the bare ``d1`` alias)."""
+    if req in installed and not (exclude_d1 and _is_d1(req)):
+        return req
+    latest = f"{req}:latest"
+    if latest in installed and not (exclude_d1 and _is_d1(latest)) and req.lower() != "d1":
+        return latest
+    return None
+
+
+def _size_preferred_candidates(req_low: str) -> tuple[str, ...]:
+    for needles, candidates in _SIZE_PREFERENCES:
+        if any(needle in req_low for needle in needles):
+            return candidates
+    return ()
+
+
 def _select_local_system_one_ollama_model(
     requested_model: str,
     upstream_url: str = DEFAULT_OLLAMA_UPSTREAM,
@@ -103,57 +143,66 @@ def _select_local_system_one_ollama_model(
     exclude_d1: bool = False,
 ) -> str | None:
     """Select an installed local System One model, preferring d1 when it was requested."""
-    installed = get_upstream_ollama_models(upstream_url)
-    if not installed:
-        return None
-    installed_names = [
-        str(m.get("name") or m.get("model") or "").strip()
-        for m in installed
-        if str(m.get("name") or m.get("model") or "").strip()
-    ]
+    installed_names = _installed_ollama_model_names(upstream_url)
     if not installed_names:
         return None
     installed_set = set(installed_names)
     req = requested_model.strip()
-    req_low = req.lower()
-
-    def is_d1(name: str) -> bool:
-        n = name.strip().lower()
-        return n == "d1" or n.startswith("d1:")
-
-    if req in installed_set and (not exclude_d1 or not is_d1(req)):
-        return req
-    if (
-        f"{req}:latest" in installed_set
-        and (not exclude_d1 or not is_d1(f"{req}:latest"))
-        and not (is_d1(req) and req_low == "d1")
-    ):
-        return f"{req}:latest"
-
-    if not exclude_d1 and is_d1(req):
-        d1_candidates = [SYSTEM_ONE_DEFAULT_D1_MODEL] if req_low == "d1" else [req]
-        for candidate in dict.fromkeys(d1_candidates):
-            if candidate in installed_set:
-                return candidate
+    exact = _exact_installed_model(req, installed_set, exclude_d1)
+    if exact is not None:
+        return exact
+    if not exclude_d1 and _is_d1(req):
+        d1_candidate = SYSTEM_ONE_DEFAULT_D1_MODEL if req.lower() == "d1" else req
+        if d1_candidate in installed_set:
+            return d1_candidate
         # If the requested d1 tag is unavailable, keep the pre-existing local
         # small-Qwen fallback before routing to the configured SubLLM provider.
-        return next((candidate for candidate in SYSTEM_ONE_LOCAL_OLLAMA_MODELS if candidate in installed_set), None)
-
+        return _first_installed(SYSTEM_ONE_LOCAL_OLLAMA_MODELS, installed_set)
     if exclude_d1:
-        return next((candidate for candidate in SYSTEM_ONE_LOCAL_OLLAMA_MODELS if candidate in installed_set), None)
+        return _first_installed(SYSTEM_ONE_LOCAL_OLLAMA_MODELS, installed_set)
+    preferred = [*_size_preferred_candidates(req.lower()), *SYSTEM_ONE_LOCAL_OLLAMA_MODELS]
+    return _first_installed(preferred, installed_set) or installed_names[0]
 
-    preferred_candidates: list[str] = []
-    if any(k in req_low for k in ("0.8b", "0.6b", "0.5b", "322m", "340m", "270m", "laya", "nanojev", "jevlike")):
-        preferred_candidates.extend(["qwen3.5:0.8b", "willman-eval:qwen3.5-0.8b", "qwen2.5:1.5b"])
-    elif "2b" in req_low:
-        preferred_candidates.extend(["qwen3.5:2b", "willman-eval:qwen3.5-2b", "qwen3.5:0.8b"])
-    elif any(k in req_low for k in ("4b", "kev", "semif", "jevos")):
-        preferred_candidates.extend(["qwen3.5:4b", "willman-eval:qwen3.5-4b", "qwen3.5:0.8b"])
 
-    for candidate in [*preferred_candidates, *SYSTEM_ONE_LOCAL_OLLAMA_MODELS]:
-        if candidate in installed_set:
-            return candidate
-    return installed_names[0]
+_NATIVE_D1_NAMES = ("d1", "d1-ultra", "liquid-d1-ultra")
+_NATIVE_D1_PREFIXES = ("d1:", "d1-", "liquid-", "liquid/")
+
+
+def _is_native_d1_model(model: str) -> bool:
+    n = model.strip().lower()
+    return n in _NATIVE_D1_NAMES or n.startswith(_NATIVE_D1_PREFIXES)
+
+
+def _ollama_system_one_body(ollama_model: str, messages: Sequence[Mapping[str, Any]], temperature: float,
+                            request_payload: Mapping[str, Any] | None) -> dict[str, Any]:
+    body: dict[str, Any] = {
+        "model": ollama_model,
+        "messages": [dict(m) for m in messages],
+        "stream": False,
+        "think": False,
+        "format": "json",
+        "options": {"temperature": max(0.0, float(temperature)), "num_predict": 256},
+    }
+    if request_payload is not None and request_payload.get("keep_alive") is not None:
+        from .decisions import parse_keep_alive
+
+        body["keep_alive"] = parse_keep_alive(request_payload.get("keep_alive"))
+    return body
+
+
+def _ollama_system_one_response(data: Any, ollama_model: str) -> CompletionResponse:
+    is_map = isinstance(data, Mapping)
+    msg = data.get("message") if is_map else {}
+    content = str(msg.get("content") or "") if isinstance(msg, Mapping) else ""
+    prompt_tokens = int(data.get("prompt_eval_count") or 0) if is_map else 0
+    eval_tokens = int(data.get("eval_count") or 0) if is_map else 0
+    return CompletionResponse(
+        content=content,
+        provider="ollama",
+        model=str(data.get("model") or ollama_model),
+        usage={"input_tokens": prompt_tokens, "output_tokens": eval_tokens},
+        finish_reason=str(data.get("done_reason") or "stop"),
+    )
 
 
 def _complete_ollama_system_one(
@@ -169,8 +218,7 @@ def _complete_ollama_system_one(
     request_id: str | None = None,
 ) -> CompletionResponse:
     """Invoke local Ollama `/api/chat` with `think: false` and `format: json` for fast System One scoring."""
-    n = ollama_model.strip().lower()
-    if n in ("d1", "d1-ultra", "liquid-d1-ultra") or n.startswith(("d1:", "d1-", "liquid-", "liquid/")):
+    if _is_native_d1_model(ollama_model):
         if request_payload is None:
             raise ValueError("native d1 System One requests require the typed request payload")
         return _complete_ollama_d1_system_one(
@@ -182,42 +230,16 @@ def _complete_ollama_system_one(
             function=function,
             request_id=request_id,
         )
-
-    url = f"{upstream_url.rstrip('/')}/api/chat"
-    body_payload = {
-        "model": ollama_model,
-        "messages": [dict(m) for m in messages],
-        "stream": False,
-        "think": False,
-        "format": "json",
-        "options": {
-            "temperature": max(0.0, float(temperature)),
-            "num_predict": 256,
-        },
-    }
-    if request_payload is not None and request_payload.get("keep_alive") is not None:
-        from .decisions import parse_keep_alive
-
-        body_payload["keep_alive"] = parse_keep_alive(request_payload.get("keep_alive"))
+    body = _ollama_system_one_body(ollama_model, messages, temperature, request_payload)
     req = Request(
-        url,
-        data=json.dumps(body_payload).encode("utf-8"),
+        f"{upstream_url.rstrip('/')}/api/chat",
+        data=json.dumps(body).encode("utf-8"),
         headers={"Content-Type": "application/json", "User-Agent": "subllm-proxy"},
         method="POST",
     )
     with urlopen(req, timeout=timeout_seconds) as resp:
         data = json.loads(resp.read().decode("utf-8"))
-    msg = data.get("message") if isinstance(data, Mapping) else {}
-    content = str(msg.get("content") or "") if isinstance(msg, Mapping) else ""
-    prompt_tokens = int(data.get("prompt_eval_count") or 0) if isinstance(data, Mapping) else 0
-    eval_tokens = int(data.get("eval_count") or 0) if isinstance(data, Mapping) else 0
-    return CompletionResponse(
-        content=content,
-        provider="ollama",
-        model=str(data.get("model") or ollama_model),
-        usage={"input_tokens": prompt_tokens, "output_tokens": eval_tokens},
-        finish_reason=str(data.get("done_reason") or "stop"),
-    )
+    return _ollama_system_one_response(data, ollama_model)
 
 
 def _complete_ollama_d1_system_one(
@@ -418,72 +440,63 @@ def get_upstream_ollama_models(
         return []
 
 
+def _catalog_model_entry(model_id: str, family: str, source: str, vision: bool) -> dict[str, Any]:
+    return {
+        "id": model_id,
+        "name": f"{model_id}:latest",
+        "model": f"{model_id}:latest",
+        "family": family,
+        "families": [family],
+        "parameter_size": "unknown",
+        "source": source,
+        "vision": vision,
+    }
+
+
+def _upstream_model_entry(m: Mapping[str, Any], name: str) -> dict[str, Any]:
+    details = m.get("details") if isinstance(m.get("details"), dict) else {}
+    family = details.get("family") or _model_family(name)
+    return {
+        "id": name,
+        "name": name,
+        "model": name,
+        "family": family,
+        "families": details.get("families", [family]),
+        "parameter_size": details.get("parameter_size", "unknown"),
+        "source": "ollama-upstream",
+        "vision": False,
+        "details": details,
+        "size": m.get("size") if type(m.get("size")) is int else 0,
+        "digest": m.get("digest") if isinstance(m.get("digest"), str) else None,
+        "modified_at": m.get("modified_at") if isinstance(m.get("modified_at"), str) else None,
+    }
+
+
 def list_proxy_models(
     upstream_url: str = DEFAULT_OLLAMA_UPSTREAM, include_upstream: bool = True, *, fresh: bool = False,
 ) -> list[dict[str, Any]]:
     """Return unified list of available models for OpenAI and Ollama formats."""
-    models: list[dict[str, Any]] = []
-    seen_ids: set[str] = set()
-
-    for model_id, spec in MODELS.items():
-        if spec.forbidden:
-            continue
-        seen_ids.add(model_id)
-        family = _model_family(model_id)
-        models.append({
-            "id": model_id,
-            "name": f"{model_id}:latest",
-            "model": f"{model_id}:latest",
-            "family": family,
-            "families": [family],
-            "parameter_size": "unknown",
-            "source": "subllm",
-            "vision": spec.vision,
-        })
-
+    models = [_catalog_model_entry(model_id, _model_family(model_id), "subllm", spec.vision)
+              for model_id, spec in MODELS.items() if not spec.forbidden]
+    seen_ids = {entry["id"] for entry in models}
     # Add registered route aliases
     for (app, func) in ROUTES:
         alias = f"{app}/{func}"
         if alias not in seen_ids:
             seen_ids.add(alias)
-            models.append({
-                "id": alias,
-                "name": f"{alias}:latest",
-                "model": f"{alias}:latest",
-                "family": "custom",
-                "families": ["custom"],
-                "parameter_size": "unknown",
-                "source": "subllm-route",
-                "vision": False,
-            })
-
-    if include_upstream:
-        upstream_models = (get_upstream_ollama_models(upstream_url, fresh=True) if fresh
-                           else get_upstream_ollama_models(upstream_url))
-        catalog_tags = {m["name"] for m in models}
-        for m in upstream_models:
-            name = m.get("name") or m.get("model") or ""
-            # SUB-06: dedupe by the full tag, so qwen2.5-coder:7b stays visible next to the
-            # catalog's qwen2.5-coder; only an identical tag (e.g. "<id>:latest") is shadowed.
-            if name and name not in seen_ids and name not in catalog_tags:
-                seen_ids.add(name)
-                details = m.get("details") if isinstance(m.get("details"), dict) else {}
-                family = details.get("family") or _model_family(name)
-                models.append({
-                    "id": name,
-                    "name": name,
-                    "model": name,
-                    "family": family,
-                    "families": details.get("families", [family]),
-                    "parameter_size": details.get("parameter_size", "unknown"),
-                    "source": "ollama-upstream",
-                    "vision": False,
-                    "details": details,
-                    "size": m.get("size") if type(m.get("size")) is int else 0,
-                    "digest": m.get("digest") if isinstance(m.get("digest"), str) else None,
-                    "modified_at": m.get("modified_at") if isinstance(m.get("modified_at"), str) else None,
-                })
-
+            models.append(_catalog_model_entry(alias, "custom", "subllm-route", False))
+    if not include_upstream:
+        return models
+    upstream_models = (get_upstream_ollama_models(upstream_url, fresh=True) if fresh
+                       else get_upstream_ollama_models(upstream_url))
+    catalog_tags = {m["name"] for m in models}
+    for m in upstream_models:
+        name = m.get("name") or m.get("model") or ""
+        # SUB-06: dedupe by the full tag, so qwen2.5-coder:7b stays visible next to the
+        # catalog's qwen2.5-coder; only an identical tag (e.g. "<id>:latest") is shadowed.
+        if name and name not in seen_ids and name not in catalog_tags:
+            seen_ids.add(name)
+            models.append(_upstream_model_entry(m, name))
     return models
 
 
@@ -534,6 +547,25 @@ def _extract_ticket(
     return clean_model, ticket
 
 
+def _enabled_provider_policy(runtime_policy: Any, provider_id: str) -> Any | None:
+    policy = runtime_policy.providers.get(provider_id) or runtime_policy.custom_providers.get(provider_id)
+    return policy if policy is not None and policy.enabled else None
+
+
+def _route_api_key(provider_id: str, provider_spec: Any, environment: Mapping[str, str]) -> str | None:
+    """Credential for one provider route; None when the route is unusable (no CLI, invalid key)."""
+    api_key = environment.get(provider_spec.api_key_env, "")
+    if provider_id == "ollama" and not api_key:
+        api_key = "ollama"
+    if provider_spec.transport in CLI_EXECUTABLES:
+        if shutil.which(CLI_EXECUTABLES[provider_spec.transport], path=environment.get("PATH")) is None:
+            return None
+        return ""
+    if provider_spec.api_key_env and not credential_is_valid(provider_id, api_key):
+        return None
+    return api_key
+
+
 def _build_model_resolved_routes(
     model_id: str,
     application: str = "subactor-proxy",
@@ -557,29 +589,15 @@ def _build_model_resolved_routes(
         provider_spec = PROVIDERS.get(provider_id)
         if not provider_spec or (order is not None and provider_id not in order):
             continue
-        provider_policy = (runtime_policy.providers.get(provider_id)
-                           or runtime_policy.custom_providers.get(provider_id))
-        if provider_policy is None or not provider_policy.enabled:
+        provider_policy = _enabled_provider_policy(runtime_policy, provider_id)
+        if provider_policy is None:
             continue
-
-        api_key = (
-            environment.get(provider_spec.api_key_env, "")
-        )
-        if provider_id == "ollama" and not api_key:
-            api_key = "ollama"
-        if provider_spec.transport in CLI_EXECUTABLES:
-            if shutil.which(CLI_EXECUTABLES[provider_spec.transport], path=environment.get("PATH")) is None:
-                continue
-            api_key = ""
-        elif provider_spec.api_key_env and not credential_is_valid(provider_id, api_key):
+        api_key = _route_api_key(provider_id, provider_spec, environment)
+        if api_key is None:
             continue
-
-        headers: dict[str, str] = {}
-        if provider_spec.attribution_headers:
-            headers = {"HTTP-Referer": app_url, "X-OpenRouter-Title": app_name}
-
+        headers = ({"HTTP-Referer": app_url, "X-OpenRouter-Title": app_name}
+                   if provider_spec.attribution_headers else {})
         priority = order.index(provider_id) * 10 if order is not None else provider_policy.priority
-
         candidates.append(
             ResolvedRoute(
                 application=application,
@@ -604,6 +622,37 @@ def _build_model_resolved_routes(
     return tuple(sorted(candidates, key=lambda c: c.priority))
 
 
+def _safe_cwd() -> Path:
+    """The current directory when it still exists, else HOME (CLI transports need a real cwd)."""
+    try:
+        cur = Path.cwd()
+        if cur.exists():
+            return cur
+    except Exception:
+        pass
+    return Path.home()
+
+
+def _route_attempt_budget(route: ResolvedRoute, messages: Sequence[Mapping[str, Any]], execution: Any,
+                          environ: Mapping[str, str] | None) -> float:
+    input_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, Mapping))
+    return resolve_attempt_timeout(route.provider, route.wire_model, environ=environ,
+                                   default=execution.attempt_timeout_seconds, input_chars=input_chars)
+
+
+def _complete_adaptive(adaptive_policy: Any, model_id: str, messages: Sequence[Mapping[str, Any]],
+                       application: str, function: str, timeout_seconds: float, request_id: str,
+                       response_format: Mapping[str, Any] | None,
+                       environ: Mapping[str, str] | None) -> CompletionResponse:
+    if ACTIVE_STREAM.get() is not None:
+        raise stream_error("UNSUPPORTED-ADAPTIVE")
+    return adaptive.execute(adaptive_policy, model_id, messages,
+        build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environ),
+        invoke=_complete_route, timeout_seconds=timeout_seconds,
+        response_format=response_format, request_id=request_id, environ=environ,
+        minimum_class=adaptive_policy.get("routes", {}).get(f"{application}/{function}"))
+
+
 def _complete_model_direct(
     model_id: str,
     messages: Sequence[Mapping[str, Any]],
@@ -621,20 +670,13 @@ def _complete_model_direct(
     request_id = request_id or uuid.uuid4().hex
     adaptive_policy = adaptive.policy(environ)
     if adaptive_policy and adaptive.requested_class(adaptive_policy, model_id) is not None:
-        if ACTIVE_STREAM.get() is not None:
-            raise stream_error("UNSUPPORTED-ADAPTIVE")
-        return adaptive.execute(adaptive_policy, model_id, messages,
-            build_routes=lambda model: _build_model_resolved_routes(model, application, function, environ=environ),
-            invoke=_complete_route, timeout_seconds=timeout_seconds,
-            response_format=response_format, request_id=request_id, environ=environ,
-            minimum_class=adaptive_policy.get("routes", {}).get(f"{application}/{function}"))
+        return _complete_adaptive(adaptive_policy, model_id, messages, application, function, timeout_seconds,
+                                  request_id, response_format, environ)
     routes = _build_model_resolved_routes(model_id, application, function, environ=environ)
     if not routes:
         raise CompletionError(f"no available provider with valid credentials for model '{model_id}'")
     routes = supported_routes(routes)
-
-    runtime_policy = load_policy_config(environ=environ)
-    execution = runtime_policy.execution
+    execution = load_policy_config(environ=environ).execution
     routes = order_with_last_resort(routes) if execution.failover_enabled else routes[:1]
     if not routes:
         raise CompletionError(f"all providers cooling down for model '{model_id}'")
@@ -642,52 +684,30 @@ def _complete_model_direct(
     started_at = time.monotonic()
     failed_providers: set[str] = set()
     last_error: Exception | None = None
-
     for route in routes:
         if route.provider in failed_providers:
             continue
         elapsed = time.monotonic() - started_at
-        input_chars = sum(len(str(m.get("content", ""))) for m in messages if isinstance(m, Mapping))
-        attempt_budget = resolve_attempt_timeout(
-            route.provider,
-            route.wire_model,
-            environ=environ,
-            default=execution.attempt_timeout_seconds,
-            input_chars=input_chars,
-        )
+        attempt_budget = _route_attempt_budget(route, messages, execution, environ)
         remaining = timeout_seconds - elapsed
         if remaining <= 0:
             break
         attempt_timeout = min(remaining, attempt_budget)
         attempt_started = time.monotonic()
-        safe_cwd = Path.home()
         try:
-            cur = Path.cwd()
-            if cur.exists():
-                safe_cwd = cur
-        except Exception:
-            pass
-        try:
-            response = _complete_route(
-                route,
-                messages,
-                timeout_seconds=attempt_timeout,
-                request_id=request_id,
-                response_format=response_format,
-                cwd=safe_cwd,
-            )
-            duration = time.monotonic() - attempt_started
-            record_success(route.provider, latency_seconds=duration, policy=execution)
-            return response
+            response = _complete_route(route, messages, timeout_seconds=attempt_timeout, request_id=request_id,
+                                       response_format=response_format, cwd=_safe_cwd())
         except _RetryableAttemptError as exc:
-            duration = time.monotonic() - attempt_started
             if exc.provider_level:
-                record_failure(route.provider, reason=exc.outcome, latency_seconds=duration, policy=execution)
+                record_failure(route.provider, reason=exc.outcome,
+                               latency_seconds=time.monotonic() - attempt_started, policy=execution)
                 failed_providers.add(route.provider)
             last_error = exc
             if not execution.failover_enabled:
                 raise CompletionError(str(exc)) from exc
             continue
+        record_success(route.provider, latency_seconds=time.monotonic() - attempt_started, policy=execution)
+        return response
 
     raise CompletionError(f"all candidates failed for model '{model_id}'") from last_error
 
@@ -738,6 +758,108 @@ def _openai_usage(usage: Mapping[str, Any]) -> dict[str, Any]:
     if type(cached) is int and type(reported_prompt) is int and 0 <= cached <= min(prompt, 10**12):
         result["prompt_tokens_details"] = {"cached_tokens": cached}
     return result
+
+
+@dataclass(frozen=True)
+class _DecideRequest:
+    """Validated System One request options (SUB-08: parsed once, outside the handler)."""
+
+    questions: list[Mapping[str, Any]]
+    offline: bool
+    allow_remote_fallback: bool
+    requested_timeout: Any
+    timeout: float
+    temperature: float
+
+
+def _bool_option(payload: Mapping[str, Any], key: str) -> bool:
+    if key in payload and type(payload[key]) is not bool:
+        raise ValueError(f"{key} must be a boolean")
+    return bool(payload.get(key, False))
+
+
+def _decide_timeout(requested_timeout: Any, offline: bool) -> float:
+    try:
+        timeout = (120.0 if offline else 8.0) if requested_timeout is None else float(requested_timeout)
+    except (TypeError, ValueError):
+        timeout = math.nan
+    if isinstance(requested_timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be finite and greater than zero")
+    return timeout
+
+
+def _decide_temperature(value: Any) -> float:
+    try:
+        temperature = float(value)
+    except (TypeError, ValueError):
+        return 0.2
+    return temperature if math.isfinite(temperature) else 0.2
+
+
+def _parse_decide_request(payload: Any) -> _DecideRequest:
+    """Validate a System One request; ValueError messages are the 400 INVALID_REQUEST texts."""
+    if not isinstance(payload, Mapping):
+        raise ValueError("JSON object payload is required")
+    questions = payload.get("questions")
+    if not isinstance(questions, Sequence) or isinstance(questions, (str, bytes)) or not questions:
+        raise ValueError("questions array is required")
+    valid_questions = [q for q in questions if isinstance(q, Mapping) and str(q.get("id") or "").strip()]
+    if not valid_questions:
+        raise ValueError("at least one valid question with id is required")
+    offline = _bool_option(payload, "offline")
+    allow_remote_fallback = _bool_option(payload, "allow_remote_fallback")
+    from .decisions import parse_keep_alive
+
+    parse_keep_alive(payload.get("keep_alive"))
+    requested_timeout = payload.get("timeout")
+    return _DecideRequest(
+        questions=valid_questions,
+        offline=offline,
+        allow_remote_fallback=allow_remote_fallback,
+        requested_timeout=requested_timeout,
+        timeout=_decide_timeout(requested_timeout, offline),
+        temperature=_decide_temperature(payload.get("temperature", 0.2)),
+    )
+
+
+def _keep_alive_kwargs(payload: Mapping[str, Any]) -> dict[str, Any]:
+    from .decisions import parse_keep_alive
+
+    return {"keep_alive": parse_keep_alive(payload["keep_alive"])} if payload.get("keep_alive") is not None else {}
+
+
+def _is_explicit_route(model: str) -> bool:
+    return "/" in model and tuple(model.split("/", 1)) in ROUTES
+
+
+def _decide_route_flags(clean_model: str) -> tuple[bool, bool]:
+    """``(is_known_target, prefers_explicit_route)`` for a requested System One model."""
+    explicit = _is_explicit_route(clean_model)
+    return clean_model in MODELS or explicit, (clean_model in MODELS and not clean_model.startswith("qwen")) or explicit
+
+
+def _requested_timeout(payload: Mapping[str, Any], default: float) -> float:
+    """Request ``timeout`` (or ``default``); ValueError when it is not finite and positive."""
+    requested = payload.get("timeout")
+    try:
+        timeout = default if requested is None else float(requested)
+    except (TypeError, ValueError):
+        timeout = math.nan
+    if isinstance(requested, bool) or not math.isfinite(timeout) or timeout <= 0:
+        raise ValueError("timeout must be finite and greater than zero")
+    return timeout
+
+
+def _ollama_usage_counts(response: CompletionResponse) -> tuple[Any, Any]:
+    usage = response.usage
+    return (usage.get("input_tokens", usage.get("prompt_tokens", 0)),
+            usage.get("output_tokens", usage.get("completion_tokens", 0)))
+
+
+def _ollama_done_fields(response: CompletionResponse, duration_ms: int) -> dict[str, Any]:
+    prompt_tokens, eval_tokens = _ollama_usage_counts(response)
+    return {"done": True, "total_duration": duration_ms * 1_000_000, "load_duration": 1_000_000,
+            "prompt_eval_count": prompt_tokens, "eval_count": eval_tokens}
 
 
 class SubLLMProxyHandler(BaseHTTPRequestHandler):
@@ -845,68 +967,59 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
 
         self._error(404, "PROXY-404", f"path '{path}' is not registered")
 
+    # Ordered POST routes: (path set, handler method, response_format schema gate).
+    _POST_ROUTES: tuple[tuple[frozenset[str], str, bool], ...] = (
+        (frozenset({"/v1/decide/warmup"}), "_handle_decide_warmup", False),
+        (frozenset({"/v1/decide", "/v1/system-one/decide"}), "_handle_system_one_decide", True),
+        (frozenset({"/v1/chat/completions"}), "_handle_openai_chat_completions", True),
+        (frozenset({"/api/chat"}), "_handle_ollama_chat", True),
+        (frozenset({"/api/generate"}), "_handle_ollama_generate", True),
+        (frozenset({"/api/show"}), "_handle_ollama_show", False),
+    )
+
+    def _handle_speech(self, path: str, payload: Any) -> None:
+        from .audio import SpeechError, synthesize, transcribe
+        try:
+            result = (transcribe if path.endswith("transcribe") else synthesize)(payload)
+        except SpeechError as error:
+            self._error(error.status, error.code, str(error))
+        except Exception:
+            self._error(503, "SPEECH_BACKEND_UNAVAILABLE", "Speech inference could not be completed")
+        else:
+            self._json(200, result)
+
+    def _schema_gate_rejects(self, payload: Any) -> bool:
+        try:
+            declared_schema_gate(payload.get("response_format"), None)
+        except CompletionError as exc:
+            if not self._handle_contract_error(exc):
+                self._error(500, "COMPLETION_FAILED", str(exc))
+            return True
+        return False
+
     def do_POST(self) -> None:
         if not self._local_host():
             self._error(421, "PROXY-001", "host is not a local bind")
             return
         if self._reject_foreign_origin():
             return
-
-        parsed = urlparse(self.path)
-        path = parsed.path
+        path = urlparse(self.path).path
         payload = self._read_json()
         if payload is None:
             return
-
         if path in {"/v1/speech/transcribe", "/v1/speech/synthesize"}:
-            from .audio import SpeechError, synthesize, transcribe
-            try:
-                result = (transcribe if path.endswith("transcribe") else synthesize)(payload)
-            except SpeechError as error:
-                self._error(error.status, error.code, str(error))
-            except Exception:
-                self._error(503, "SPEECH_BACKEND_UNAVAILABLE", "Speech inference could not be completed")
-            else:
-                self._json(200, result)
+            self._handle_speech(path, payload)
             return
-
-        if path in {"/v1/decide", "/v1/system-one/decide", "/v1/chat/completions", "/api/chat", "/api/generate"}:
-            try:
-                declared_schema_gate(payload.get("response_format"), None)
-            except CompletionError as exc:
-                if not self._handle_contract_error(exc):
-                    self._error(500, "COMPLETION_FAILED", str(exc))
+        for paths, handler, gated in self._POST_ROUTES:
+            if path in paths:
+                if gated and self._schema_gate_rejects(payload):
+                    return
+                getattr(self, handler)(payload)
                 return
-
-        if path == "/v1/decide/warmup":
-            self._handle_decide_warmup(payload)
-            return
-
-        if path in {"/v1/decide", "/v1/system-one/decide"}:
-            self._handle_system_one_decide(payload)
-            return
-
-        if path == "/v1/chat/completions":
-            self._handle_openai_chat_completions(payload)
-            return
-
-        if path == "/api/chat":
-            self._handle_ollama_chat(payload)
-            return
-
-        if path == "/api/generate":
-            self._handle_ollama_generate(payload)
-            return
-
-        if path == "/api/show":
-            self._handle_ollama_show(payload)
-            return
-
         # Upstream Ollama forward fallback
         if is_upstream_ollama_alive(self.ollama_upstream):
             self._forward_upstream("POST", path, payload)
             return
-
         self._error(404, "PROXY-404", f"path '{path}' is not registered")
 
     def _handle_decide_warmup(self, payload: Any) -> None:
@@ -929,182 +1042,101 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return
         self._json(200, result, extra_headers={"X-Subactor-Provider": "ollama"})
 
-    def _handle_system_one_decide(self, payload: Mapping[str, Any]) -> None:
-        if not isinstance(payload, Mapping):
-            self._error(400, "INVALID_REQUEST", "JSON object payload is required")
-            return
-        questions = payload.get("questions")
-        if not isinstance(questions, Sequence) or isinstance(questions, (str, bytes)) or not questions:
-            self._error(400, "INVALID_REQUEST", "questions array is required")
-            return
-        valid_questions = [q for q in questions if isinstance(q, Mapping) and str(q.get("id") or "").strip()]
-        if not valid_questions:
-            self._error(400, "INVALID_REQUEST", "at least one valid question with id is required")
-            return
-
-        if "offline" in payload and type(payload["offline"]) is not bool:
-            self._error(400, "INVALID_REQUEST", "offline must be a boolean")
-            return
-        offline = payload.get("offline", False)
-        if "allow_remote_fallback" in payload and type(payload["allow_remote_fallback"]) is not bool:
-            self._error(400, "INVALID_REQUEST", "allow_remote_fallback must be a boolean")
-            return
-        allow_remote_fallback = payload.get("allow_remote_fallback", False)
-        from .decisions import parse_keep_alive
-
-        try:
-            parse_keep_alive(payload.get("keep_alive"))
-        except ValueError as exc:
-            self._error(400, "INVALID_REQUEST", str(exc))
-            return
-
-        raw_model = str(payload.get("model") or "d1:3b")
-        clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
-        requested_timeout = payload.get("timeout")
-        try:
-            timeout = (120.0 if offline else 8.0) if requested_timeout is None else float(requested_timeout)
-            if isinstance(requested_timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
-                raise ValueError("invalid timeout")
-        except (TypeError, ValueError):
-            self._error(400, "INVALID_REQUEST", "timeout must be finite and greater than zero")
-            return
-
-        try:
-            temperature = float(payload.get("temperature", 0.2))
-            if not math.isfinite(temperature):
-                temperature = 0.2
-        except (TypeError, ValueError):
-            temperature = 0.2
-
+    def _decide_attribution(self) -> tuple[str | None, str | None]:
         # SUB-02: a request without application headers is not attributed to heyasa/command.
         declared_app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
         declared_func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
-        app = declared_app or "subactor-proxy"
-        func = declared_func or "decide"
-        req_id = f"sysone-{uuid.uuid4().hex[:12]}"
-        if offline:
-            from .decisions import DecisionError, decide_legacy, parse_keep_alive
+        return declared_app, declared_func
 
-            started = time.monotonic()
-            try:
-                result = decide_legacy(dict(payload, model=clean_model), base_url=self.ollama_upstream,
-                                       timeout_seconds=timeout, application=app, function=func, request_id=req_id,
-                                       **({"keep_alive": parse_keep_alive(payload["keep_alive"])}
-                                          if payload.get("keep_alive") is not None else {}))
-            except ValueError:
-                self._error(400, "INVALID_REQUEST", "Invalid offline decision request")
-                return
-            except DecisionError:
-                self._error(503, "OFFLINE_DECISION_UNAVAILABLE", "Local decision inference unavailable")
-                return
-            duration_ms = round((time.monotonic() - started) * 1000)
-            self._json(200, {**result, "schema": SYSTEM_ONE_RESPONSE_SCHEMA, "id": req_id,
-                             "requested_model": clean_model, "duration_ms": duration_ms}, extra_headers={
-                                 "X-Subactor-Provider": "ollama", "X-Subactor-Model": result["model"],
-                                 "X-Subactor-Duration-Ms": str(duration_ms),
-                             })
+    def _decide_offline(self, payload: Mapping[str, Any], clean_model: str, timeout: float,
+                        app: str, func: str, req_id: str) -> None:
+        from .decisions import DecisionError, decide_legacy
+
+        started = time.monotonic()
+        try:
+            result = decide_legacy(dict(payload, model=clean_model), base_url=self.ollama_upstream,
+                                   timeout_seconds=timeout, application=app, function=func, request_id=req_id,
+                                   **_keep_alive_kwargs(payload))
+        except ValueError:
+            self._error(400, "INVALID_REQUEST", "Invalid offline decision request")
             return
-        messages = _build_system_one_messages(payload)
+        except DecisionError:
+            self._error(503, "OFFLINE_DECISION_UNAVAILABLE", "Local decision inference unavailable")
+            return
+        duration_ms = round((time.monotonic() - started) * 1000)
+        self._json(200, {**result, "schema": SYSTEM_ONE_RESPONSE_SCHEMA, "id": req_id,
+                         "requested_model": clean_model, "duration_ms": duration_ms}, extra_headers={
+                             "X-Subactor-Provider": "ollama", "X-Subactor-Model": result["model"],
+                             "X-Subactor-Duration-Ms": str(duration_ms),
+                         })
 
-        t0 = time.monotonic()
-        response: CompletionResponse | None = None
-        last_error: Exception | None = None
-        local_model: str | None = None
-
-        effective_upstream = _resolve_system_one_ollama_upstream(self.ollama_upstream)
+    def _decide_locally(self, upstream: str, clean_model: str, messages: list[dict[str, str]],
+                        payload: Mapping[str, Any], request: _DecideRequest, app: str, func: str,
+                        req_id: str) -> tuple[CompletionResponse | None, Exception | None]:
+        """Local Ollama attempt, then the small-Qwen fallback when a d1 model failed."""
         # SUB-03: a cold local model gets the caller's budget (up to 120 s), not a fixed 6 s.
-        local_timeout = 6.0 if requested_timeout is None else min(timeout, 120.0)
-        prefers_explicit_route = (
-            (clean_model in MODELS and not clean_model.startswith("qwen"))
-            or ("/" in clean_model and tuple(clean_model.split("/", 1)) in ROUTES)
-        )
-        if not prefers_explicit_route and is_upstream_ollama_alive(effective_upstream):
-            local_model = _select_local_system_one_ollama_model(clean_model, effective_upstream)
-            if local_model is not None:
-                try:
-                    response = _complete_ollama_system_one(
-                        effective_upstream,
-                        local_model,
-                        messages,
-                        temperature=temperature,
-                        timeout_seconds=local_timeout,
-                        request_payload=payload,
-                        application=app,
-                        function=func,
-                        request_id=req_id,
-                    )
-                except Exception as exc:
-                    last_error = exc
-
-            if response is None and local_model and (
-                local_model.strip().lower() == "d1" or local_model.strip().lower().startswith("d1:")
-            ):
-                qwen_fallback = _select_local_system_one_ollama_model(
-                    "qwen3.5:0.8b",
-                    effective_upstream,
-                    exclude_d1=True,
-                )
-                if qwen_fallback:
-                    try:
-                        response = _complete_ollama_system_one(
-                            effective_upstream,
-                            qwen_fallback,
-                            messages,
-                            temperature=temperature,
-                            timeout_seconds=local_timeout,
-                        )
-                    except Exception as exc:
-                        last_error = exc
-
-        if response is None:
-            is_known_target = clean_model in MODELS or (
-                "/" in clean_model and tuple(clean_model.split("/", 1)) in ROUTES
-            )
-            # SUB-02: decision state leaves the host only for an explicitly requested route
-            # or with allow_remote_fallback: true and a declared application route.
-            if not prefers_explicit_route:
-                refusal = None
-                if not allow_remote_fallback:
-                    refusal = "remote_fallback_not_allowed"
-                elif not is_known_target and not (declared_app and declared_func):
-                    refusal = "remote_fallback_route_unspecified"
-                if refusal is not None:
-                    reason = type(last_error).__name__ if last_error is not None else (
-                        "local_model_unavailable" if is_upstream_ollama_alive(effective_upstream)
-                        else "ollama_unavailable")
-                    self._json(503, {"error": {
-                        "code": "LOCAL_DECISION_UNAVAILABLE",
-                        "message": "local decision inference failed and remote fallback was not used",
-                        "reason": reason, "remote_fallback": refusal, "provider": None,
-                        "requested_model": clean_model, "id": req_id,
-                    }}, extra_headers={"X-Subactor-Remote-Fallback": "refused"})
-                    return
-            fallback_payload = dict(payload)
-            fallback_payload.setdefault("response_format", {"type": "json_object"})
-            fallback_model = clean_model if is_known_target else f"{app}/{func}"
+        local_timeout = 6.0 if request.requested_timeout is None else min(request.timeout, 120.0)
+        last_error: Exception | None = None
+        local_model = _select_local_system_one_ollama_model(clean_model, upstream)
+        if local_model is not None:
             try:
-                response = self._execute_model_or_route(
-                    fallback_model,
-                    messages,
-                    app,
-                    func,
-                    timeout,
-                    req_id,
-                    fallback_payload,
-                )
+                return _complete_ollama_system_one(
+                    upstream, local_model, messages, temperature=request.temperature,
+                    timeout_seconds=local_timeout, request_payload=payload,
+                    application=app, function=func, request_id=req_id,
+                ), None
             except Exception as exc:
                 last_error = exc
-                if self._handle_contract_error(exc):
-                    return
-                self._error(500, "COMPLETION_FAILED", str(last_error))
-                return
+        if not (local_model and _is_d1(local_model)):
+            return None, last_error
+        qwen_fallback = _select_local_system_one_ollama_model("qwen3.5:0.8b", upstream, exclude_d1=True)
+        if not qwen_fallback:
+            return None, last_error
+        try:
+            return _complete_ollama_system_one(
+                upstream, qwen_fallback, messages, temperature=request.temperature, timeout_seconds=local_timeout,
+            ), None
+        except Exception as exc:
+            return None, exc
 
-        duration_ms = round((time.monotonic() - t0) * 1000)
-        _write_proxy_receipt(ticket, app, func, clean_model, response, duration_ms)
+    def _refuse_remote_decide(self, request: _DecideRequest, is_known_target: bool,
+                              declared: tuple[str | None, str | None], last_error: Exception | None,
+                              upstream: str, clean_model: str, req_id: str) -> bool:
+        """SUB-02: decision state leaves the host only for an explicitly requested route
+        or with allow_remote_fallback: true and a declared application route."""
+        if not request.allow_remote_fallback:
+            refusal = "remote_fallback_not_allowed"
+        elif not is_known_target and not all(declared):
+            refusal = "remote_fallback_route_unspecified"
+        else:
+            return False
+        reason = type(last_error).__name__ if last_error is not None else (
+            "local_model_unavailable" if is_upstream_ollama_alive(upstream) else "ollama_unavailable")
+        self._json(503, {"error": {
+            "code": "LOCAL_DECISION_UNAVAILABLE",
+            "message": "local decision inference failed and remote fallback was not used",
+            "reason": reason, "remote_fallback": refusal, "provider": None,
+            "requested_model": clean_model, "id": req_id,
+        }}, extra_headers={"X-Subactor-Remote-Fallback": "refused"})
+        return True
 
+    def _decide_remotely(self, payload: Mapping[str, Any], messages: list[dict[str, str]], fallback_model: str,
+                         app: str, func: str, timeout: float, req_id: str) -> CompletionResponse | None:
+        """Routed fallback; None means an error response was already sent."""
+        fallback_payload = dict(payload)
+        fallback_payload.setdefault("response_format", {"type": "json_object"})
+        try:
+            return self._execute_model_or_route(fallback_model, messages, app, func, timeout, req_id,
+                                                fallback_payload)
+        except Exception as exc:
+            if not self._handle_contract_error(exc):
+                self._error(500, "COMPLETION_FAILED", str(exc))
+            return None
+
+    def _send_decide_result(self, payload: Mapping[str, Any], request: _DecideRequest, response: CompletionResponse,
+                            clean_model: str, ticket: str | None, req_id: str, duration_ms: int) -> None:
         parsed = _extract_json_object(response.content)
-        probabilities, answers = _normalize_system_one_probabilities(valid_questions, parsed)
-
+        probabilities, answers = _normalize_system_one_probabilities(request.questions, parsed)
         extra_headers = {
             "X-Subactor-Provider": response.provider,
             "X-Subactor-Model": response.model,
@@ -1112,7 +1144,6 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         }
         if ticket:
             extra_headers["X-Subactor-Ticket"] = ticket
-
         self._json(
             200,
             {
@@ -1130,6 +1161,40 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             extra_headers=extra_headers,
         )
 
+    def _handle_system_one_decide(self, payload: Mapping[str, Any]) -> None:
+        try:
+            request = _parse_decide_request(payload)
+        except ValueError as exc:
+            self._error(400, "INVALID_REQUEST", str(exc))
+            return
+        clean_model, ticket = _extract_ticket(str(payload.get("model") or "d1:3b"), self.headers, payload)
+        declared = self._decide_attribution()
+        app, func = declared[0] or "subactor-proxy", declared[1] or "decide"
+        req_id = f"sysone-{uuid.uuid4().hex[:12]}"
+        if request.offline:
+            self._decide_offline(payload, clean_model, request.timeout, app, func, req_id)
+            return
+        messages = _build_system_one_messages(payload)
+        t0 = time.monotonic()
+        response: CompletionResponse | None = None
+        last_error: Exception | None = None
+        upstream = _resolve_system_one_ollama_upstream(self.ollama_upstream)
+        is_known_target, prefers_explicit_route = _decide_route_flags(clean_model)
+        if not prefers_explicit_route and is_upstream_ollama_alive(upstream):
+            response, last_error = self._decide_locally(upstream, clean_model, messages, payload, request,
+                                                        app, func, req_id)
+        if response is None:
+            if not prefers_explicit_route and self._refuse_remote_decide(
+                    request, is_known_target, declared, last_error, upstream, clean_model, req_id):
+                return
+            response = self._decide_remotely(payload, messages, clean_model if is_known_target else f"{app}/{func}",
+                                             app, func, request.timeout, req_id)
+            if response is None:
+                return
+        duration_ms = round((time.monotonic() - t0) * 1000)
+        _write_proxy_receipt(ticket, app, func, clean_model, response, duration_ms)
+        self._send_decide_result(payload, request, response, clean_model, ticket, req_id, duration_ms)
+
     def _handle_openai_chat_completions(self, payload: Mapping[str, Any]) -> None:
         from .runtime_profile import ProfileError, request_parameter_scope
         try:
@@ -1138,85 +1203,81 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         except ProfileError as error:
             self._error(400, "INVALID_REQUEST", str(error))
 
-    def _handle_openai_chat_completions_with_parameters(self, payload: Mapping[str, Any]) -> None:
-        raw_model = str(payload.get("model") or "glm-5.3")
-        clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
-        messages = payload.get("messages")
-        if not isinstance(messages, list) or not messages:
-            self._error(400, "INVALID_REQUEST", "messages array is required")
-            return
-
-        stream = bool(payload.get("stream", False))
-        requested_timeout = payload.get("timeout")
-        try:
-            timeout = (load_policy_config().execution.attempt_timeout_seconds
-                       if requested_timeout is None else float(requested_timeout))
-            if isinstance(requested_timeout, bool) or not math.isfinite(timeout) or timeout <= 0:
-                raise ValueError("invalid timeout")
-        except (TypeError, ValueError):
-            self._error(400, "INVALID_REQUEST", "timeout must be finite and greater than zero")
-            return
-        req_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
-        created_ts = int(time.time())
-
-        # Determine application and function
-        app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
-        func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
-
-        # Upstream Ollama forward fast-path for models not registered in SubLLM policy
+    def _fast_forward_to_ollama(self, clean_model: str, path: str, payload: Mapping[str, Any]) -> bool:
+        """Models unknown to SubLLM policy go straight to the local Ollama when it is up."""
         if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
                 and is_upstream_ollama_alive(self.ollama_upstream)):
-            self._forward_upstream("POST", "/v1/chat/completions", payload)
-            return
+            self._forward_upstream("POST", path, payload)
+            return True
+        return False
 
-        if stream:
-            from .proxy_stream import serve_stream
-            serve_stream(self, payload, clean_model, app, func, timeout, req_id, ticket,
-                         protocol="openai", created=created_ts)
-            return
-
-        t0 = time.monotonic()
+    def _complete_or_forward(self, clean_model: str, messages: Any, app: str | None, func: str | None,
+                             timeout: float, req_id: str | None, payload: Mapping[str, Any],
+                             forward_path: str) -> CompletionResponse | None:
+        """Routed completion; on failure the local Ollama forward or an error. None: a response was sent."""
         try:
-            response = self._execute_model_or_route(clean_model, messages, app, func, timeout, req_id, payload)
+            return self._execute_model_or_route(clean_model, messages, app, func, timeout, req_id, payload)
         except Exception as exc:
             if self._handle_contract_error(exc):
-                return
+                return None
             if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
-                self._forward_upstream("POST", "/v1/chat/completions", payload)
-                return
+                self._forward_upstream("POST", forward_path, payload)
+                return None
             self._error(500, "COMPLETION_FAILED", str(exc))
-            return
+            return None
 
-        duration_ms = round((time.monotonic() - t0) * 1000)
-        _write_proxy_receipt(ticket, app or "subactor-proxy", func or "chat", clean_model, response, duration_ms)
-
-        extra_headers = {
+    @staticmethod
+    def _completion_headers(response: CompletionResponse, duration_ms: int, ticket: str | None) -> dict[str, str]:
+        headers = {
             "X-Subactor-Provider": response.provider,
             "X-Subactor-Model": response.model,
             "X-Subactor-Duration-Ms": str(duration_ms),
         }
         if ticket:
-            extra_headers["X-Subactor-Ticket"] = ticket
+            headers["X-Subactor-Ticket"] = ticket
+        return headers
 
-
-        result = {
+    def _handle_openai_chat_completions_with_parameters(self, payload: Mapping[str, Any]) -> None:
+        clean_model, ticket = _extract_ticket(str(payload.get("model") or "glm-5.3"), self.headers, payload)
+        messages = payload.get("messages")
+        if not isinstance(messages, list) or not messages:
+            self._error(400, "INVALID_REQUEST", "messages array is required")
+            return
+        try:
+            timeout = _requested_timeout(payload, load_policy_config().execution.attempt_timeout_seconds)
+        except ValueError as exc:
+            self._error(400, "INVALID_REQUEST", str(exc))
+            return
+        req_id = f"chatcmpl-{uuid.uuid4().hex[:12]}"
+        created_ts = int(time.time())
+        app, func = self._decide_attribution()
+        if self._fast_forward_to_ollama(clean_model, "/v1/chat/completions", payload):
+            return
+        if bool(payload.get("stream", False)):
+            from .proxy_stream import serve_stream
+            serve_stream(self, payload, clean_model, app, func, timeout, req_id, ticket,
+                         protocol="openai", created=created_ts)
+            return
+        t0 = time.monotonic()
+        response = self._complete_or_forward(clean_model, messages, app, func, timeout, req_id, payload,
+                                             "/v1/chat/completions")
+        if response is None:
+            return
+        duration_ms = round((time.monotonic() - t0) * 1000)
+        _write_proxy_receipt(ticket, app or "subactor-proxy", func or "chat", clean_model, response, duration_ms)
+        self._json(200, {
             "id": req_id,
             "object": "chat.completion",
             "created": created_ts,
             "model": response.model,
-            "choices": [
-                {
-                    "index": 0,
-                    "message": {
-                        "role": "assistant",
-                        "content": response.content,
-                    },
-                    "finish_reason": response.finish_reason or "stop",
-                }
-            ],
+            "choices": [{
+                "index": 0,
+                "message": {"role": "assistant", "content": response.content},
+                "finish_reason": response.finish_reason or "stop",
+            }],
             "usage": _openai_usage(response.usage),
-        }
-        self._json(200, result, extra_headers=extra_headers)
+        }, extra_headers=self._completion_headers(response, duration_ms, ticket))
+
 
     def _handle_ollama_chat(self, payload: Mapping[str, Any]) -> None:
         from .runtime_profile import ProfileError, ollama_parameter_scope
@@ -1235,187 +1296,98 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._error(400, "INVALID_REQUEST", str(error))
 
     def _handle_ollama_chat_with_parameters(self, payload: Mapping[str, Any]) -> None:
-        raw_model = str(payload.get("model") or "glm-5.3")
-        clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
+        clean_model, ticket = _extract_ticket(str(payload.get("model") or "glm-5.3"), self.headers, payload)
         messages = payload.get("messages")
         if not isinstance(messages, list) or not messages:
             self._error(400, "INVALID_REQUEST", "messages array is required")
             return
-
         # Ollama defaults to stream: true unless stream: false is explicitly sent
         stream = payload.get("stream", True)
         timeout = 60.0
         now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-
-        app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
-        func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
-
-        # Upstream Ollama forward fast-path for models not registered in SubLLM policy
-        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
-                and is_upstream_ollama_alive(self.ollama_upstream)):
-            self._forward_upstream("POST", "/api/chat", payload)
+        app, func = self._decide_attribution()
+        if self._fast_forward_to_ollama(clean_model, "/api/chat", payload):
             return
-
         if stream:
             from .proxy_stream import serve_stream
             serve_stream(self, payload, clean_model, app, func, timeout, None, ticket,
                          protocol="ollama", created=now_iso)
             return
-
         t0 = time.monotonic()
-        try:
-            response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
-        except Exception as exc:
-            if self._handle_contract_error(exc):
-                return
-            if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
-                self._forward_upstream("POST", "/api/chat", payload)
-                return
-            self._error(500, "COMPLETION_FAILED", str(exc))
+        response = self._complete_or_forward(clean_model, messages, app, func, timeout, None, payload, "/api/chat")
+        if response is None:
             return
-
         duration_ms = round((time.monotonic() - t0) * 1000)
-        total_ns = duration_ms * 1_000_000
         _write_proxy_receipt(ticket, app or "subactor-proxy", func or "chat", clean_model, response, duration_ms)
+        self._json(200, {
+            "model": response.model,
+            "created_at": now_iso,
+            "message": {"role": "assistant", "content": response.content},
+            **_ollama_done_fields(response, duration_ms),
+        }, extra_headers=self._completion_headers(response, duration_ms, ticket))
 
-        prompt_tokens = response.usage.get("input_tokens", response.usage.get("prompt_tokens", 0))
-        eval_tokens = response.usage.get("output_tokens", response.usage.get("completion_tokens", 0))
-
-        extra_headers = {
-            "X-Subactor-Provider": response.provider,
-            "X-Subactor-Model": response.model,
-            "X-Subactor-Duration-Ms": str(duration_ms),
-        }
-        if ticket:
-            extra_headers["X-Subactor-Ticket"] = ticket
-
-
-        self._json(
-            200,
-            {
-                "model": response.model,
-                "created_at": now_iso,
-                "message": {
-                    "role": "assistant",
-                    "content": response.content,
-                },
-                "done": True,
-                "total_duration": total_ns,
-                "load_duration": 1_000_000,
-                "prompt_eval_count": prompt_tokens,
-                "eval_count": eval_tokens,
-            },
-            extra_headers=extra_headers,
-        )
+    def _stream_ollama_generate(self, response: CompletionResponse, now_iso: str, duration_ms: int,
+                                extra_headers: Mapping[str, str]) -> None:
+        self.close_connection = True
+        self.send_response(200)
+        self._send_cors_headers()
+        self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
+        self.send_header("Cache-Control", "no-cache")
+        self.send_header("Connection", "close")
+        for k, v in extra_headers.items():
+            self.send_header(k, v)
+        self.end_headers()
+        content = response.content
+        chunk_size = 32
+        for i in range(0, len(content), chunk_size):
+            chunk_line = {"model": response.model, "created_at": now_iso,
+                          "response": content[i : i + chunk_size], "done": False}
+            self.wfile.write((json.dumps(chunk_line) + "\n").encode("utf-8"))
+            self.wfile.flush()
+        done_line = {"model": response.model, "created_at": now_iso, "response": "",
+                     **_ollama_done_fields(response, duration_ms)}
+        self.wfile.write((json.dumps(done_line) + "\n").encode("utf-8"))
+        self.wfile.flush()
 
     def _handle_ollama_generate(self, payload: Mapping[str, Any]) -> None:
-        raw_model = str(payload.get("model") or "glm-5.3")
-        clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
+        clean_model, ticket = _extract_ticket(str(payload.get("model") or "glm-5.3"), self.headers, payload)
         prompt = str(payload.get("prompt") or "")
         system = str(payload.get("system") or "")
-        messages: list[dict[str, str]] = []
-        if system:
-            messages.append({"role": "system", "content": system})
+        messages: list[dict[str, str]] = [{"role": "system", "content": system}] if system else []
         messages.append({"role": "user", "content": prompt or " "})
-
         stream = payload.get("stream", True)
         timeout = 60.0
         now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-
-        app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
-        func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
-
-        # Upstream Ollama forward fast-path for models not registered in SubLLM policy
-        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
-                and is_upstream_ollama_alive(self.ollama_upstream)):
-            self._forward_upstream("POST", "/api/generate", payload)
+        app, func = self._decide_attribution()
+        if self._fast_forward_to_ollama(clean_model, "/api/generate", payload):
             return
-
         t0 = time.monotonic()
-        try:
-            response = self._execute_model_or_route(clean_model, messages, app, func, timeout, None, payload)
-        except Exception as exc:
-            if self._handle_contract_error(exc):
-                return
-            if not adaptive.policy() and is_upstream_ollama_alive(self.ollama_upstream):
-                self._forward_upstream("POST", "/api/generate", payload)
-                return
-            self._error(500, "COMPLETION_FAILED", str(exc))
+        response = self._complete_or_forward(clean_model, messages, app, func, timeout, None, payload,
+                                             "/api/generate")
+        if response is None:
             return
-
         duration_ms = round((time.monotonic() - t0) * 1000)
-        total_ns = duration_ms * 1_000_000
         _write_proxy_receipt(ticket, app or "subactor-proxy", func or "chat", clean_model, response, duration_ms)
-
-        prompt_tokens = response.usage.get("input_tokens", response.usage.get("prompt_tokens", 0))
-        eval_tokens = response.usage.get("output_tokens", response.usage.get("completion_tokens", 0))
-
-        extra_headers = {
-            "X-Subactor-Provider": response.provider,
-            "X-Subactor-Model": response.model,
-            "X-Subactor-Duration-Ms": str(duration_ms),
-        }
-        if ticket:
-            extra_headers["X-Subactor-Ticket"] = ticket
-
+        extra_headers = self._completion_headers(response, duration_ms, ticket)
         if stream:
-            self.close_connection = True
-            self.send_response(200)
-            self._send_cors_headers()
-            self.send_header("Content-Type", "application/x-ndjson; charset=utf-8")
-            self.send_header("Cache-Control", "no-cache")
-            self.send_header("Connection", "close")
-            for k, v in extra_headers.items():
-                self.send_header(k, v)
-            self.end_headers()
-
-            content = response.content
-            chunk_size = 32
-            for i in range(0, len(content), chunk_size):
-                chunk_text = content[i : i + chunk_size]
-                chunk_line = {
-                    "model": response.model,
-                    "created_at": now_iso,
-                    "response": chunk_text,
-                    "done": False,
-                }
-                self.wfile.write((json.dumps(chunk_line) + "\n").encode("utf-8"))
-                self.wfile.flush()
-
-            done_line = {
-                "model": response.model,
-                "created_at": now_iso,
-                "response": "",
-                "done": True,
-                "total_duration": total_ns,
-                "load_duration": 1_000_000,
-                "prompt_eval_count": prompt_tokens,
-                "eval_count": eval_tokens,
-            }
-            self.wfile.write((json.dumps(done_line) + "\n").encode("utf-8"))
-            self.wfile.flush()
+            self._stream_ollama_generate(response, now_iso, duration_ms, extra_headers)
             return
+        self._json(200, {
+            "model": response.model,
+            "created_at": now_iso,
+            "response": response.content,
+            **_ollama_done_fields(response, duration_ms),
+        }, extra_headers=extra_headers)
 
-        self._json(
-            200,
-            {
-                "model": response.model,
-                "created_at": now_iso,
-                "response": response.content,
-                "done": True,
-                "total_duration": total_ns,
-                "load_duration": 1_000_000,
-                "prompt_eval_count": prompt_tokens,
-                "eval_count": eval_tokens,
-            },
-            extra_headers=extra_headers,
-        )
 
     def _handle_ollama_show(self, payload: Mapping[str, Any]) -> None:
         name = str(payload.get("name") or payload.get("model") or "glm-5.3")
         base = name.split(":")[0]
-        local = name in {m.get("name") for m in get_upstream_ollama_models(self.ollama_upstream)}
-        routed = base in MODELS or name in MODELS or any(f"{app}/{func}" == base for app, func in ROUTES)
+        # Only the catalog's own names are routed (``id`` or ``id:latest``); any other tag, e.g.
+        # qwen2.5-coder:7b, is local and described by Ollama even when /api/tags is slow.
+        routed = (name == base or name == f"{base}:latest") and (
+            base in MODELS or any(f"{app}/{func}" == base for app, func in ROUTES))
+        local = routed and name in {m.get("name") for m in get_upstream_ollama_models(self.ollama_upstream)}
         if (local or not routed) and is_upstream_ollama_alive(self.ollama_upstream):
             # SUB-06: a local tag is described by Ollama itself, not by a synthetic subllm modelfile.
             self._forward_upstream("POST", "/api/show", payload)

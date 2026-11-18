@@ -1,0 +1,96 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-236",
+  "summary": "SUB-08 steps 2-4: proxy handlers to CC <= 15 and deterministic /api/show routing",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P3",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-236/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_models.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "e14ba533688c3da26bc1fa3cb454e39c510fd294",
+    "targetBranch": "main",
+    "outcome": "Every function in proxy.py is at radon CC <= 15 (was: _handle_system_one_decide 62, _select_local_system_one_ollama_model 34, OpenAI/Ollama chat and generate handlers 24/22/18, _build_model_resolved_routes 21, _complete_model_direct 20, list_proxy_models 19, do_POST 19, _complete_ollama_system_one 16) via named helpers and a POST route table; monkeypatch seams on subllm.proxy are unchanged. /api/show now decides 'routed' by the exact catalog name, so a slow /api/tags read can no longer turn a local tag into the synthetic remote description (the flaky SUB-06 test).",
+    "nonGoals": [
+      "No change to responses, status codes, routing or failover order.",
+      "calibration.py and client_routes.py hotspots are outside SUB-08."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 120,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Refactor in place inside proxy.py (module helpers and handler methods) so tests that monkeypatch subllm.proxy names keep their seams; the POST route table resolves handler methods with getattr so patched methods stay live.",
+      "components": [
+        {
+          "name": "proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_models.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q"
+        ],
+        "evidence": "full suite passes"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "radon cc -s -n C src/subllm/proxy.py"
+        ],
+        "evidence": "no function above 15"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_models.py"
+        ],
+        "evidence": "new /api/show tag-list-timeout test fails on the old handler and passes here"
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "ruff check --no-respect-gitignore src tests",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "clean"
+      }
+    ]
+  }
+}
