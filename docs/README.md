@@ -30,6 +30,7 @@ Existing documentation retains its historical format.
 - [Versioned routing contract](information/routing-contract.md)
 
 - [Unified LLM and MCP proxy](information/unified-proxy.md)
+- [Local proxy browser access control](information/proxy-access-control.md) — origin allowlist, `403 PROXY-ORIGIN`, optional bearer token for routed models.
 
 - [DeepSeek V4.1 cost, latency and backlog audit](analysis/deepseek-v41-routing.md)
 - [Dobór modeli do zadań i bramka jakości odpowiedzi](analysis/task-model-routing.md)

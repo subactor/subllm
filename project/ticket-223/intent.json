@@ -1,0 +1,73 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-223",
+  "summary": "Document proxy origin allowlist and bearer token controls (SUB-01)",
+  "workstream": "integration",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-223/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "docs/information/proxy-access-control.md",
+    "docs/README.md"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "d4fa58cef82ae86bbd5c7d094ced7796bc7763ea",
+    "targetBranch": "main",
+    "outcome": "docs/information/proxy-access-control.md (docs standard, indexed in docs/README.md) documents SUBLLM_PROXY_ALLOWED_ORIGINS, SUBLLM_PROXY_TOKEN and the browser threat model of the local proxy, matching ticket-222.",
+    "nonGoals": [
+      "README.md (governance workstream) is not changed; its existing statement that foreign origins are rejected becomes true with ticket-222."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 20,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "New information document in the docs standard plus index entry; docs/operations.md has no standard metadata and is left unchanged.",
+      "components": [
+        {
+          "name": "operator-docs",
+          "paths": [
+            "docs/information/proxy-access-control.md",
+            "docs/README.md"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}
