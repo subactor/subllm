@@ -747,7 +747,7 @@ def list_proxy_models(
             "model": f"{model_id}:latest",
             "family": family,
             "families": [family],
-            "parameter_size": "32B",
+            "parameter_size": "unknown",
             "source": "subllm",
             "vision": spec.vision,
         })
@@ -763,7 +763,7 @@ def list_proxy_models(
                 "model": f"{alias}:latest",
                 "family": "custom",
                 "families": ["custom"],
-                "parameter_size": "32B",
+                "parameter_size": "unknown",
                 "source": "subllm-route",
                 "vision": False,
             })
@@ -771,12 +771,14 @@ def list_proxy_models(
     if include_upstream:
         upstream_models = (get_upstream_ollama_models(upstream_url, fresh=True) if fresh
                            else get_upstream_ollama_models(upstream_url))
+        catalog_tags = {m["name"] for m in models}
         for m in upstream_models:
             name = m.get("name") or m.get("model") or ""
-            base_name = name.split(":")[0] if ":" in name else name
-            if name and name not in seen_ids and base_name not in seen_ids:
+            # SUB-06: dedupe by the full tag, so qwen2.5-coder:7b stays visible next to the
+            # catalog's qwen2.5-coder; only an identical tag (e.g. "<id>:latest") is shadowed.
+            if name and name not in seen_ids and name not in catalog_tags:
                 seen_ids.add(name)
-                details = m.get("details") or {}
+                details = m.get("details") if isinstance(m.get("details"), dict) else {}
                 family = details.get("family") or _model_family(name)
                 models.append({
                     "id": name,
@@ -787,9 +789,29 @@ def list_proxy_models(
                     "parameter_size": details.get("parameter_size", "unknown"),
                     "source": "ollama-upstream",
                     "vision": False,
+                    "details": details,
+                    "size": m.get("size") if type(m.get("size")) is int else 0,
+                    "digest": m.get("digest") if isinstance(m.get("digest"), str) else None,
+                    "modified_at": m.get("modified_at") if isinstance(m.get("modified_at"), str) else None,
                 })
 
     return models
+
+
+def _ollama_tag_entry(m: Mapping[str, Any], now_iso: str) -> dict[str, Any]:
+    """One /api/tags entry: real Ollama metadata for local tags, no invented size for routed models (SUB-06)."""
+    if m.get("source") == "ollama-upstream":
+        details = {"parent_model": "", "format": "gguf", "family": m["family"], "families": m["families"],
+                   "parameter_size": m["parameter_size"], "quantization_level": "unknown",
+                   **dict(m.get("details") or {})}
+        return {"name": m["name"], "model": m["model"], "modified_at": m.get("modified_at") or now_iso,
+                "size": m.get("size") or 0, "digest": m.get("digest") or "", "details": details}
+    return {
+        "name": m["name"], "model": m["model"], "modified_at": now_iso, "size": 0,
+        "digest": f"sha256:subllm_{m['id'].replace('/', '_')}",
+        "details": {"parent_model": "", "format": "remote", "family": m["family"], "families": m["families"],
+                    "parameter_size": m["parameter_size"], "quantization_level": "remote"},
+    }
 
 
 def _extract_ticket(
@@ -1119,24 +1141,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         if path == "/api/tags":
             models = self._catalog_models()
             now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-            ollama_models = [
-                {
-                    "name": m["name"],
-                    "model": m["model"],
-                    "modified_at": now_iso,
-                    "size": 32212254720,
-                    "digest": f"sha256:subllm_{m['id'].replace('/', '_')}",
-                    "details": {
-                        "parent_model": "",
-                        "format": "gguf",
-                        "family": m["family"],
-                        "families": m["families"],
-                        "parameter_size": m["parameter_size"],
-                        "quantization_level": "Q4_K_M",
-                    },
-                }
-                for m in models
-            ]
+            ollama_models = [_ollama_tag_entry(m, now_iso) for m in models]
             self._json(200, {"models": ollama_models})
             return
 
@@ -1720,6 +1725,12 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
     def _handle_ollama_show(self, payload: Mapping[str, Any]) -> None:
         name = str(payload.get("name") or payload.get("model") or "glm-5.3")
         base = name.split(":")[0]
+        local = name in {m.get("name") for m in get_upstream_ollama_models(self.ollama_upstream)}
+        routed = base in MODELS or name in MODELS or any(f"{app}/{func}" == base for app, func in ROUTES)
+        if (local or not routed) and is_upstream_ollama_alive(self.ollama_upstream):
+            # SUB-06: a local tag is described by Ollama itself, not by a synthetic subllm modelfile.
+            self._forward_upstream("POST", "/api/show", payload)
+            return
         family = _model_family(base)
         self._json(200, {
             "license": "Governed by Subactor policy",
@@ -1731,8 +1742,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 "format": "gguf",
                 "family": family,
                 "families": [family],
-                "parameter_size": "32B",
-                "quantization_level": "Q4_K_M",
+                "parameter_size": "unknown",
+                "quantization_level": "remote",
             },
         })
 

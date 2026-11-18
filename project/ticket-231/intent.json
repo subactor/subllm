@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-231",
+  "summary": "SUB-06 model catalog shows real local Ollama tags and metadata",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-231/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_models.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "34396bf79e19ea96901c23c0abcd72255a1e4f84",
+    "targetBranch": "main",
+    "outcome": "list_proxy_models dedupes upstream Ollama tags by the full tag (qwen2.5-coder:7b stays visible next to the catalog qwen2.5-coder) and keeps their real details, size, digest and modified_at; /api/tags reports real metadata for local tags and size 0 / quantization 'remote' for routed models instead of 32 GB Q4_K_M; /api/show forwards local tags to Ollama; catalog entries no longer claim 32B.",
+    "nonGoals": [
+      "No change to routing or the catalog contents.",
+      "Liveness caching is SUB-07."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "_ollama_tag_entry builds /api/tags entries per source; /api/show forwards when the tag is in the upstream tag list.",
+      "components": [
+        {
+          "name": "proxy-catalog",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_models.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "/v1/models, /api/tags, /api/show metadata for local tags"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_models.py tests/test_proxy.py"
+        ],
+        "evidence": "all pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}
