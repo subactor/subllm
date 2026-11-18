@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-230",
+  "summary": "SUB-04 usage journal and attribution for raw Ollama forwards",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-230/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_forward_usage.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "dcab4549ffc45e820c12dbbf17eb286c81be690a",
+    "targetBranch": "main",
+    "outcome": "Every raw Ollama forward (POST /api/chat, /api/generate, /api/embed, /v1/chat/completions, /v1/completions, /v1/embeddings) records one usage attempt with provider=ollama, the model, application/function from X-Subactor-Application/Function (subactor-proxy/forward when absent), duration and token counts from prompt_eval_count/eval_count or usage (JSON, NDJSON final line, SSE); upstream errors are recorded with HTTP_<code>, UPSTREAM_TIMEOUT or UPSTREAM_UNAVAILABLE; no prompt or answer content is stored.",
+    "nonGoals": [
+      "No change to routed (cloud) usage recording.",
+      "README is governance-owned; the usage panel already filters by provider."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "forward_usage_counts parses counts only; _record_forward writes through usage.record_attempt, which never raises.",
+      "components": [
+        {
+          "name": "proxy-upstream",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_forward_usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "usage journal rows for raw Ollama forwards (provider=ollama)"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_forward_usage.py tests/test_proxy.py tests/test_usage.py"
+        ],
+        "evidence": "all pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}

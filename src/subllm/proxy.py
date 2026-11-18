@@ -36,11 +36,54 @@ from .provider_order import routing_provider_order
 from .quality_schema import declared_schema_gate
 from .stream_transport import ACTIVE_STREAM, stream_error, supported_routes
 from .types import ResolvedRoute
+from .usage import record_attempt
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
 UPSTREAM_FORWARD_TIMEOUT_DEFAULT = 120.0
 UPSTREAM_FORWARD_TIMEOUT_BOUNDS = (1.0, 900.0)
+
+
+FORWARD_USAGE_PATHS = frozenset({"/api/chat", "/api/generate", "/api/embed", "/v1/chat/completions",
+                                 "/v1/completions", "/v1/embeddings"})
+
+
+def forward_usage_counts(path: str, body: bytes) -> dict[str, int]:
+    """Token counts from a raw Ollama forward response; never returns or keeps content (SUB-04).
+
+    Ollama native responses carry ``prompt_eval_count``/``eval_count`` in the JSON body or in the
+    final ``done`` line of an NDJSON stream; OpenAI-compatible ones carry ``usage`` in the JSON body
+    or in an SSE ``data:`` chunk.
+    """
+    try:
+        text = body.decode("utf-8")
+    except (UnicodeDecodeError, AttributeError):
+        return {}
+    documents: list[Any] = []
+    for line in reversed(text.splitlines() or [text]):
+        line = line.strip()
+        if line.startswith("data:"):
+            line = line[5:].strip()
+        if not line or line == "[DONE]":
+            continue
+        try:
+            documents.append(json.loads(line))
+        except ValueError:
+            continue
+        if len(documents) >= 4:
+            break
+    for doc in documents:
+        if not isinstance(doc, dict):
+            continue
+        if path.startswith("/api/") and ("prompt_eval_count" in doc or "eval_count" in doc):
+            return {key: value for key, value in (("prompt_tokens", doc.get("prompt_eval_count")),
+                                                  ("completion_tokens", doc.get("eval_count")))
+                    if type(value) is int and value >= 0}
+        usage_doc = doc.get("usage")
+        if isinstance(usage_doc, dict):
+            return {key: usage_doc[key] for key in ("prompt_tokens", "completion_tokens")
+                    if type(usage_doc.get(key)) is int and usage_doc[key] >= 0}
+    return {}
 
 
 def upstream_forward_timeout(payload: Any) -> float:
@@ -1749,9 +1792,11 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         headers = {"Content-Type": "application/json"}
         req = Request(url, data=data, headers=headers, method=method)
         timeout = upstream_forward_timeout(payload)
+        started = time.monotonic()
         try:
             with urlopen(req, timeout=timeout) as resp:
                 body = resp.read()
+                self._record_forward(method, path, payload, started, resp.status, None, body)
                 self.send_response(resp.status)
                 self._send_cors_headers()
                 for k, v in resp.headers.items():
@@ -1762,6 +1807,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 self.wfile.write(body)
         except HTTPError as exc:
             body = exc.read()
+            self._record_forward(method, path, payload, started, exc.code, f"HTTP_{exc.code}", b"")
             self.send_response(exc.code)
             self._send_cors_headers()
             self.send_header("Content-Type", "application/json")
@@ -1770,9 +1816,28 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self.wfile.write(body)
         except (TimeoutError, URLError) as exc:
             if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+                self._record_forward(method, path, payload, started, 504, "UPSTREAM_TIMEOUT", b"")
                 self._error(504, "UPSTREAM_TIMEOUT", f"upstream Ollama did not answer within {timeout:g} s")
             else:
+                self._record_forward(method, path, payload, started, 502, "UPSTREAM_UNAVAILABLE", b"")
                 self._error(502, "UPSTREAM_UNAVAILABLE", f"failed to connect to upstream Ollama: {exc.reason}")
+
+    def _record_forward(self, method: str, path: str, payload: Any, started: float, status: int,
+                        diagnostic: str | None, body: bytes) -> None:
+        """One usage attempt per raw Ollama forward, attributed from the request headers (SUB-04)."""
+        if method != "POST" or path not in FORWARD_USAGE_PATHS:
+            return
+        headers = getattr(self, "headers", None) or {}
+        model = payload.get("model") if isinstance(payload, dict) else None
+        record_attempt(
+            request_id=headers.get("X-Request-ID") or f"forward-{uuid.uuid4().hex[:12]}",
+            application=headers.get("X-Subactor-Application") or headers.get("X-Application") or "subactor-proxy",
+            function=headers.get("X-Subactor-Function") or headers.get("X-Function") or "forward",
+            provider="ollama", model=model if isinstance(model, str) else "unknown",
+            status="success" if 200 <= status < 300 else "error", diagnostic_code=diagnostic,
+            duration_ms=int((time.monotonic() - started) * 1000),
+            usage=forward_usage_counts(path, body) if 200 <= status < 300 else {},
+        )
 
     def _local_host(self) -> bool:
         host = (self.headers.get("Host") or "").split(":", 1)[0].strip().lower()
