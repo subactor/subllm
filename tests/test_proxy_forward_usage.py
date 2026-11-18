@@ -21,7 +21,11 @@ def _upstream(status: int = 200):
     class Handler(BaseHTTPRequestHandler):
         def do_POST(self):  # noqa: N802
             request = json.loads(self.rfile.read(int(self.headers.get("Content-Length") or 0)))
-            if self.path.startswith("/api/") and request.get("stream"):
+            if self.path == "/api/embed":
+                body = json.dumps({"embeddings": [[0.1, 0.2]], "prompt_eval_count": 6}).encode()
+            elif self.path == "/v1/embeddings":
+                body = json.dumps({"data": [{"embedding": [0.1]}], "usage": {"prompt_tokens": 4, "total_tokens": 4}}).encode()
+            elif self.path.startswith("/api/") and request.get("stream"):
                 lines = [{"message": {"content": SECRET_ANSWER}, "done": False},
                          {"done": True, "prompt_eval_count": 21, "eval_count": 8}]
                 body = "\n".join(json.dumps(line) for line in lines).encode()
@@ -80,7 +84,7 @@ def _attempts():
 
 @pytest.mark.parametrize(("path", "stream", "tokens"), [
     ("/api/chat", False, (11, 5)), ("/api/chat", True, (21, 8)), ("/api/generate", False, (11, 5)),
-    ("/v1/chat/completions", False, (13, 3)),
+    ("/v1/chat/completions", False, (13, 3)), ("/api/embed", False, (6, None)), ("/v1/embeddings", False, (4, None)),
 ])
 def test_forward_is_journaled_with_attribution_and_counts(forward, path, stream, tokens):
     server = forward()

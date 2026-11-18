@@ -25,7 +25,7 @@
   "delivery": {
     "acceptedBaseSha": "dcab4549ffc45e820c12dbbf17eb286c81be690a",
     "targetBranch": "main",
-    "outcome": "Every raw Ollama forward (POST /api/chat, /api/generate, /v1/chat/completions, /v1/completions) records one usage attempt with provider=ollama, the model, application/function from X-Subactor-Application/Function (subactor-proxy/forward when absent), duration and token counts from prompt_eval_count/eval_count or usage (JSON, NDJSON final line, SSE); upstream errors are recorded with HTTP_<code>, UPSTREAM_TIMEOUT or UPSTREAM_UNAVAILABLE; no prompt or answer content is stored.",
+    "outcome": "Every raw Ollama forward (POST /api/chat, /api/generate, /api/embed, /v1/chat/completions, /v1/completions, /v1/embeddings) records one usage attempt with provider=ollama, the model, application/function from X-Subactor-Application/Function (subactor-proxy/forward when absent), duration and token counts from prompt_eval_count/eval_count or usage (JSON, NDJSON final line, SSE); upstream errors are recorded with HTTP_<code>, UPSTREAM_TIMEOUT or UPSTREAM_UNAVAILABLE; no prompt or answer content is stored.",
     "nonGoals": [
       "No change to routed (cloud) usage recording.",
       "README is governance-owned; the usage panel already filters by provider."

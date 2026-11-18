@@ -44,7 +44,8 @@ UPSTREAM_FORWARD_TIMEOUT_DEFAULT = 120.0
 UPSTREAM_FORWARD_TIMEOUT_BOUNDS = (1.0, 900.0)
 
 
-FORWARD_USAGE_PATHS = frozenset({"/api/chat", "/api/generate", "/v1/chat/completions", "/v1/completions"})
+FORWARD_USAGE_PATHS = frozenset({"/api/chat", "/api/generate", "/api/embed", "/v1/chat/completions",
+                                 "/v1/completions", "/v1/embeddings"})
 
 
 def forward_usage_counts(path: str, body: bytes) -> dict[str, int]:
