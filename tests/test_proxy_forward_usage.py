@@ -24,7 +24,8 @@ def _upstream(status: int = 200):
             if self.path == "/api/embed":
                 body = json.dumps({"embeddings": [[0.1, 0.2]], "prompt_eval_count": 6}).encode()
             elif self.path == "/v1/embeddings":
-                body = json.dumps({"data": [{"embedding": [0.1]}], "usage": {"prompt_tokens": 4, "total_tokens": 4}}).encode()
+                usage = {"prompt_tokens": 4, "total_tokens": 4}
+                body = json.dumps({"data": [{"embedding": [0.1]}], "usage": usage}).encode()
             elif self.path.startswith("/api/") and request.get("stream"):
                 lines = [{"message": {"content": SECRET_ANSWER}, "done": False},
                          {"done": True, "prompt_eval_count": 21, "eval_count": 8}]
@@ -117,8 +118,10 @@ def test_upstream_http_error_is_journaled_as_error(forward):
 
 
 @pytest.mark.parametrize(("path", "body", "expected"), [
-    ("/api/chat", b'{"done": true, "prompt_eval_count": 4, "eval_count": 2}', {"prompt_tokens": 4, "completion_tokens": 2}),
-    ("/v1/chat/completions", b'data: {"choices": []}\n\ndata: {"usage": {"prompt_tokens": 7, "completion_tokens": 1}}\n\ndata: [DONE]\n',
+    ("/api/chat", b'{"done": true, "prompt_eval_count": 4, "eval_count": 2}',
+     {"prompt_tokens": 4, "completion_tokens": 2}),
+    ("/v1/chat/completions",
+     b'data: {"choices": []}\n\ndata: {"usage": {"prompt_tokens": 7, "completion_tokens": 1}}\n\ndata: [DONE]\n',
      {"prompt_tokens": 7, "completion_tokens": 1}),
     ("/api/chat", b"not json", {}), ("/api/chat", b"\xff\xfe", {}),
     ("/api/chat", b'{"done": true, "prompt_eval_count": -1, "eval_count": "2"}', {}),

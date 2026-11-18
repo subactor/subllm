@@ -32,11 +32,11 @@ from .health import order_with_last_resort, record_failure, record_success
 from .openrouter_routing import apply_parameters
 from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
-from .usage import record_attempt
 from .provider_order import routing_provider_order
 from .quality_schema import declared_schema_gate
 from .stream_transport import ACTIVE_STREAM, stream_error, supported_routes
 from .types import ResolvedRoute
+from .usage import record_attempt
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
