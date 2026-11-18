@@ -120,7 +120,11 @@ def test_proxy_health_and_cors(proxy_server):
     assert status == 200
     assert body["status"] == "ok"
     assert body["service"] == "subllm-proxy"
-    assert body["version"] == proxy.metadata.version("subactor-subllm")
+    try:
+        expected_version = proxy.metadata.version("subactor-subllm")
+    except proxy.metadata.PackageNotFoundError:
+        expected_version = "unknown"
+    assert body["version"] == expected_version
     lowered = {k.lower(): v for k, v in headers.items()}
     assert "access-control-allow-origin" not in lowered  # no wildcard; non-browser clients need no CORS
     assert lowered["vary"] == "Origin"
