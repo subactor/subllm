@@ -26,6 +26,8 @@ MAX_AUDIO_SECONDS = 120
 _MODEL_LOCK = threading.RLock()
 _WHISPER_MODEL = None
 _WHISPER_KEY = None
+_VOSK_MODEL = None
+_VOSK_PATH = None
 
 
 class SpeechError(ValueError):
@@ -42,6 +44,7 @@ def _roots():
         Path("/usr/share/heyasa-speech"),
         Path("/usr/share/piper"),
         Path.home() / ".config/stts-python/models/piper",
+        Path.home() / ".config/stts-python/models/vosk",
         Path.home() / ".local/share/heyasa/models",
     ]
 
@@ -52,6 +55,14 @@ def _piper_bin():
         [explicit] if explicit else [shutil.which("piper"), str(Path.home() / ".config/stts-python/bin/piper/piper")]
     )
     return next((str(Path(p).resolve()) for p in candidates if p and Path(p).is_file() and os.access(p, os.X_OK)), None)
+
+
+def _is_vosk_model(path):
+    for name in ("am/final.mdl", "conf/mfcc.conf"):
+        marker = path / name
+        if not marker.is_file() or not marker.resolve().is_relative_to(path):
+            return False
+    return True
 
 
 def _model_path(model, role):
@@ -69,12 +80,16 @@ def _model_path(model, role):
             model = next((m["id"] for m in models if m["role"] == "tts"), "")
     candidates = [Path(model).expanduser()] if Path(model).is_absolute() else []
     for root in _roots():
-        candidates.extend((root / model, root / ("faster-whisper-" + model)))
+        candidates.append(root / model)
+        if role == "stt":
+            candidates.append(root / ("faster-whisper-" + model))
     for candidate in candidates:
         path = candidate.resolve()
         if not any(path.is_relative_to(root.resolve()) for root in _roots()):
             continue
         if role == "stt" and path.is_dir() and (path / "model.bin").is_file():
+            return path
+        if role == "vosk" and _is_vosk_model(path):
             return path
         if role == "tts" and path.is_file() and path.suffix == ".onnx" and Path(str(path) + ".json").is_file():
             return path
@@ -93,6 +108,12 @@ def _installed_models():
             if len(result) >= 100:
                 break
             result.append({"id": str(path.parent), "role": "stt", "engine": "faster-whisper"})
+        for marker in root.rglob("am/final.mdl"):
+            if len(result) >= 100:
+                break
+            directory = marker.parent.parent.resolve()
+            if directory.is_relative_to(root.resolve()) and _is_vosk_model(directory):
+                result.append({"id": str(directory), "role": "stt", "engine": "vosk"})
         for path in root.rglob("*.onnx"):
             if len(result) >= 100:
                 break
@@ -106,6 +127,7 @@ def speech_capabilities():
     result["models"] = _installed_models()
     result["backends"] = {
         "faster-whisper": importlib.util.find_spec("faster_whisper") is not None,
+        "vosk": all(importlib.util.find_spec(module) is not None for module in ("vosk", "av")),
         "piper": _piper_bin() is not None,
         "stt-openai": bool(os.environ.get("SUBLLM_STT_URL")),
         "tts-openai": bool(os.environ.get("SUBLLM_TTS_URL")),
@@ -197,6 +219,71 @@ def _audio(payload):
     return raw, media_type
 
 
+def _vosk_pcm(raw, media_type):
+    try:
+        import av
+    except ImportError:
+        raise SpeechError("SPEECH_BACKEND_UNAVAILABLE", "Vosk audio conversion requires PyAV", 503) from None
+
+    pcm = bytearray()
+    container = {"audio/wav": "wav", "audio/x-wav": "wav", "audio/ogg": "ogg", "audio/webm": "matroska"}[media_type]
+    try:
+        with av.open(io.BytesIO(raw), mode="r", format=container) as clip:
+            resampler = av.AudioResampler(format="s16", layout="mono", rate=16000)
+
+            def append(frames):
+                for frame in frames:
+                    size = frame.samples * 2
+                    if len(pcm) + size > MAX_AUDIO_SECONDS * 16000 * 2:
+                        raise ValueError
+                    pcm.extend(memoryview(frame.planes[0])[:size])
+
+            for frame in clip.decode(audio=0):
+                append(resampler.resample(frame))
+            append(resampler.resample(None))
+        if not pcm:
+            raise ValueError
+    except Exception:
+        raise SpeechError("SPEECH_AUDIO_INVALID", "Could not convert bounded audio to mono PCM") from None
+    return pcm
+
+
+def _vosk_transcribe(model, raw, media_type, options):
+    language = options.pop("language", None)
+    if options:
+        raise SpeechError("SPEECH_PARAMETER_INVALID", "Vosk accepts only the language hint and the model directory")
+    path = _model_path(model, "vosk")
+    try:
+        from vosk import KaldiRecognizer, Model
+    except (ImportError, OSError):
+        raise SpeechError("SPEECH_BACKEND_UNAVAILABLE", "Local Vosk runtime is unavailable", 503) from None
+
+    pcm = _vosk_pcm(raw, media_type)
+    global _VOSK_MODEL, _VOSK_PATH
+    try:
+        with _MODEL_LOCK:
+            if path != _VOSK_PATH:
+                _VOSK_MODEL = Model(str(path))
+                _VOSK_PATH = path
+            recognizer = KaldiRecognizer(_VOSK_MODEL, 16000)
+        segments = []
+        for offset in range(0, len(pcm), 8000):
+            if recognizer.AcceptWaveform(bytes(pcm[offset : offset + 8000])):
+                segments.append(json.loads(recognizer.Result())["text"])
+        segments.append(json.loads(recognizer.FinalResult())["text"])
+        text = " ".join(segment.strip() for segment in segments if segment.strip())
+    except Exception:
+        raise SpeechError("SPEECH_BACKEND_UNAVAILABLE", "Local Vosk recognition could not be completed", 503) from None
+    return {
+        "schema": "subllm.speech-transcription/v1",
+        "ok": True,
+        "engine": "vosk",
+        "model": model,
+        "language": language,
+        "text": text,
+    }
+
+
 def transcribe(payload):
     options = _parameters(payload, "stt", "audio_base64")
     raw, media_type = _audio(payload)
@@ -204,6 +291,8 @@ def transcribe(payload):
     timeout = options.pop("timeout", 120)
     if engine == "openai":
         return _remote_transcribe(payload.get("model"), raw, media_type, options, timeout)
+    if engine == "vosk":
+        return _vosk_transcribe(payload["model"], raw, media_type, options)
     path = _model_path(payload.get("model"), "stt")
     device = options.pop("device", "auto")
     compute = options.pop("compute_type", "int8")
