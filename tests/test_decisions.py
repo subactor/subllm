@@ -237,3 +237,93 @@ def test_d1_ultra_decision_model_resolution_and_exports(monkeypatch):
     assert subllm.DecisionError is DecisionError
     assert subllm.DECISION_MODELS == DECISION_MODELS
     assert subllm.DEFAULT_DECISION_MODEL == DEFAULT_DECISION_MODEL
+
+
+# SUB-03: request timeout, keep_alive and warmup for cold local decision models.
+@pytest.mark.parametrize("value,expected", [(None, 90), (0, 0), (300, 300), ("45s", 45), ("5m", 300), (" 2m ", 120)])
+def test_parse_keep_alive_accepts_bounded_values(value, expected):
+    from subllm.decisions import parse_keep_alive
+    assert parse_keep_alive(value) == expected
+
+
+@pytest.mark.parametrize("value", [-1, 301, "6m", "10h", "abc", 1.5, True])
+def test_parse_keep_alive_rejects_out_of_bounds(value):
+    from subllm.decisions import parse_keep_alive
+    with pytest.raises(ValueError):
+        parse_keep_alive(value)
+
+
+def test_keep_alive_from_legacy_payload_reaches_native_systemone(native_server):
+    payload = {"model": "d1:3b", "state": {"q": 1}, "keep_alive": "2m", "questions": [
+        {"id": "route", "type": "choice", "question": "Which?", "options": ["read", "write"]}]}
+    native_server.reply = {"model": "d1:3b", "usage": {"input_tokens": 1, "output_tokens": 0}, "answers": {
+        "route": {"type": "choice", "choice": "read", "probabilities": {"read": 0.9, "write": 0.1}}}}
+    from subllm.decisions import parse_keep_alive
+    decide_legacy(payload, base_url=native_server.base_url, keep_alive=parse_keep_alive(payload["keep_alive"]))
+    assert native_server.requests[-1][1]["keep_alive"] == 120
+
+
+def test_warmup_loads_model_and_reports_load_time(native_server):
+    from subllm.decisions import warmup
+    native_server.reply = {"model": "d1:3b", "done": True, "load_duration": 2_500_000_000}
+    result = warmup(base_url=native_server.base_url, keep_alive="5m")
+    assert native_server.requests[-1] == ("/api/generate", {"model": "d1:3b", "prompt": "", "stream": False,
+                                                            "keep_alive": 300})
+    assert result["load_duration_ms"] == 2500 and result["provider"] == "ollama" and result["keep_alive"] == 300
+
+
+def _proxy(monkeypatch, upstream=None):
+    import subllm.proxy as proxy
+    server = proxy.make_proxy_server("127.0.0.1", 0, *([upstream] if upstream else []))
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    return proxy, server, f"http://127.0.0.1:{server.server_address[1]}"
+
+
+def _post_json(url, body):
+    from urllib.error import HTTPError
+    from urllib.request import Request, urlopen
+    req = Request(url, data=json.dumps(body).encode(), headers={"Content-Type": "application/json"}, method="POST")
+    try:
+        with urlopen(req, timeout=30) as resp:
+            return resp.status, json.loads(resp.read())
+    except HTTPError as exc:
+        return exc.code, json.loads(exc.read())
+
+
+@pytest.mark.parametrize("requested,expected", [(None, 6.0), (60, 60.0), (500, 120.0)])
+def test_proxy_local_attempt_uses_request_timeout(monkeypatch, requested, expected):
+    proxy, server, base = _proxy(monkeypatch)
+    seen = []
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: True)
+    monkeypatch.setattr(proxy, "get_upstream_ollama_models",
+                        lambda *_: [{"name": "qwen3.5:0.8b", "model": "qwen3.5:0.8b"}])
+
+    def local(upstream, model, messages, **kwargs):
+        seen.append(kwargs["timeout_seconds"])
+        return proxy.CompletionResponse(json.dumps({"answers": {"q": "a"}}), "ollama", model, {}, finish_reason="stop")
+
+    monkeypatch.setattr(proxy, "_complete_ollama_system_one", local)
+    body = {"model": "qwen3.5:0.8b",
+            "questions": [{"id": "q", "type": "choice", "question": "?", "options": ["a", "b"]}]}
+    if requested is not None:
+        body["timeout"] = requested
+    try:
+        status, _ = _post_json(base + "/v1/decide", body)
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert status == 200 and seen == [expected]
+
+
+def test_proxy_warmup_endpoint_and_keep_alive_validation(monkeypatch, native_server):
+    proxy, server, base = _proxy(monkeypatch, native_server.base_url)
+    native_server.reply = {"model": "d1:3b", "done": True, "load_duration": 1_000_000}
+    try:
+        status, body = _post_json(base + "/v1/decide/warmup", {"keep_alive": "1m"})
+        bad_status, bad = _post_json(base + "/v1/decide", {"keep_alive": "10h", "questions": [
+            {"id": "q", "type": "choice", "question": "?", "options": ["a", "b"]}]})
+    finally:
+        server.shutdown()
+        server.server_close()
+    assert status == 200 and body["load_duration_ms"] == 1 and body["keep_alive"] == 60
+    assert bad_status == 400 and bad["error"]["code"] == "INVALID_REQUEST"

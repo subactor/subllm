@@ -370,6 +370,10 @@ def _complete_ollama_system_one(
             "num_predict": 256,
         },
     }
+    if request_payload is not None and request_payload.get("keep_alive") is not None:
+        from .decisions import parse_keep_alive
+
+        body_payload["keep_alive"] = parse_keep_alive(request_payload.get("keep_alive"))
     req = Request(
         url,
         data=json.dumps(body_payload).encode("utf-8"),
@@ -517,8 +521,11 @@ def _complete_ollama_d1_system_one(
     native_payload = dict(payload, model=ollama_model)
     if native_payload.get("state") is None:
         native_payload["state"] = {"messages": _build_system_one_messages(payload)}
+    from .decisions import parse_keep_alive
+
+    keep_alive = {"keep_alive": parse_keep_alive(payload["keep_alive"])} if payload.get("keep_alive") is not None else {}
     parsed = decide_legacy(native_payload, base_url=upstream_url, timeout_seconds=timeout_seconds,
-                           application=application, function=function, request_id=request_id)
+                           application=application, function=function, request_id=request_id, **keep_alive)
     return CompletionResponse(
         content=json.dumps(parsed, ensure_ascii=False),
         provider="ollama",
@@ -1119,6 +1126,10 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                     self._error(500, "COMPLETION_FAILED", str(exc))
                 return
 
+        if path == "/v1/decide/warmup":
+            self._handle_decide_warmup(payload)
+            return
+
         if path in {"/v1/decide", "/v1/system-one/decide"}:
             self._handle_system_one_decide(payload)
             return
@@ -1146,6 +1157,26 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
 
         self._error(404, "PROXY-404", f"path '{path}' is not registered")
 
+    def _handle_decide_warmup(self, payload: Any) -> None:
+        """SUB-03: load the local decision model before the first decision after idle."""
+        from .decisions import DecisionError, warmup
+
+        if not isinstance(payload, Mapping):
+            self._error(400, "INVALID_REQUEST", "JSON object payload is required")
+            return
+        timeout = payload.get("timeout", 120.0)
+        try:
+            result = warmup(payload.get("model") or None, base_url=self.ollama_upstream,
+                            keep_alive=payload.get("keep_alive", 300),
+                            timeout_seconds=float(timeout) if type(timeout) in (int, float) else timeout)
+        except ValueError as exc:
+            self._error(400, "INVALID_REQUEST", str(exc))
+            return
+        except DecisionError:
+            self._error(503, "LOCAL_DECISION_UNAVAILABLE", "local decision model could not be loaded")
+            return
+        self._json(200, result, extra_headers={"X-Subactor-Provider": "ollama"})
+
     def _handle_system_one_decide(self, payload: Mapping[str, Any]) -> None:
         if not isinstance(payload, Mapping):
             self._error(400, "INVALID_REQUEST", "JSON object payload is required")
@@ -1167,6 +1198,13 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._error(400, "INVALID_REQUEST", "allow_remote_fallback must be a boolean")
             return
         allow_remote_fallback = payload.get("allow_remote_fallback", False)
+        from .decisions import parse_keep_alive
+
+        try:
+            parse_keep_alive(payload.get("keep_alive"))
+        except ValueError as exc:
+            self._error(400, "INVALID_REQUEST", str(exc))
+            return
 
         raw_model = str(payload.get("model") or "d1:3b")
         clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
@@ -1193,12 +1231,14 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         func = declared_func or "decide"
         req_id = f"sysone-{uuid.uuid4().hex[:12]}"
         if offline:
-            from .decisions import DecisionError, decide_legacy
+            from .decisions import DecisionError, decide_legacy, parse_keep_alive
 
             started = time.monotonic()
             try:
                 result = decide_legacy(dict(payload, model=clean_model), base_url=self.ollama_upstream,
-                                       timeout_seconds=timeout, application=app, function=func, request_id=req_id)
+                                       timeout_seconds=timeout, application=app, function=func, request_id=req_id,
+                                       **({"keep_alive": parse_keep_alive(payload["keep_alive"])}
+                                          if payload.get("keep_alive") is not None else {}))
             except ValueError:
                 self._error(400, "INVALID_REQUEST", "Invalid offline decision request")
                 return
@@ -1220,6 +1260,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         local_model: str | None = None
 
         effective_upstream = _resolve_system_one_ollama_upstream(self.ollama_upstream)
+        # SUB-03: a cold local model gets the caller's budget (up to 120 s), not a fixed 6 s.
+        local_timeout = 6.0 if requested_timeout is None else min(timeout, 120.0)
         prefers_explicit_route = (
             (clean_model in MODELS and not clean_model.startswith("qwen"))
             or ("/" in clean_model and tuple(clean_model.split("/", 1)) in ROUTES)
@@ -1233,7 +1275,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                         local_model,
                         messages,
                         temperature=temperature,
-                        timeout_seconds=min(timeout, 6.0),
+                        timeout_seconds=local_timeout,
                         request_payload=payload,
                         application=app,
                         function=func,
@@ -1257,7 +1299,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                             qwen_fallback,
                             messages,
                             temperature=temperature,
-                            timeout_seconds=min(timeout, 6.0),
+                            timeout_seconds=local_timeout,
                         )
                     except Exception as exc:
                         last_error = exc

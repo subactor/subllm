@@ -1,0 +1,85 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-228",
+  "summary": "SUB-03 System One: request timeout, keep_alive and warmup for cold local models",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-228/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/decisions.py",
+    "src/subllm/proxy.py",
+    "tests/test_decisions.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "0de4aa123891902181f88d85c3e5bf5c94cb7304",
+    "targetBranch": "main",
+    "outcome": "The local System One attempt in /v1/decide uses the request timeout (capped at 120 s; 6 s when none is given) instead of a fixed 6 s; keep_alive from the payload (0-300 s or '45s'/'5m') reaches native /v1/systemone and the Ollama chat path, invalid values give 400; POST /v1/decide/warmup loads the local decision model and returns its load time.",
+    "nonGoals": [
+      "No change to remote fallback rules (SUB-02).",
+      "tests/test_proxy.py is reserved by ticket-227; proxy behaviour is tested from tests/test_decisions.py."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 3,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "parse_keep_alive and warmup in decisions.py; proxy derives the local attempt timeout from the request and exposes /v1/decide/warmup.",
+      "components": [
+        {
+          "name": "system-one",
+          "paths": [
+            "src/subllm/decisions.py",
+            "src/subllm/proxy.py",
+            "tests/test_decisions.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "POST /v1/decide/warmup; keep_alive request field"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_decisions.py tests/test_proxy.py"
+        ],
+        "evidence": "all pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}

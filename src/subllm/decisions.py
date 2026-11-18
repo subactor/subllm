@@ -13,6 +13,7 @@ import ipaddress
 import json
 import math
 import os
+import re
 import time
 import uuid
 from collections.abc import Mapping
@@ -230,6 +231,41 @@ def decide(state, questions, *, model=None, base_url=None, timeout_seconds=120.0
                        status="error" if error else "success",
                        diagnostic_code="SUBLLM-PROVIDER-UNAVAILABLE" if error else None,
                        duration_ms=duration_ms, usage=response.usage if response else {})
+
+
+_KEEP_ALIVE_RE = re.compile(r"^(\d{1,4})([sm])$")
+MAX_LOCAL_DECISION_TIMEOUT = 120.0
+
+
+def parse_keep_alive(value, default=90):
+    """SUB-03: bounded keep-alive seconds from an int (0-300) or a duration string like "45s"/"5m"."""
+    if value is None:
+        return default
+    if type(value) is int and 0 <= value <= 300:
+        return value
+    match = _KEEP_ALIVE_RE.match(value.strip()) if isinstance(value, str) else None
+    if match:
+        seconds = int(match.group(1)) * (60 if match.group(2) == "m" else 1)
+        if seconds <= 300:
+            return seconds
+    raise ValueError("keep_alive must be 0-300 seconds or a duration such as '90s' or '5m'")
+
+
+def warmup(model=None, *, base_url=None, keep_alive=300, timeout_seconds=MAX_LOCAL_DECISION_TIMEOUT):
+    """SUB-03: load a local decision model into memory and report how long loading took."""
+    model = resolve_decision_model(model)
+    url = _local_url(base_url or os.environ.get("SUBLLM_DECISION_BASE_URL") or "http://127.0.0.1:11434")
+    if (type(timeout_seconds) not in (int, float) or not math.isfinite(timeout_seconds)
+            or not 0 < timeout_seconds <= 300):
+        raise ValueError("Invalid bounded warmup timeout")
+    keep_alive = parse_keep_alive(keep_alive)
+    started = time.monotonic()
+    body = json.dumps({"model": model, "prompt": "", "stream": False, "keep_alive": keep_alive}).encode("utf-8")
+    data = _post(url.rsplit("/v1/systemone", 1)[0] + "/api/generate", body, timeout_seconds)
+    load_ns = data.get("load_duration") if isinstance(data, dict) else None
+    return {"model": model, "provider": "ollama", "keep_alive": keep_alive,
+            "load_duration_ms": round(load_ns / 1e6) if isinstance(load_ns, (int, float)) else None,
+            "duration_ms": round((time.monotonic() - started) * 1000)}
 
 
 def decide_legacy(payload, *, application="subllm", function="decision-routing", **kwargs):
