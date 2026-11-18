@@ -74,7 +74,7 @@ PARAMETERS = {
         "timeout": [0.1, 600],
     },
     "stt": {
-        "engine": ["faster-whisper", "openai"],
+        "engine": ["faster-whisper", "vosk", "openai"],
         "language": "string",
         "device": ["auto", "cpu", "cuda"],
         "compute_type": "string",
