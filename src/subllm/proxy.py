@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import datetime
-import hmac
 import json
 import math
 import os
@@ -20,7 +19,7 @@ from threading import Lock
 from typing import Any
 from urllib import request as urllib_request
 from urllib.error import HTTPError, URLError
-from urllib.parse import urlparse, urlsplit
+from urllib.parse import urlparse
 from urllib.request import Request, urlopen
 
 from . import adaptive
@@ -34,6 +33,26 @@ from .openrouter_routing import apply_parameters
 from .policy import MODELS, PROVIDERS, ROUTES
 from .policy_config import load_policy_config, resolve_attempt_timeout
 from .provider_order import routing_provider_order
+from .proxy_decide import SYSTEM_ONE_REQUEST_SCHEMA as SYSTEM_ONE_REQUEST_SCHEMA
+from .proxy_decide import SYSTEM_ONE_RESPONSE_SCHEMA as SYSTEM_ONE_RESPONSE_SCHEMA
+from .proxy_decide import _build_ollama_d1_questions as _build_ollama_d1_questions
+from .proxy_decide import _build_system_one_messages as _build_system_one_messages
+from .proxy_decide import _extract_json_object as _extract_json_object
+from .proxy_decide import _finite_probability as _finite_probability
+from .proxy_decide import _model_family as _model_family
+from .proxy_decide import _normalize_ollama_d1_response as _normalize_ollama_d1_response
+from .proxy_decide import _normalize_question_options as _normalize_question_options
+from .proxy_decide import _normalize_system_one_probabilities as _normalize_system_one_probabilities
+from .proxy_forward import FORWARD_USAGE_PATHS as FORWARD_USAGE_PATHS
+from .proxy_forward import UPSTREAM_FORWARD_TIMEOUT_BOUNDS as UPSTREAM_FORWARD_TIMEOUT_BOUNDS
+from .proxy_forward import UPSTREAM_FORWARD_TIMEOUT_DEFAULT as UPSTREAM_FORWARD_TIMEOUT_DEFAULT
+from .proxy_forward import forward_usage_counts as forward_usage_counts
+from .proxy_forward import upstream_forward_timeout as upstream_forward_timeout
+from .proxy_security import PROXY_ALLOWED_ORIGINS_ENV as PROXY_ALLOWED_ORIGINS_ENV
+from .proxy_security import PROXY_BEARER_ENV as PROXY_BEARER_ENV
+from .proxy_security import ProxyUnauthorizedError as ProxyUnauthorizedError
+from .proxy_security import proxy_origin_allowed as proxy_origin_allowed
+from .proxy_security import require_route_bearer as require_route_bearer
 from .quality_schema import declared_schema_gate
 from .stream_transport import ACTIVE_STREAM, stream_error, supported_routes
 from .types import ResolvedRoute
@@ -41,98 +60,11 @@ from .usage import record_attempt
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
-UPSTREAM_FORWARD_TIMEOUT_DEFAULT = 120.0
-UPSTREAM_FORWARD_TIMEOUT_BOUNDS = (1.0, 900.0)
 
 
-FORWARD_USAGE_PATHS = frozenset({"/api/chat", "/api/generate", "/api/embed", "/v1/chat/completions",
-                                 "/v1/completions", "/v1/embeddings"})
-
-
-def forward_usage_counts(path: str, body: bytes) -> dict[str, int]:
-    """Token counts from a raw Ollama forward response; never returns or keeps content (SUB-04).
-
-    Ollama native responses carry ``prompt_eval_count``/``eval_count`` in the JSON body or in the
-    final ``done`` line of an NDJSON stream; OpenAI-compatible ones carry ``usage`` in the JSON body
-    or in an SSE ``data:`` chunk.
-    """
-    try:
-        text = body.decode("utf-8")
-    except (UnicodeDecodeError, AttributeError):
-        return {}
-    documents: list[Any] = []
-    for line in reversed(text.splitlines() or [text]):
-        line = line.strip()
-        if line.startswith("data:"):
-            line = line[5:].strip()
-        if not line or line == "[DONE]":
-            continue
-        try:
-            documents.append(json.loads(line))
-        except ValueError:
-            continue
-        if len(documents) >= 4:
-            break
-    for doc in documents:
-        if not isinstance(doc, dict):
-            continue
-        if path.startswith("/api/") and ("prompt_eval_count" in doc or "eval_count" in doc):
-            return {key: value for key, value in (("prompt_tokens", doc.get("prompt_eval_count")),
-                                                  ("completion_tokens", doc.get("eval_count")))
-                    if type(value) is int and value >= 0}
-        usage_doc = doc.get("usage")
-        if isinstance(usage_doc, dict):
-            return {key: usage_doc[key] for key in ("prompt_tokens", "completion_tokens")
-                    if type(usage_doc.get(key)) is int and usage_doc[key] >= 0}
-    return {}
-
-
-def upstream_forward_timeout(payload: Any) -> float:
-    """Raw Ollama forward timeout from the request ``timeout`` field, clamped to 1-900 s (SUB-05)."""
-    value = payload.get("timeout") if isinstance(payload, dict) else None
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
-        return UPSTREAM_FORWARD_TIMEOUT_DEFAULT
-    low, high = UPSTREAM_FORWARD_TIMEOUT_BOUNDS
-    return float(min(max(value, low), high))
 DEFAULT_PROXY_PORT = 11435
-# Browser access control (SUB-01): only loopback pages and explicitly listed origins may read
-# responses; routed (possibly paid/cloud) completions can additionally require a bearer token.
-PROXY_ALLOWED_ORIGINS_ENV = "SUBLLM_PROXY_ALLOWED_ORIGINS"
-PROXY_BEARER_ENV = "SUBLLM_PROXY_TOKEN"
-_LOOPBACK_ORIGIN_HOSTS = {"127.0.0.1", "localhost", "::1"}
 
 
-class ProxyUnauthorizedError(SubLLMError):
-    """A routed completion was requested without the configured proxy bearer token."""
-
-
-def require_route_bearer(headers: Any) -> None:
-    """Raise ProxyUnauthorizedError when SUBLLM_PROXY_TOKEN is set and the request lacks it."""
-    expected = os.environ.get(PROXY_BEARER_ENV, "")
-    if not expected:
-        return
-    supplied = (headers.get("Authorization") or "") if headers is not None else ""
-    if not hmac.compare_digest(supplied.encode("utf-8"), f"Bearer {expected}".encode()):
-        raise ProxyUnauthorizedError("a valid proxy bearer token is required for routed models")
-
-
-def _normalized_origin(origin: str) -> str:
-    return origin.strip().rstrip("/").lower()
-
-
-def proxy_origin_allowed(origin: str) -> bool:
-    """Loopback browser origins and those listed in SUBLLM_PROXY_ALLOWED_ORIGINS (comma separated)."""
-    try:
-        parts = urlsplit(origin.strip())
-        host = parts.hostname
-    except ValueError:
-        return False
-    if parts.scheme in {"http", "https"} and host in _LOOPBACK_ORIGIN_HOSTS:
-        return True
-    listed = {_normalized_origin(item) for item in os.environ.get(PROXY_ALLOWED_ORIGINS_ENV, "").split(",")}
-    return bool(origin.strip()) and _normalized_origin(origin) in listed - {""}
-SYSTEM_ONE_REQUEST_SCHEMA = "wellmanifest.system-one-request/v1"
-SYSTEM_ONE_RESPONSE_SCHEMA = "wellmanifest.system-one-response/v1"
 _CATALOG_READER_LOCK = Lock()
 SYSTEM_ONE_LOCAL_OLLAMA_MODELS: tuple[str, ...] = (
     "qwen3.5:0.8b",
@@ -224,168 +156,6 @@ def _select_local_system_one_ollama_model(
     return installed_names[0]
 
 
-def _normalize_question_options(raw_options: Any, q_type: str) -> tuple[list[str], dict[str, str]]:
-    """Extract ordered option keys and optional human descriptions from a System One question."""
-    if isinstance(raw_options, Mapping):
-        keys = [str(k) for k in raw_options if str(k)]
-        descriptions = {str(k): str(v) for k, v in raw_options.items() if str(k)}
-        return keys, descriptions
-    if isinstance(raw_options, Sequence) and not isinstance(raw_options, (str, bytes)):
-        keys = [str(x) for x in raw_options if str(x)]
-        return keys, {}
-    if q_type == "noul":
-        return ["true", "false"], {}
-    if q_type == "score":
-        return ["1", "2", "3"], {}
-    return [], {}
-
-
-def _extract_json_object(raw_text: str) -> dict[str, Any]:
-    """Parse JSON object from model output, tolerating markdown fences."""
-    cleaned = raw_text.strip()
-    if cleaned.startswith("```"):
-        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
-        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
-    try:
-        parsed = json.loads(cleaned)
-        if isinstance(parsed, dict):
-            return parsed
-    except Exception:
-        pass
-    start = cleaned.find("{")
-    end = cleaned.rfind("}")
-    if start != -1 and end > start:
-        try:
-            parsed = json.loads(cleaned[start : end + 1])
-            if isinstance(parsed, dict):
-                return parsed
-        except Exception:
-            pass
-    return {}
-
-
-def _normalize_system_one_probabilities(
-    questions: Sequence[Mapping[str, Any]],
-    parsed_output: Mapping[str, Any],
-) -> tuple[dict[str, dict[str, float]], dict[str, Any]]:
-    """Normalize raw model probabilities or chosen answers into valid probability distributions."""
-    raw_probs = parsed_output.get("probabilities")
-    raw_probs_map = raw_probs if isinstance(raw_probs, Mapping) else {}
-    raw_answers = parsed_output.get("answers")
-    raw_answers_map = raw_answers if isinstance(raw_answers, Mapping) else {}
-
-    probabilities: dict[str, dict[str, float]] = {}
-    answers: dict[str, Any] = {}
-
-    for q in questions:
-        q_id = str(q.get("id") or "").strip()
-        if not q_id:
-            continue
-        q_type = str(q.get("type") or "choice").strip().lower()
-        option_keys, _ = _normalize_question_options(q.get("options"), q_type)
-        if not option_keys:
-            continue
-
-        dist: dict[str, float] = {}
-        q_prob_candidate = raw_probs_map.get(q_id)
-        if not isinstance(q_prob_candidate, Mapping) and isinstance(parsed_output.get(q_id), Mapping):
-            q_prob_candidate = parsed_output.get(q_id)
-
-        if isinstance(q_prob_candidate, Mapping):
-            for opt in option_keys:
-                val = q_prob_candidate.get(opt)
-                if val is None and opt.lower() in ("true", "false"):
-                    val = q_prob_candidate.get(opt.lower() == "true")
-                try:
-                    num = float(val) if val is not None and not isinstance(val, bool) else 0.0
-                except (TypeError, ValueError):
-                    num = 0.0
-                dist[opt] = max(0.0, num) if math.isfinite(num) else 0.0
-
-        total = sum(dist.values())
-        if total > 0:
-            dist = {opt: round(v / total, 6) for opt, v in dist.items()}
-        else:
-            chosen = raw_answers_map.get(q_id)
-            if chosen is None and not isinstance(parsed_output.get(q_id), Mapping):
-                chosen = parsed_output.get(q_id)
-            chosen_str = None
-            if isinstance(chosen, bool):
-                chosen_str = "true" if chosen else "false"
-            elif chosen is not None:
-                chosen_str = str(chosen).strip()
-
-            matched_opt = None
-            if chosen_str:
-                for opt in option_keys:
-                    if opt == chosen_str or opt.lower() == chosen_str.lower():
-                        matched_opt = opt
-                        break
-
-            n = len(option_keys)
-            if matched_opt is not None:
-                if n == 1:
-                    dist = {matched_opt: 1.0}
-                else:
-                    hi = 0.84
-                    lo = round((1.0 - hi) / (n - 1), 6)
-                    dist = {opt: (hi if opt == matched_opt else lo) for opt in option_keys}
-            else:
-                uni = round(1.0 / n, 6)
-                dist = {opt: uni for opt in option_keys}
-
-        probabilities[q_id] = dist
-        best_opt = max(dist, key=lambda k: dist[k])
-        if q_type == "noul":
-            answers[q_id] = float(dist.get("true", 0.0)) >= float(dist.get("false", 0.0))
-        elif q_type == "score":
-            try:
-                answers[q_id] = round(sum(float(k) * float(v) for k, v in dist.items()), 3)
-            except ValueError:
-                answers[q_id] = best_opt
-        else:
-            answers[q_id] = best_opt
-
-    return probabilities, answers
-
-
-def _build_system_one_messages(payload: Mapping[str, Any]) -> list[dict[str, str]]:
-    """Build compact JSON-constrained messages for a System One decision request."""
-    state = payload.get("state") if isinstance(payload.get("state"), Mapping) else {}
-    raw_questions = payload.get("questions") if isinstance(payload.get("questions"), Sequence) else []
-    compact_questions: list[dict[str, Any]] = []
-    for q in raw_questions:
-        if not isinstance(q, Mapping):
-            continue
-        q_id = str(q.get("id") or "").strip()
-        if not q_id:
-            continue
-        q_type = str(q.get("type") or "choice").strip().lower()
-        opt_keys, opt_descs = _normalize_question_options(q.get("options"), q_type)
-        q_entry: dict[str, Any] = {
-            "id": q_id,
-            "type": q_type,
-            "question": str(q.get("question") or ""),
-            "options": opt_descs if opt_descs else opt_keys,
-        }
-        compact_questions.append(q_entry)
-
-    system_prompt = (
-        "You are a Jev / System One typed decision engine (`choice`, `score`, `noul`). "
-        "Respond with ONLY a valid JSON object containing key \"answers\" mapping each question id "
-        "to its single best option string from that question's options, and optional key \"probabilities\" "
-        "mapping each question id to a probability distribution over its options."
-    )
-    user_payload = {
-        "state": dict(state),
-        "questions": compact_questions,
-    }
-    return [
-        {"role": "system", "content": system_prompt},
-        {"role": "user", "content": json.dumps(user_payload, ensure_ascii=False)},
-    ]
-
-
 def _complete_ollama_system_one(
     upstream_url: str,
     ollama_model: str,
@@ -450,116 +220,6 @@ def _complete_ollama_system_one(
     )
 
 
-def _build_ollama_d1_questions(payload: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    """Translate SubLLM's typed question list to Ollama's native System One format."""
-    raw_questions = payload.get("questions")
-    if not isinstance(raw_questions, Sequence) or isinstance(raw_questions, (str, bytes)):
-        raise ValueError("typed d1 request requires a questions array")
-
-    converted: dict[str, dict[str, Any]] = {}
-    for question in raw_questions:
-        if not isinstance(question, Mapping):
-            continue
-        qid = str(question.get("id") or "").strip()
-        if not qid:
-            continue
-        qtype = str(question.get("type") or "choice").strip().lower()
-        options, descriptions = _normalize_question_options(question.get("options"), qtype)
-        instructions = str(question.get("question") or question.get("instructions") or qid).strip()
-        if not instructions:
-            instructions = qid
-
-        if qtype == "choice":
-            if not options:
-                raise ValueError(f"d1 choice question {qid!r} has no options")
-            criteria: Any = {option: descriptions.get(option) or option for option in options}
-        elif qtype == "noul":
-            criteria = {
-                "true": descriptions.get("true") or "The statement is true.",
-                "false": descriptions.get("false") or "The statement is false.",
-            }
-        elif qtype == "score":
-            if not 2 <= len(options) <= 10:
-                raise ValueError(f"d1 score question {qid!r} must have between 2 and 10 levels")
-            criteria = [descriptions.get(option) or option for option in options]
-        else:
-            raise ValueError(f"unsupported d1 System One question type: {qtype}")
-
-        if qid in converted:
-            raise ValueError(f"duplicate d1 System One question id: {qid}")
-        converted[qid] = {"type": qtype, "instructions": instructions, "criteria": criteria}
-
-    if not converted:
-        raise ValueError("typed d1 request requires at least one valid question")
-    return converted
-
-
-def _normalize_ollama_d1_response(
-    data: Mapping[str, Any],
-    payload: Mapping[str, Any],
-) -> dict[str, Any]:
-    """Convert Ollama's typed answers and positional score levels to SubLLM's common shape."""
-    raw_answers = data.get("answers")
-    if not isinstance(raw_answers, Mapping):
-        raise ValueError("malformed d1 response: answers object is missing")
-
-    normalized_answers: dict[str, Any] = {}
-    normalized_probabilities: dict[str, dict[str, float]] = {}
-    for question in payload.get("questions", []):
-        if not isinstance(question, Mapping):
-            continue
-        qid = str(question.get("id") or "").strip()
-        if not qid:
-            continue
-        qtype = str(question.get("type") or "choice").strip().lower()
-        options, _ = _normalize_question_options(question.get("options"), qtype)
-        answer = raw_answers.get(qid)
-        if not isinstance(answer, Mapping):
-            raise ValueError(f"malformed d1 response: answer for {qid!r} is missing")
-
-        raw_probs = answer.get("probabilities")
-        if qtype == "choice":
-            chosen = answer.get("choice")
-            if not isinstance(chosen, str) or chosen not in options or not isinstance(raw_probs, Mapping):
-                raise ValueError(f"malformed d1 response: choice answer for {qid!r} is invalid")
-            dist = {option: _finite_probability(raw_probs.get(option), qid) for option in options}
-            if sum(dist.values()) <= 0:
-                raise ValueError(f"malformed d1 response: choice probabilities for {qid!r} are empty")
-            normalized_answers[qid] = chosen
-            normalized_probabilities[qid] = dist
-        elif qtype == "noul":
-            probability = _finite_probability(answer.get("noul"), qid)
-            normalized_answers[qid] = probability >= 0.5
-            normalized_probabilities[qid] = {"true": probability, "false": round(1.0 - probability, 6)}
-        elif qtype == "score":
-            if not isinstance(raw_probs, Mapping) or not 2 <= len(options) <= 10:
-                raise ValueError(f"malformed d1 response: score probabilities for {qid!r} are invalid")
-            dist = {
-                option: _finite_probability(raw_probs.get(str(index)), qid)
-                for index, option in enumerate(options)
-            }
-            if sum(dist.values()) <= 0:
-                raise ValueError(f"malformed d1 response: score probabilities for {qid!r} are empty")
-            normalized_answers[qid] = answer.get("score")
-            normalized_probabilities[qid] = dist
-        else:
-            raise ValueError(f"unsupported d1 System One question type: {qtype}")
-
-    return {"answers": normalized_answers, "probabilities": normalized_probabilities}
-
-
-def _finite_probability(value: Any, question_id: str) -> float:
-    if isinstance(value, bool):
-        raise ValueError(f"malformed d1 response: probability for {question_id!r} is not numeric")
-    try:
-        probability = float(value)
-    except (TypeError, ValueError) as exc:
-        raise ValueError(f"malformed d1 response: probability for {question_id!r} is not numeric") from exc
-    if not math.isfinite(probability) or probability < 0.0 or probability > 1.0:
-        raise ValueError(f"malformed d1 response: probability for {question_id!r} is outside [0, 1]")
-    return probability
-
-
 def _complete_ollama_d1_system_one(
     upstream_url: str,
     ollama_model: str,
@@ -591,27 +251,6 @@ def _complete_ollama_d1_system_one(
         model=parsed["model"],
         usage=parsed["usage"],
     )
-
-
-def _model_family(model_id: str) -> str:
-    lower = model_id.lower()
-    if "glm" in lower:
-        return "glm"
-    if "qwen" in lower:
-        return "qwen"
-    if "claude" in lower:
-        return "claude"
-    if "gpt" in lower or "sol" in lower or "terra" in lower or "luna" in lower:
-        return "gpt"
-    if "gemini" in lower:
-        return "gemini"
-    if "deepseek" in lower:
-        return "deepseek"
-    if "grok" in lower:
-        return "grok"
-    if "llama" in lower:
-        return "llama"
-    return "custom"
 
 
 UPSTREAM_LIVENESS_TTL_ENV = "SUBLLM_UPSTREAM_LIVENESS_TTL"
