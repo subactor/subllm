@@ -523,7 +523,11 @@ def _complete_ollama_d1_system_one(
         native_payload["state"] = {"messages": _build_system_one_messages(payload)}
     from .decisions import parse_keep_alive
 
-    keep_alive = {"keep_alive": parse_keep_alive(payload["keep_alive"])} if payload.get("keep_alive") is not None else {}
+    keep_alive = (
+        {"keep_alive": parse_keep_alive(payload["keep_alive"])}
+        if payload.get("keep_alive") is not None
+        else {}
+    )
     parsed = decide_legacy(native_payload, base_url=upstream_url, timeout_seconds=timeout_seconds,
                            application=application, function=function, request_id=request_id, **keep_alive)
     return CompletionResponse(
