@@ -1163,6 +1163,10 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self._error(400, "INVALID_REQUEST", "offline must be a boolean")
             return
         offline = payload.get("offline", False)
+        if "allow_remote_fallback" in payload and type(payload["allow_remote_fallback"]) is not bool:
+            self._error(400, "INVALID_REQUEST", "allow_remote_fallback must be a boolean")
+            return
+        allow_remote_fallback = payload.get("allow_remote_fallback", False)
 
         raw_model = str(payload.get("model") or "d1:3b")
         clean_model, ticket = _extract_ticket(raw_model, self.headers, payload)
@@ -1182,8 +1186,11 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         except (TypeError, ValueError):
             temperature = 0.2
 
-        app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application") or "heyasa"
-        func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function") or "command"
+        # SUB-02: a request without application headers is not attributed to heyasa/command.
+        declared_app = self.headers.get("X-Subactor-Application") or self.headers.get("X-Application")
+        declared_func = self.headers.get("X-Subactor-Function") or self.headers.get("X-Function")
+        app = declared_app or "subactor-proxy"
+        func = declared_func or "decide"
         req_id = f"sysone-{uuid.uuid4().hex[:12]}"
         if offline:
             from .decisions import DecisionError, decide_legacy
@@ -1256,11 +1263,30 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                         last_error = exc
 
         if response is None:
-            fallback_payload = dict(payload)
-            fallback_payload.setdefault("response_format", {"type": "json_object"})
             is_known_target = clean_model in MODELS or (
                 "/" in clean_model and tuple(clean_model.split("/", 1)) in ROUTES
             )
+            # SUB-02: decision state leaves the host only for an explicitly requested route
+            # or with allow_remote_fallback: true and a declared application route.
+            if not prefers_explicit_route:
+                refusal = None
+                if not allow_remote_fallback:
+                    refusal = "remote_fallback_not_allowed"
+                elif not is_known_target and not (declared_app and declared_func):
+                    refusal = "remote_fallback_route_unspecified"
+                if refusal is not None:
+                    reason = type(last_error).__name__ if last_error is not None else (
+                        "local_model_unavailable" if is_upstream_ollama_alive(effective_upstream)
+                        else "ollama_unavailable")
+                    self._json(503, {"error": {
+                        "code": "LOCAL_DECISION_UNAVAILABLE",
+                        "message": "local decision inference failed and remote fallback was not used",
+                        "reason": reason, "remote_fallback": refusal, "provider": None,
+                        "requested_model": clean_model, "id": req_id,
+                    }}, extra_headers={"X-Subactor-Remote-Fallback": "refused"})
+                    return
+            fallback_payload = dict(payload)
+            fallback_payload.setdefault("response_format", {"type": "json_object"})
             fallback_model = clean_model if is_known_target else f"{app}/{func}"
             try:
                 response = self._execute_model_or_route(
