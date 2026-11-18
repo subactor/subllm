@@ -32,7 +32,7 @@
   "integrationTicket": null,
   "delivery": {
     "targetBranch": "main",
-    "acceptedBaseSha": "02cea9c572340e216fbb0e7e362f4013063dfbce",
+    "acceptedBaseSha": "b4d7ef45423ee49caffaf2ea1e9b7c45a766fa9a",
     "outcome": "Enforce central execution_mode (local_only), monotonic request deadlines, and strict System One/forward JSON/telemetry contracts across disjoint runtime modules.",
     "complexity": "L",
     "estimatedMinutes": 75,

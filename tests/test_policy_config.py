@@ -695,6 +695,12 @@ def test_execution_mode_local_only_blocks_cloud_and_cli_with_zero_remote_calls(m
     assert is_local_only_route(SimpleNamespace(provider="ollama", transport="openai-compatible", api_base="http://127.0.0.1:11434/v1"))
     assert not is_local_only_route(SimpleNamespace(provider="openrouter", transport="openai-compatible", api_base="http://127.0.0.1:11434/v1"))
     assert not is_local_only_route(SimpleNamespace(provider="custom-lan", transport="openai-compatible", api_base="https://192.168.1.50/v1"))
+    local_routes = client_routes._select_local_only_routes(
+        "repair-agent", "repair-plan", model=None,
+        environ={**env, "OLLAMA_API_KEY": "id.secret"},
+        credentials=None, pre_routes=None,
+    )
+    assert local_routes and all(r.api_key == "" for r in local_routes)
 
     attempts = []
 
