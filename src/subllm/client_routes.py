@@ -293,12 +293,10 @@ def _select_local_only_routes(
             f"local_only execution_mode blocked non-local routes for {application}/{function}",
             diagnostic_code="SUBLLM-LOCAL-ONLY-BLOCKED",
         )
-    raw_env = os.environ if environ is None else {**os.environ, **environ}
-    explicit = credentials or {}
     return tuple(
         ResolvedRoute(
             **r.public_dict(),
-            api_key=explicit.get(r.provider, raw_env.get(r.api_key_env, "")) if r.api_key_env else "",
+            api_key="",
         )
         for r in local_cfg
     )
