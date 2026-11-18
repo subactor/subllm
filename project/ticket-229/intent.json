@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-229",
+  "summary": "SUB-05 forward to Ollama uses the request timeout instead of a fixed 120 s",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-229/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_forward_timeout.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "c7215112cdede3173cac5584816d0fc7920e4a04",
+    "targetBranch": "main",
+    "outcome": "Raw forwards to Ollama (_forward_upstream) use the request `timeout` field clamped to 1-900 s (120 s when absent or invalid) instead of a fixed 120 s; an upstream timeout returns 504 UPSTREAM_TIMEOUT and a refused connection still returns 502 UPSTREAM_UNAVAILABLE.",
+    "nonGoals": [
+      "No change to routed (cloud) timeouts or the /v1/decide local attempt (SUB-03).",
+      "No streaming changes; usage logging is SUB-04."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 40,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "upstream_forward_timeout(payload) derives the bound; _forward_upstream maps TimeoutError to 504.",
+      "components": [
+        {
+          "name": "proxy-upstream",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_forward_timeout.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "request timeout honoured for raw Ollama forwards; 504 UPSTREAM_TIMEOUT"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_forward_timeout.py tests/test_proxy.py"
+        ],
+        "evidence": "all pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}
