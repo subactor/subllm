@@ -332,7 +332,156 @@ def _normalize_ollama_d1_response(
             raise ValueError(f"unsupported d1 System One question type: {qtype}")
         normalized_answers[qid], normalized_probabilities[qid] = reader(qid, options, answer)
 
-    return {"answers": normalized_answers, "probabilities": normalized_probabilities}
+    return {
+        "answers": normalized_answers,
+        "probabilities": normalized_probabilities,
+        "decision_source": "native_d1",
+        "probability_kind": "native_calibrated",
+    }
+
+
+def _strict_pairs(pairs: list[tuple[str, Any]]) -> dict[str, Any]:
+    result: dict[str, Any] = {}
+    for key, value in pairs:
+        if key in result:
+            raise StrictDecisionError(f"duplicate JSON key {key!r} in legacy decision response")
+        result[key] = value
+    return result
+
+
+class StrictDecisionError(ValueError):
+    """Raised when a legacy System One output violates strict contract/calibration rules."""
+
+
+def _parse_strict_decision_json(raw_text: str) -> dict[str, Any]:
+    """Parse strictly valid top-level JSON object without silently repairing invalid roots."""
+    if not isinstance(raw_text, str) or not raw_text.strip():
+        raise StrictDecisionError("legacy decision response is empty")
+    cleaned = raw_text.strip()
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned, flags=re.IGNORECASE)
+        cleaned = re.sub(r"\s*```$", "", cleaned).strip()
+    try:
+        parsed = json.loads(
+            cleaned,
+            object_pairs_hook=_strict_pairs,
+            parse_constant=lambda c: (_ for _ in ()).throw(
+                StrictDecisionError(f"nonfinite constant {c!r} in legacy decision response")
+            ),
+        )
+    except StrictDecisionError:
+        raise
+    except (TypeError, ValueError) as exc:
+        raise StrictDecisionError("legacy decision response is not valid JSON") from exc
+    if not isinstance(parsed, dict):
+        raise StrictDecisionError("legacy decision response must be a JSON object")
+    return parsed
+
+
+def _strict_explicit_dist(
+    q_id: str,
+    option_keys: Sequence[str],
+    raw_probs_map: Mapping[str, Any],
+    parsed_output: Mapping[str, Any],
+) -> dict[str, float] | None:
+    candidate = raw_probs_map.get(q_id)
+    if candidate is None and isinstance(parsed_output.get(q_id), Mapping):
+        candidate = parsed_output.get(q_id)
+    if candidate is None:
+        return None
+    if not isinstance(candidate, Mapping):
+        raise StrictDecisionError(f"probabilities for {q_id!r} must be a mapping")
+    dist: dict[str, float] = {}
+    for opt in option_keys:
+        val = candidate.get(opt)
+        if val is None and opt.lower() in ("true", "false"):
+            val = candidate.get(opt.lower() == "true")
+        if val is None or isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+            raise StrictDecisionError(f"invalid probability for {q_id!r}/{opt!r}")
+        if val < 0:
+            raise StrictDecisionError(f"negative probability for {q_id!r}/{opt!r}")
+        dist[opt] = float(val)
+    total = sum(dist.values())
+    if total <= 0:
+        raise StrictDecisionError(f"probability distribution for {q_id!r} has zero mass")
+    return {opt: round(v / total, 6) for opt, v in dist.items()}
+
+
+def _strict_question_result(
+    q_id: str,
+    q_type: str,
+    option_keys: Sequence[str],
+    raw_probs_map: Mapping[str, Any],
+    raw_answers_map: Mapping[str, Any],
+    parsed_output: Mapping[str, Any],
+) -> tuple[Any, dict[str, float] | None, str]:
+    dist = _strict_explicit_dist(q_id, option_keys, raw_probs_map, parsed_output)
+    if dist is not None:
+        ordered = sorted(dist.items(), key=lambda item: item[1], reverse=True)
+        if len(ordered) >= 2 and abs(ordered[0][1] - ordered[1][1]) <= 1e-9:
+            raise StrictDecisionError(f"tied probabilities for {q_id!r} require abstention")
+        return _summarize_answer(q_type, dist), dist, "explicit_distribution"
+    matched = _chosen_option(q_id, option_keys, raw_answers_map, parsed_output)
+    if matched is None:
+        raise StrictDecisionError(f"missing or unknown answer for {q_id!r}")
+    if q_type == "noul":
+        return matched == "true", None, "uncalibrated_label"
+    if q_type == "score":
+        try:
+            return round(float(matched), 3), None, "uncalibrated_label"
+        except ValueError:
+            return matched, None, "uncalibrated_label"
+    return matched, None, "uncalibrated_label"
+
+
+def normalize_system_one_decision(
+    questions: Sequence[Mapping[str, Any]],
+    raw_text: str,
+) -> dict[str, Any]:
+    """Strictly parse and validate legacy System One output without fabricating probabilities."""
+    parsed = _parse_strict_decision_json(raw_text)
+    raw_probs = parsed.get("probabilities")
+    if raw_probs is not None and not isinstance(raw_probs, Mapping):
+        raise StrictDecisionError("legacy probabilities field must be an object")
+    raw_answers = parsed.get("answers")
+    if raw_answers is not None and not isinstance(raw_answers, Mapping):
+        raise StrictDecisionError("legacy answers field must be an object")
+    probs_map = raw_probs if isinstance(raw_probs, Mapping) else {}
+    answers_map = raw_answers if isinstance(raw_answers, Mapping) else {}
+
+    answers: dict[str, Any] = {}
+    probabilities: dict[str, dict[str, float] | None] = {}
+    probability_kinds: dict[str, str] = {}
+    for question in questions:
+        identity = _question_identity(question)
+        if identity is None:
+            raise StrictDecisionError("decision request contains invalid question")
+        q_id, q_type = identity
+        option_keys, _ = _normalize_question_options(question.get("options"), q_type)
+        if not option_keys:
+            raise StrictDecisionError(f"question {q_id!r} has no options")
+        ans, dist, pkind = _strict_question_result(
+            q_id, q_type, option_keys, probs_map, answers_map, parsed,
+        )
+        answers[q_id] = ans
+        probabilities[q_id] = dist
+        probability_kinds[q_id] = pkind
+    if not answers:
+        raise StrictDecisionError("decision request has no questions")
+    kinds = probability_kinds.values()
+    if all(k == "explicit_distribution" for k in kinds):
+        overall_kind = "explicit_distribution"
+    elif all(k == "uncalibrated_label" for k in kinds):
+        overall_kind = "uncalibrated_label"
+    else:
+        overall_kind = "mixed"
+    return {
+        "answers": answers,
+        "probabilities": probabilities,
+        "decision_source": "legacy_json",
+        "probability_kind": overall_kind,
+        "question_probability_kinds": probability_kinds,
+    }
 
 
 def _model_family(model_id: str) -> str:

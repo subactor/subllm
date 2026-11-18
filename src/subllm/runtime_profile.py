@@ -507,8 +507,11 @@ class GatewayClient:
 
 
 def capabilities():
+    from .policy_config import load_policy_config
+
     return {
         "schema": "subllm.ai-capabilities/v1",
+        "execution_mode": load_policy_config().execution.execution_mode,
         "profile_schema": SCHEMA,
         "roles": {role: {"endpoint": ENDPOINTS[role], "parameters": copy.deepcopy(PARAMETERS[role])} for role in ROLES},
         "autonomy_roles": {
@@ -524,6 +527,15 @@ def capabilities():
 
 
 @contextlib.contextmanager
+def _bind_request_parameters(values):
+    token = _REQUEST_PARAMETERS.set(values)
+    try:
+        yield
+    finally:
+        _REQUEST_PARAMETERS.reset(token)
+
+
+@contextlib.contextmanager
 def request_parameter_scope(payload):
     """Bind validated HTTP sampling controls to canonical SDK invocations."""
     values = {
@@ -532,17 +544,15 @@ def request_parameter_scope(payload):
     values = validate_parameters("llm", values)
     if set(values) & {"top_k", "context_size", "repeat_penalty"}:
         raise ProfileError("Native context/top-k/repetition controls require the Ollama API")
-    token = _REQUEST_PARAMETERS.set(values)
-    try:
+    with _bind_request_parameters(values):
         yield
-    finally:
-        _REQUEST_PARAMETERS.reset(token)
 
 
 def request_parameters_active():
     return bool(_REQUEST_PARAMETERS.get())
 
 
+@contextlib.contextmanager
 def ollama_parameter_scope(options):
     if not isinstance(options, dict):
         raise ProfileError("Ollama options must be a JSON object")
@@ -550,7 +560,15 @@ def ollama_parameter_scope(options):
     values = {aliases.get(name, name): value for name, value in options.items()}
     if set(values) - (set(PARAMETERS["llm"]) - {"protocol", "timeout"}):
         raise ProfileError("Unsupported options for a policy-routed model; use a native Ollama model")
-    return request_parameter_scope(values)
+    from .policy_config import load_policy_config
+
+    if load_policy_config().execution.execution_mode == "local_only":
+        validated = validate_parameters("llm", values)
+        with _bind_request_parameters(validated):
+            yield
+        return
+    with request_parameter_scope(values):
+        yield
 
 
 def apply_request_parameters(route):

@@ -394,7 +394,7 @@ def test_priority_can_be_reversed(tmp_path: Path, monkeypatch: pytest.MonkeyPatc
     route = resolve(
         "doctor-agent",
         "repair-proposal",
-        environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "or-key"},
+        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "or-key"},
     )
     assert route.provider == "openrouter"
     assert route.priority == 10
@@ -415,7 +415,7 @@ def test_role_specific_fallback_survives_default_model_change(
     route = resolve(
         "repair-agent",
         "repair-plan",
-        environ={"ZAI_API_KEY": "id.signature", "OPENROUTER_API_KEY": "or-key"},
+        environ={"ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "or-key"},
     )
     assert route.provider == "openrouter"
     assert route.model == "glm-5.3"
@@ -671,4 +671,55 @@ def test_discovery_rejects_scope_escape_symlinks_and_invalid_operator_policy(tmp
         find_policy_file(environ={}, cwd=project, scope_root=tmp_path / "other")
     with pytest.raises(InvalidPolicyError):
         load_policy_config(environ={"SUBLLM_POLICY_FILE": str(outside)}, cwd=project)
+
+
+def test_execution_mode_local_only_blocks_cloud_and_cli_with_zero_remote_calls(monkeypatch, tmp_path):
+    from types import SimpleNamespace
+
+    from subllm import CompletionError, UnknownRouteError, client_routes, complete
+    from subllm.policy_config import is_local_only_route
+    from subllm.runtime_profile import ProfileError, capabilities, ollama_parameter_scope
+
+    with pytest.raises(InvalidPolicyError, match="execution_mode"):
+        load_policy_config(environ={"SUBLLM_EXECUTION_MODE": "cloud_magic"}, cwd=tmp_path)
+
+    env = {"SUBLLM_EXECUTION_MODE": "local-only", "ZAI_API_KEY": "id.secret", "OPENROUTER_API_KEY": "placeholder"}
+    cfg = load_policy_config(environ=env, cwd=tmp_path)
+    assert cfg.execution.execution_mode == "local_only"
+    monkeypatch.setenv("SUBLLM_EXECUTION_MODE", "local_only")
+    assert capabilities()["execution_mode"] == "local_only"
+
+    with ollama_parameter_scope({"num_ctx": 4096, "top_k": 20, "repeat_penalty": 1.1}):
+        pass
+
+    assert is_local_only_route(SimpleNamespace(provider="ollama", transport="openai-compatible", api_base="http://127.0.0.1:11434/v1"))
+    assert not is_local_only_route(SimpleNamespace(provider="openrouter", transport="openai-compatible", api_base="http://127.0.0.1:11434/v1"))
+    assert not is_local_only_route(SimpleNamespace(provider="custom-lan", transport="openai-compatible", api_base="https://192.168.1.50/v1"))
+
+    attempts = []
+
+    def fail_discovery(*_args, **_kwargs):
+        raise AssertionError("remote discovery ran")
+
+    monkeypatch.setattr(client_routes, "_invoke_route", lambda *a, **kw: attempts.append(1))
+    monkeypatch.setattr(client_routes, "available_routes", fail_discovery)
+
+    with pytest.raises(UnknownRouteError):
+        complete("missing-app", "missing-fn", [{"role": "user", "content": "hi"}], environ=env)
+
+    with pytest.raises(CompletionError) as blocked:
+        complete("platform", "interactive", [{"role": "user", "content": "hi"}], model="grok-4.5", environ=env)
+    assert blocked.value.diagnostic_code == "SUBLLM-LOCAL-ONLY-BLOCKED"
+
+    with pytest.raises(CompletionError) as missing_model:
+        complete(
+            "repair-agent", "repair-plan", [{"role": "user", "content": "hi"}],
+            model="nonexistent:9b", environ=env,
+        )
+    assert missing_model.value.diagnostic_code == "SUBLLM-LOCAL-MODEL-UNAVAILABLE"
+    assert attempts == []
+
+    monkeypatch.delenv("SUBLLM_EXECUTION_MODE", raising=False)
+    with pytest.raises(ProfileError, match="Ollama API"), ollama_parameter_scope({"num_ctx": 4096}):
+        pass
 

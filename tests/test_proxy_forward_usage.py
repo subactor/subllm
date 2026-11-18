@@ -128,3 +128,34 @@ def test_upstream_http_error_is_journaled_as_error(forward):
 ])
 def test_forward_usage_counts(path, body, expected):
     assert proxy.forward_usage_counts(path, body) == expected
+
+
+def test_parse_strict_json_object_and_correlated_telemetry():
+    from subllm.proxy_forward import ForwardJSONError, correlate_forward_telemetry, parse_strict_json_object
+
+    assert parse_strict_json_object(b'{"model":"d1:3b"}') == {"model": "d1:3b"}
+    for raw, status in [(b"[1, 2]", 400), (b"null", 400), (b"123", 400), (b'{"a":1,"a":2}', 400),
+                        (b'{"x":NaN}', 400), (b"\xff\xfe", 400), (b"{}" * 600_000, 413)]:
+        with pytest.raises(ForwardJSONError) as exc_info:
+            parse_strict_json_object(raw)
+        assert exc_info.value.status == status
+    try:
+        parse_strict_json_object(f'["{SECRET_PROMPT}"]'.encode())
+    except ForwardJSONError as err:
+        assert SECRET_PROMPT not in str(err)
+
+    seen = set()
+    missing_usage = correlate_forward_telemetry(
+        "/api/chat", b'{"message":{"content":"ok"}}',
+        client_request_id="req-client-1", proxy_request_id="proxy-9", attempt_id="att-1",
+        auth_owner="local-user", application="subactor-autonomy", function="generator", seen_attempts=seen,
+    )
+    assert missing_usage["usage_known"] is False
+    assert missing_usage["input_tokens"] is None and missing_usage["output_tokens"] is None
+    assert (missing_usage["client_request_id"], missing_usage["proxy_request_id"], missing_usage["attempt_id"]) == (
+        "req-client-1", "proxy-9", "att-1"
+    )
+    assert correlate_forward_telemetry(
+        "/api/chat", b"{}", client_request_id="req-client-1", proxy_request_id="proxy-9",
+        attempt_id="att-1", seen_attempts=seen,
+    ) is None

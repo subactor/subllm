@@ -1,0 +1,107 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-237",
+  "summary": "Enforce central local_only policy, monotonic deadlines and strict System One/forward contracts",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-237/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/client_routes.py",
+    "src/subllm/decisions.py",
+    "src/subllm/policy_config.py",
+    "src/subllm/proxy_decide.py",
+    "src/subllm/proxy_forward.py",
+    "src/subllm/runtime_profile.py",
+    "tests/test_policy_config.py",
+    "tests/test_proxy_decide.py",
+    "tests/test_proxy_forward_usage.py",
+    "tests/test_timeout_hierarchy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "02cea9c572340e216fbb0e7e362f4013063dfbce",
+    "outcome": "Enforce central execution_mode (local_only), monotonic request deadlines, and strict System One/forward JSON/telemetry contracts across disjoint runtime modules.",
+    "complexity": "L",
+    "estimatedMinutes": 75,
+    "budgets": {
+      "maxImplementationFiles": 10,
+      "maxAffectedComponents": 4,
+      "maxPublicInterfaceChanges": 2,
+      "maxRuntimeDependencies": 0
+    },
+    "runtimeDependencies": [],
+    "nonGoals": [
+      "Do not modify resolver.py (dirty in primary checkout) or proxy.py (left for separate small ticket)."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Add central execution_mode and is_local_only_route in policy_config/runtime_profile/client_routes, chunked monotonic deadline in decisions/client_routes, strict System One normalizer in proxy_decide, and strict JSON/telemetry helpers in proxy_forward.",
+      "components": [
+        {
+          "name": "local-policy",
+          "paths": [
+            "src/subllm/policy_config.py",
+            "src/subllm/runtime_profile.py",
+            "tests/test_policy_config.py"
+          ]
+        },
+        {
+          "name": "client-deadlines",
+          "paths": [
+            "src/subllm/client_routes.py",
+            "src/subllm/decisions.py",
+            "tests/test_timeout_hierarchy.py"
+          ]
+        },
+        {
+          "name": "strict-decide",
+          "paths": [
+            "src/subllm/proxy_decide.py",
+            "tests/test_proxy_decide.py"
+          ]
+        },
+        {
+          "name": "strict-forward",
+          "paths": [
+            "src/subllm/proxy_forward.py",
+            "tests/test_proxy_forward_usage.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "ExecutionPolicyConfig.execution_mode and is_local_only_route",
+        "StrictDecisionError/normalize_system_one_decision and ForwardJSONError/parse_strict_json_object/correlate_forward_telemetry"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert ticket-237 commit via protected PR."
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_policy_config.py tests/test_timeout_hierarchy.py tests/test_proxy_decide.py tests/test_proxy_forward_usage.py tests/test_audio_proxy.py"
+        ],
+        "evidence": "Policy, deadline, strict decision, forward JSON/telemetry, and audio proxy tests pass."
+      }
+    ]
+  }
+}

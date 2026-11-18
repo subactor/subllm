@@ -28,6 +28,10 @@ SUBLLM_ATTEMPT_TIMEOUT_SECONDS = "SUBLLM_ATTEMPT_TIMEOUT_SECONDS"
 SUBLLM_SLOW_RESPONSE_SECONDS = "SUBLLM_SLOW_RESPONSE_SECONDS"
 SUBLLM_FAILURE_THRESHOLD = "SUBLLM_FAILURE_THRESHOLD"
 SUBLLM_UNCREDITED_COOLDOWN_SECONDS = "SUBLLM_UNCREDITED_COOLDOWN_SECONDS"
+SUBLLM_EXECUTION_MODE = "SUBLLM_EXECUTION_MODE"
+EXECUTION_MODES = frozenset({"standard", "local_only"})
+_REMOTE_BUILTIN_PROVIDERS = frozenset({"openrouter", "zai", "codex", "claude", "agy", "cursor"})
+_LOCAL_HOSTS = frozenset({"127.0.0.1", "localhost", "::1"})
 _CUSTOM_ID_RE = re.compile(r"^[a-z0-9][a-z0-9_\.-]{0,63}$")
 _ENV_NAME_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 
@@ -69,6 +73,7 @@ class ExecutionPolicyConfig:
     uncredited_cooldown_seconds: float = 3600.0
     max_output_tokens: int | None = None
     max_total_output_tokens: int | None = None
+    execution_mode: str = "standard"
 
 
 @dataclass(frozen=True)
@@ -248,6 +253,10 @@ def _execution_with_environment(
         if not 0.0 <= uncredited_cooldown <= 604_800.0:
             raise InvalidPolicyError(f"runtime {SUBLLM_UNCREDITED_COOLDOWN_SECONDS} must be from 0 to 604800")
 
+    execution_mode = execution.execution_mode
+    if SUBLLM_EXECUTION_MODE in environment:
+        execution_mode = _normalize_execution_mode(environment[SUBLLM_EXECUTION_MODE], source=SUBLLM_EXECUTION_MODE)
+
     return ExecutionPolicyConfig(
         failover_enabled=execution.failover_enabled,
         attempt_timeout_seconds=attempt_timeout,
@@ -258,7 +267,32 @@ def _execution_with_environment(
         uncredited_cooldown_seconds=uncredited_cooldown,
         max_output_tokens=execution.max_output_tokens,
         max_total_output_tokens=execution.max_total_output_tokens,
+        execution_mode=execution_mode,
     )
+
+
+def _normalize_execution_mode(raw: object, *, source: object) -> str:
+    """Validate execution_mode policy values ('standard' or 'local_only')."""
+    if not isinstance(raw, str):
+        raise InvalidPolicyError(f"execution_mode must be 'standard' or 'local_only' in {source}")
+    normalized = raw.strip().lower().replace("-", "_")
+    if normalized not in EXECUTION_MODES:
+        raise InvalidPolicyError(f"execution_mode must be 'standard' or 'local_only' in {source}")
+    return normalized
+
+
+def is_local_only_route(route: object) -> bool:
+    """Return True when a resolved/configured route targets only local loopback HTTP inference."""
+    provider = getattr(route, "provider", None)
+    transport = getattr(route, "transport", None)
+    api_base = getattr(route, "api_base", "")
+    if provider in _REMOTE_BUILTIN_PROVIDERS or transport != "openai-compatible" or not isinstance(api_base, str):
+        return False
+    try:
+        parsed = urlsplit(api_base)
+    except ValueError:
+        return False
+    return parsed.scheme in {"http", "https"} and parsed.hostname in _LOCAL_HOSTS
 
 
 def find_policy_file(
@@ -391,7 +425,9 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         "failure_threshold",
         "max_attempts",
     }
-    allowed = required | {"uncredited_cooldown_seconds", "max_output_tokens", "max_total_output_tokens"}
+    allowed = required | {
+        "uncredited_cooldown_seconds", "max_output_tokens", "max_total_output_tokens", "execution_mode",
+    }
     if not isinstance(raw, dict) or not (required <= set(raw) <= allowed):
         raise InvalidPolicyError(f"invalid execution settings in {source}")
     enabled = raw["failover_enabled"]
@@ -451,6 +487,11 @@ def _validate_execution(raw: object, *, source: Path) -> ExecutionPolicyConfig:
         max_output_tokens=_generation_limit(raw.get("max_output_tokens"), name="max_output_tokens", source=source),
         max_total_output_tokens=_generation_limit(
             raw.get("max_total_output_tokens"), name="max_total_output_tokens", source=source,
+        ),
+        execution_mode=(
+            _normalize_execution_mode(raw["execution_mode"], source=source)
+            if "execution_mode" in raw
+            else "standard"
         ),
     )
 

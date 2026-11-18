@@ -164,16 +164,37 @@ def _unique_object(pairs):
     return result
 
 
+def _read_response_within_deadline(response, deadline):
+    chunks = []
+    total = 0
+    while True:
+        remaining = deadline - time.monotonic()
+        if remaining <= 0:
+            raise DecisionError(
+                "Local decision response read exceeded request deadline",
+                outcome="client_deadline_exceeded",
+            )
+        chunk = response.read(min(65536, _MAX_RESPONSE + 1 - total))
+        if not chunk:
+            break
+        total += len(chunk)
+        if total > _MAX_RESPONSE:
+            raise DecisionError("Native decision response exceeds its size bound")
+        chunks.append(chunk)
+    return b"".join(chunks)
+
+
 def _post(url, body, timeout):
+    deadline = time.monotonic() + timeout
     request = Request(url, data=body, headers={"Content-Type": "application/json"}, method="POST")
     opener = build_opener(ProxyHandler({}), _NoRedirect())
     try:
         with opener.open(request, timeout=timeout) as response:
-            raw = response.read(_MAX_RESPONSE + 1)
-        if len(raw) > _MAX_RESPONSE:
-            raise DecisionError("Native decision response exceeds its size bound")
+            raw = _read_response_within_deadline(response, deadline)
         return json.loads(raw, object_pairs_hook=_unique_object,
                           parse_constant=lambda _: (_ for _ in ()).throw(ValueError("Nonfinite JSON")))
+    except DecisionError:
+        raise
     except HTTPError as error:
         with error:
             exchange = {"status": error.code, "body": error.read(8192).decode("utf-8", "replace")}
