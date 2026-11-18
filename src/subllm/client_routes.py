@@ -31,7 +31,7 @@ from .errors import (
 from .generation import GenerationBudget, GenerationLimits, generation_attempt, generation_scope
 from .health import order_with_last_resort, record_failure, record_success
 from .interaction_context import ACTIVE_ARCHIVE, begin_attempt, finish_attempt
-from .policy_config import load_policy_config, resolve_attempt_timeout
+from .policy_config import is_local_only_route, load_policy_config, resolve_attempt_timeout
 from .quality import ResponseValidator, validate_response
 from .quality_schema import declared_schema_gate, schema_gate
 from .request_scope import bind_complete, bind_response, current_scope, verify_current
@@ -245,6 +245,63 @@ def _requested_model_routes(routes: list[ResolvedRoute], model: str | None) -> l
     return selected
 
 
+def _route_matches_model(route: Any, model: str) -> bool:
+    return model in {
+        route.model,
+        route.wire_model,
+        route.litellm_model,
+        f"{route.provider}/{route.model}",
+        f"{route.provider}/{route.wire_model}",
+    }
+
+
+def _select_local_only_routes(
+    application: str,
+    function: str,
+    *,
+    model: str | None,
+    environ: Mapping[str, str] | None,
+    credentials: Mapping[str, str] | None,
+    pre_routes: Any,
+) -> tuple[ResolvedRoute, ...]:
+    """Filter configured routes strictly to local loopback endpoints without reading remote credentials."""
+    if pre_routes is not None:
+        local = tuple(r for r in pre_routes if is_local_only_route(r))
+        if not local:
+            raise CompletionError(
+                f"local_only execution_mode blocked non-local routes for {application}/{function}",
+                diagnostic_code="SUBLLM-LOCAL-ONLY-BLOCKED",
+            )
+        return local
+    configured = configured_routes(application, function, environ=environ)
+    local_cfg = [r for r in configured if is_local_only_route(r)]
+    if model is not None:
+        if any(_route_matches_model(r, model) for r in local_cfg):
+            local_cfg = [r for r in local_cfg if _route_matches_model(r, model)]
+        elif any(_route_matches_model(r, model) for r in configured):
+            raise CompletionError(
+                f"model {model!r} requires a non-local route blocked in local_only execution_mode",
+                diagnostic_code="SUBLLM-LOCAL-ONLY-BLOCKED",
+            )
+        else:
+            raise CompletionError(
+                f"requested model {model!r} is unavailable in local_only execution_mode",
+                diagnostic_code="SUBLLM-LOCAL-MODEL-UNAVAILABLE",
+            )
+    if not local_cfg:
+        raise CompletionError(
+            f"local_only execution_mode blocked non-local routes for {application}/{function}",
+            diagnostic_code="SUBLLM-LOCAL-ONLY-BLOCKED",
+        )
+    return tuple(
+        ResolvedRoute(
+            **r.public_dict(),
+            api_key="",
+        )
+        for r in local_cfg
+    )
+
+
 def _complete(
     application: str,
     function: str,
@@ -295,10 +352,17 @@ def _complete(
             model = None
 
     request_id = request_id or uuid4().hex
+    runtime_policy = _runtime_policy or load_policy_config(environ={**os.environ, **(environ or {})})
+    local_only = runtime_policy.execution.execution_mode == "local_only"
     from . import adaptive
     adaptive_policy = adaptive.policy(environ)
     requirement = adaptive_policy and adaptive_policy.get("routes", {}).get(f"{application}/{function}")
     if requirement:
+        if local_only:
+            raise CompletionError(
+                "adaptive routing is blocked in local_only execution_mode",
+                diagnostic_code="SUBLLM-LOCAL-ONLY-BLOCKED",
+            )
         if ACTIVE_STREAM.get() is not None:
             raise stream_error("UNSUPPORTED-ADAPTIVE")
         if model is not None:
@@ -315,15 +379,19 @@ def _complete(
             invoke=partial(_complete_route, quality_gate=quality_gate) if quality_gate is not None else _complete_route,
             timeout_seconds=timeout_seconds,
             response_format=response_format, request_id=request_id, cwd=Path(cwd) if cwd else None, environ=environment)
-    routes = _routes if _routes is not None else available_routes(
-        application, function, environ=environ, credentials=credentials,
-    )
-    if not routes:
-        configured = configured_routes(application, function, environ=environ)
-        required = ", ".join(sorted({route.api_key_env for route in configured}))
-        raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
+    if local_only:
+        routes = _select_local_only_routes(
+            application, function, model=model, environ=environ, credentials=credentials, pre_routes=_routes,
+        )
+    else:
+        routes = _routes if _routes is not None else available_routes(
+            application, function, environ=environ, credentials=credentials,
+        )
+        if not routes:
+            configured = configured_routes(application, function, environ=environ)
+            required = ", ".join(sorted({route.api_key_env for route in configured}))
+            raise CompletionError(f"no valid credential for {application}/{function}; configure one of: {required}")
     routes = _requested_model_routes(supported_routes(routes), model)
-    runtime_policy = _runtime_policy or load_policy_config(environ={**os.environ, **(environ or {})})
     execution = runtime_policy.execution
     timeout_environment = merged_environment(environ=environ)
     routes = order_with_last_resort(routes, environ=timeout_environment) if execution.failover_enabled else routes[:1]
@@ -452,6 +520,13 @@ def complete(
     the optional cache dependency; CLI, tools, adaptive and nested gateway calls
     bypass caching. Each explicit request_id must identify a new operation.
     """
+    started_at = time.monotonic()
+    deadline = (
+        started_at + timeout_seconds
+        if isinstance(timeout_seconds, (int, float)) and not isinstance(timeout_seconds, bool)
+        and math.isfinite(timeout_seconds) and timeout_seconds > 0
+        else None
+    )
     request_id = request_id or uuid4().hex
     parent = ACTIVE_ARCHIVE.get()
     try:
@@ -469,9 +544,17 @@ def complete(
         capture_audit(request_id, correlation_id) as capture,
     ):
         attach_capture(capture, generation)
-        def invoke(routes=None, timeout=timeout_seconds):
+        def invoke(routes=None, timeout=None):
+            effective_timeout = timeout_seconds if timeout is None else timeout
+            if timeout is None and deadline is not None:
+                effective_timeout = deadline - time.monotonic()
+                if effective_timeout <= 0:
+                    raise CompletionError(
+                        "request deadline exhausted before dispatch",
+                        diagnostic_code="SUBLLM-DEADLINE-EXCEEDED",
+                    )
             response = _complete(
-                application, function, messages, timeout_seconds=timeout,
+                application, function, messages, timeout_seconds=effective_timeout,
                 request_id=request_id, response_format=response_format, environ=environ,
                 credentials=credentials, cwd=cwd, model=model, quality_gate=quality_gate,
                 quality_schema=quality_schema, _runtime_policy=runtime_policy, _routes=routes,

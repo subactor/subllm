@@ -138,3 +138,31 @@ def test_d1_response_rejects_unsupported_type_and_missing_answers():
 ])
 def test_model_family(model, family):
     assert _model_family(model) == family
+
+
+def test_strict_legacy_decision_rejects_fabricated_defaults_and_preserves_native_d1_source():
+    from subllm.proxy_decide import StrictDecisionError, normalize_system_one_decision
+
+    for bad in ("", "not json", "[1, 2]", "null", '{"answers":{"route":"cloud","route":"local"}}',
+                '{"probabilities":{"route":{"local":NaN,"cloud":0.5,"skip":0.5}}}',
+                '{"probabilities":{"route":{"local":0.5,"cloud":0.5,"skip":0.0}}}',
+                '{"answers":{"route":"unknown","safe":true,"effort":"2"}}'):
+        with pytest.raises(StrictDecisionError):
+            normalize_system_one_decision(QUESTIONS, bad)
+
+    label_only = normalize_system_one_decision(
+        QUESTIONS,
+        '{"answers":{"route":"local","safe":false,"effort":"3"}}',
+    )
+    assert label_only["answers"] == {"route": "local", "safe": False, "effort": 3.0}
+    assert label_only["probabilities"] == {"route": None, "safe": None, "effort": None}
+    assert label_only["decision_source"] == "legacy_json"
+    assert label_only["probability_kind"] == "uncalibrated_label"
+
+    d1 = _normalize_ollama_d1_response({"answers": {
+        "route": {"choice": "local", "probabilities": {"local": 0.9, "cloud": 0.05, "skip": 0.05}},
+        "safe": {"noul": 0.8},
+        "effort": {"score": 1.0, "probabilities": {"0": 0.2, "1": 0.6, "2": 0.2}},
+    }}, {"questions": QUESTIONS})
+    assert d1["decision_source"] == "native_d1"
+    assert d1["probability_kind"] == "native_calibrated"

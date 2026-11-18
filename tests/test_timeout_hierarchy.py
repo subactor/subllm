@@ -111,3 +111,45 @@ def test_invalid_caller_budget_never_reaches_a_provider(monkeypatch, engine, tim
             complete('repair-agent', 'repair-plan', messages, timeout_seconds=timeout, environ=env)
         else:
             proxy._complete_model_direct('glm-5.3', messages, timeout_seconds=timeout, environ=env)
+
+
+def test_pre_dispatch_deadline_exhaustion_blocks_provider_call(monkeypatch):
+    from subllm import CompletionError
+
+    def fail_invoke(*_args, **_kwargs):
+        raise AssertionError('dispatched after deadline')
+
+    ticks = iter([10.0, 16.0])
+    monkeypatch.setattr(client_routes.time, 'monotonic', lambda: next(ticks))
+    monkeypatch.setattr(client_routes, '_invoke_route', fail_invoke)
+    with pytest.raises(CompletionError) as caught:
+        complete('repair-agent', 'repair-plan', [{'role': 'user', 'content': 'x'}],
+                 timeout_seconds=5, environ={'ZAI_API_KEY': 'id.secret'})
+    assert caught.value.diagnostic_code == 'SUBLLM-DEADLINE-EXCEEDED'
+
+
+def test_decisions_mid_body_deadline_distinguishes_client_deadline(monkeypatch):
+    from subllm.decisions import DecisionError, decide
+
+    now = [100.0]
+
+    class SlowChunkResponse:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self, _n):
+            now[0] += 3.0
+            return b'{"partial": true}'
+
+    class SlowOpener:
+        def open(self, *_args, **_kwargs):
+            return SlowChunkResponse()
+
+    monkeypatch.setattr('subllm.decisions.time.monotonic', lambda: now[0])
+    monkeypatch.setattr('subllm.decisions.build_opener', lambda *a: SlowOpener())
+    with pytest.raises(DecisionError) as caught:
+        decide('state', {'q': {'type': 'noul', 'instructions': 'ok?'}}, timeout_seconds=5)
+    assert caught.value.outcome == 'client_deadline_exceeded'
