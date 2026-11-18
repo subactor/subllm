@@ -1,0 +1,96 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-235",
+  "summary": "SUB-08: split compile_catalog into validation stages (CC 94 to <= 15)",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P3",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-235/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/catalog.py",
+    "tests/test_catalog_stages.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "6717bc526126d07ca96e156e8523e361fed2e3e4",
+    "targetBranch": "main",
+    "outcome": "compile_catalog (radon CC 94) becomes a sequence of named validation stages (provider defaults, models and variants, default checks, applications, routes and candidates); compile_catalog itself is CC 8 and no stage exceeds 13. Error messages, their order and the canonical digest are unchanged.",
+    "nonGoals": [
+      "No change to the catalog schema, messages or digest.",
+      "proxy.py hotspots are separate SUB-08 steps."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extract private stage functions in catalog.py; compile_catalog keeps its signature and fail-fast order.",
+      "components": [
+        {
+          "name": "catalog",
+          "paths": [
+            "src/subllm/catalog.py",
+            "tests/test_catalog_stages.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q"
+        ],
+        "evidence": "full suite passes"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_catalog_stages.py"
+        ],
+        "evidence": "18 error-path pins pass on origin/main and on this branch"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "radon cc -s -n C src/subllm/catalog.py"
+        ],
+        "evidence": "max CC 13"
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "ruff check src tests",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "clean"
+      }
+    ]
+  }
+}
