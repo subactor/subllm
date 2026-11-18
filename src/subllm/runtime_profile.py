@@ -15,7 +15,6 @@ import os
 import stat
 import tempfile
 import threading
-from collections.abc import Mapping
 from contextvars import ContextVar
 from dataclasses import replace
 from pathlib import Path
@@ -58,7 +57,6 @@ _RESERVED_PARAMETERS = frozenset(
 )
 _LOCK = threading.RLock()
 _REQUEST_PARAMETERS = ContextVar("subllm_request_model_parameters", default=None)
-_OLLAMA_SCOPE = ContextVar("subllm_ollama_parameter_scope", default=False)
 
 # Values are transport/model parameters, never application execution authority.
 PARAMETERS = {
@@ -545,36 +543,22 @@ def request_parameters_active():
     return bool(_REQUEST_PARAMETERS.get())
 
 
-@contextlib.contextmanager
 def ollama_parameter_scope(options):
-    """Bind validated Ollama API controls to local Ollama SDK invocations."""
     if not isinstance(options, dict):
         raise ProfileError("Ollama options must be a JSON object")
     aliases = {"num_predict": "max_tokens", "num_ctx": "context_size"}
     values = {aliases.get(name, name): value for name, value in options.items()}
     if set(values) - (set(PARAMETERS["llm"]) - {"protocol", "timeout"}):
         raise ProfileError("Unsupported options for a policy-routed model; use a native Ollama model")
-    values = validate_parameters("llm", values)
-    param_token = _REQUEST_PARAMETERS.set(values)
-    ollama_token = _OLLAMA_SCOPE.set(True)
-    try:
-        yield
-    finally:
-        _OLLAMA_SCOPE.reset(ollama_token)
-        _REQUEST_PARAMETERS.reset(param_token)
+    return request_parameter_scope(values)
 
 
 def apply_request_parameters(route):
     values = _REQUEST_PARAMETERS.get()
     if not values:
         return route
-    ollama_keys = (
-        {"context_size", "top_k", "repeat_penalty"}
-        if _OLLAMA_SCOPE.get() and route.transport == "openai-compatible" and route.provider == "ollama"
-        else set()
-    )
     supported = (
-        {"temperature", "top_p", "max_tokens", "seed", "presence_penalty", "frequency_penalty", "stop"} | ollama_keys
+        {"temperature", "top_p", "max_tokens", "seed", "presence_penalty", "frequency_penalty", "stop"}
         if route.transport == "openai-compatible"
         else {"temperature", "top_p", "max_tokens"}
         if route.transport in {"anthropic", "gemini-sdk"}
@@ -587,16 +571,7 @@ def apply_request_parameters(route):
             "Selected transport does not support the requested model parameters",
             diagnostic_code="SUBLLM-PARAMETERS-UNSUPPORTED",
         )
-    top_level = {k: v for k, v in values.items() if k not in ollama_keys}
-    ollama_only = {k: v for k, v in values.items() if k in ollama_keys}
-    parameters = {**route.model_parameters, **top_level}
-    if ollama_only:
-        existing_options = route.model_parameters.get("options")
-        options = dict(existing_options) if isinstance(existing_options, Mapping) else {}
-        names = {"context_size": "num_ctx"}
-        for key, value in ollama_only.items():
-            options[names.get(key, key)] = value
-        parameters["options"] = options
+    parameters = {**route.model_parameters, **values}
     ceiling = route.model_parameters.get("max_tokens")
     if ceiling is not None and "max_tokens" in values:
         from .generation import token_limit

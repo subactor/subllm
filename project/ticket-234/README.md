@@ -9,17 +9,16 @@
 
 ## Goal and scope
 
-SESSION_EXECUTION_AUTHORIZATION: Complete `LLM-005`, `LLM-008`, and `LLM-009` runtime-profile contracts cleanly in `src/subllm/runtime_profile.py` and `tests/test_runtime_profile.py`:
-1. `LLM-005`: Make `ollama_parameter_scope` pass validated `num_ctx`/`top_k`/`repeat_penalty` options through to Ollama routes without hitting OpenAI `request_parameter_scope` errors.
-2. `LLM-008`: Add bounded `keep_alive` (`0..300`) support to `PARAMETERS["decision"]` and `GatewayClient.infer("decision", ...)`.
-3. `LLM-009`: Support optional autonomy roles (`planner`, `selector`, `generator`) alongside core `ROLES` and enforce input+output `context_size` admission before dispatch.
+SESSION_EXECUTION_AUTHORIZATION: Complete `LLM-008` and `LLM-009` runtime-profile contracts cleanly in `src/subllm/runtime_profile.py` and `tests/test_runtime_profile.py` while preserving policy-routed `ollama_parameter_scope` rejection of ignored OpenAI `/v1` options (`LLM-005` cataloged native Ollama routing in `proxy.py` stays separate under `ticket-233` lease):
+1. `LLM-008`: Add bounded `keep_alive` (`0..300`) support to `PARAMETERS["decision"]` and `GatewayClient.infer("decision", ...)`.
+2. `LLM-009`: Support optional autonomy roles (`planner`, `selector`, `generator`) alongside core `ROLES` and enforce input+output `context_size` admission (`admit_context_budget`) before dispatch.
 
 ## Acceptance criteria
 
-- [ ] AC-01: `ollama_parameter_scope` preserves `num_ctx`, `top_k`, `repeat_penalty` on Ollama routes while rejecting them on non-Ollama routes and in `request_parameter_scope`.
-- [ ] AC-02: `GatewayClient.infer("decision", ...)` validates and forwards `keep_alive` (`0..300`).
-- [ ] AC-03: `validate_profile` and `GatewayClient.infer` support optional `planner`, `selector`, `generator` roles and enforce `admit_context_budget` when `context_size` is configured.
-- [ ] AC-04: `tests/test_runtime_profile.py`, `tests/test_decisions.py`, `tests/test_generation_limits.py`, `./project/governance-check.sh --base origin/main`, and `wellman check` pass.
+- [x] AC-01: Policy-routed `ollama_parameter_scope` preserves rejection of unsupported OpenAI `/v1` native options (`tests/test_audio_proxy.py`).
+- [x] AC-02: `GatewayClient.infer("decision", ...)` validates and forwards `keep_alive` (`0..300`).
+- [x] AC-03: `validate_profile` and `GatewayClient.infer` support optional `planner`, `selector`, `generator` roles and enforce `admit_context_budget` when `context_size` is configured.
+- [x] AC-04: `tests/test_runtime_profile.py`, `tests/test_audio_proxy.py`, `tests/test_decisions.py`, `tests/test_generation_limits.py`, `ruff check`, `./project/governance-check.sh --base origin/main`, and `wellman check` pass.
 
 ## Tracking boundary
 

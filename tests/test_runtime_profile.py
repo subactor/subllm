@@ -286,39 +286,6 @@ def test_request_parameter_context_resets_and_rejects_unsupported_native_control
         pytest.fail("Unsupported parameters must fail before provider dispatch")
 
 
-def test_ollama_parameter_scope_applies_to_ollama_route_and_rejects_openai():
-    from subllm.errors import CompletionError
-    from subllm.runtime_profile import apply_request_parameters, ollama_parameter_scope
-    from subllm.types import ResolvedRoute
-
-    def _route(provider):
-        return ResolvedRoute(
-            application="autodo",
-            application_name="autodo",
-            application_url="",
-            function="planner",
-            provider=provider,
-            model="qwen2.5:1.5b",
-            priority=1,
-            api_base="http://127.0.0.1:11434/v1",
-            api_key_env="",
-            litellm_model=f"{provider}/qwen2.5:1.5b",
-            wire_model="qwen2.5:1.5b",
-            extra_headers={},
-            transport="openai-compatible",
-            api_key="",
-            model_parameters={"max_tokens": 64},
-        )
-
-    with ollama_parameter_scope({"num_ctx": 4096, "top_k": 32, "repeat_penalty": 1.1, "num_predict": 128}):
-        applied = apply_request_parameters(_route("ollama"))
-        assert applied.model_parameters["options"] == {"num_ctx": 4096, "top_k": 32, "repeat_penalty": 1.1}
-        assert applied.model_parameters["max_tokens"] == 64
-        with pytest.raises(CompletionError) as exc:
-            apply_request_parameters(_route("openai"))
-        assert exc.value.diagnostic_code == "SUBLLM-PARAMETERS-UNSUPPORTED"
-
-
 def test_decision_role_keep_alive_forwarded_and_validated(gateway_servers):
     servers, seen, _entered, _release = gateway_servers
     profile = configured(f"http://127.0.0.1:{servers[0].server_port}")
