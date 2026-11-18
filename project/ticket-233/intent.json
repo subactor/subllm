@@ -1,0 +1,103 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-233",
+  "summary": "SUB-08 step 1: extract proxy security, forward and pure decide helpers from proxy.py",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P3",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-233/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "src/subllm/proxy_decide.py",
+    "src/subllm/proxy_forward.py",
+    "src/subllm/proxy_security.py",
+    "tests/test_proxy_decide.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "6717bc526126d07ca96e156e8523e361fed2e3e4",
+    "targetBranch": "main",
+    "outcome": "proxy.py loses 360 lines: browser origin/bearer checks move to proxy_security, raw-forward timeout and usage parsing to proxy_forward, and the pure System One question/probability/d1 shaping to proxy_decide; proxy.py re-exports every moved name so imports and test seams are unchanged. Four CC hotspots (38, 24, 21, 20) are split into helpers with CC <= 12.",
+    "nonGoals": [
+      "No behaviour change: identical pins pass against origin/main and this branch.",
+      "Names that tests monkeypatch on subllm.proxy (urlopen, liveness, _complete_*, catalog readers) stay in proxy.py for later steps.",
+      "Handler methods and compile_catalog are later SUB-08 steps."
+    ],
+    "complexity": "M",
+    "estimatedMinutes": 90,
+    "budgets": {
+      "maxImplementationFiles": 5,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Split by responsibility into I/O-free modules; proxy.py keeps the handler and the I/O seams and re-exports moved names with redundant aliases.",
+      "components": [
+        {
+          "name": "proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "src/subllm/proxy_decide.py",
+            "src/subllm/proxy_forward.py",
+            "src/subllm/proxy_security.py",
+            "tests/test_proxy_decide.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit; no data or configuration involved."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q"
+        ],
+        "evidence": "full suite passes (1765)"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_decide.py"
+        ],
+        "evidence": "behaviour pins also pass against origin/main implementations"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "radon cc -s -n C src/subllm/proxy_decide.py src/subllm/proxy_forward.py src/subllm/proxy_security.py"
+        ],
+        "evidence": "max CC 12 in the new modules"
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "ruff check src tests",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "clean"
+      }
+    ]
+  }
+}
