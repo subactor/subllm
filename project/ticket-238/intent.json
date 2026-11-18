@@ -1,0 +1,84 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-238",
+  "summary": "HEY-06: policy_client fetches and verifies the central routing contract (shared by willman)",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P3",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-238/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/policy_client.py",
+    "tests/test_policy_client.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "02cea9c572340e216fbb0e7e362f4013063dfbce",
+    "targetBranch": "main",
+    "outcome": "subllm.policy_client.fetch_routing_contract(endpoint, application, function) is the one shared client for the central routing contract: a bounded subllm.query/v1 export-routing-contract request, closed-field/version/profile/candidate validation, RFC 8785 digest verification, a per-profile single-flight TTL cache; unavailable endpoints raise PolicyEndpointUnavailable (RuntimeError), invalid answers InvalidRoutingContract (ValueError), so willman's subllm_routing can delegate to it without behaviour change (HEY-06).",
+    "nonGoals": [
+      "willman migration needs a subllm release first (willman pins subactor-subllm>=1.4,<2).",
+      "No change to the Policy API server side."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 40,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Move the verified-fetch logic from willman/subllm_routing.py into the SDK, reusing poa.canonical.digest_document and the registry's EXPORT_CONTRACT_URI.",
+      "components": [
+        {
+          "name": "policy-client",
+          "paths": [
+            "src/subllm/policy_client.py",
+            "tests/test_policy_client.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "subllm.policy_client.fetch_routing_contract"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert; no consumer uses it yet."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_policy_client.py"
+        ],
+        "evidence": "12 passed"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "ruff check --no-respect-gitignore src tests",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "clean"
+      }
+    ]
+  }
+}
