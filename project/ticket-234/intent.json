@@ -24,7 +24,7 @@
   "integrationTicket": null,
   "delivery": {
     "targetBranch": "main",
-    "acceptedBaseSha": "6717bc526126d07ca96e156e8523e361fed2e3e4",
+    "acceptedBaseSha": "c211dd3c67ab87f1da2894d228199d0d365d476d",
     "outcome": "Support decision role keep_alive forwarding, optional planner/selector/generator autonomy roles, and pre-dispatch context token budget admission in runtime_profile.py while preserving policy-routed ollama_parameter_scope rejection.",
     "complexity": "S",
     "estimatedMinutes": 45,

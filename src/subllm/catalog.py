@@ -125,6 +125,176 @@ class CompiledCatalog:
     canonical_json: str
 
 
+_PROVIDER_FIELDS = {"api_base", "api_key_env", "transport", "attribution_headers",
+                    "enabled", "priority", "default_model"}
+_ADAPTER_BINDINGS = ("api_base", "api_key_env", "transport", "attribution_headers")
+_CANDIDATE_FIELDS = {"provider", "priority_offset", "model_parameters"}
+_MODEL_PARAMETER_KEYS = {"reasoning_effort", "verbosity"}
+_MODEL_PARAMETER_LEVELS = ("low", "medium", "high")
+
+
+def _compile_provider_defaults(rows, adapters):
+    """Per-provider enabled/priority/default_model; adapter bindings stay code-owned."""
+    provider_rows = _mapping(rows, 32)
+    if set(provider_rows) != set(adapters):
+        _fail("provider adapters must match the code-owned registry")
+    defaults = {}
+    for name, row in provider_rows.items():
+        row = _object(row, _PROVIDER_FIELDS)
+        fixed = asdict(adapters[name])
+        if any(type(row[k]) is not type(fixed[k]) or row[k] != fixed[k] for k in _ADAPTER_BINDINGS):
+            _fail("adapter endpoint, credential and transport bindings cannot change")
+        defaults[name] = MappingProxyType({"enabled": _boolean(row["enabled"]),
+                                          "priority": _integer(row["priority"]),
+                                          "default_model": _identifier(row["default_model"])})
+    return defaults
+
+
+def _legacy_constraints(adapters, legacy_models):
+    """Forbidden (provider, wire) pairs and the code-owned LiteLLM prefixes per provider."""
+    forbidden = {(p, wire.wire_model) for model in legacy_models.values() if model.forbidden
+                 for p, wire in model.providers.items()}
+    prefixes = {p: {v.litellm_model[:-len(v.wire_model)]
+                    for m in legacy_models.values() for name, v in m.providers.items()
+                    if name == p and v.litellm_model} for p in adapters}
+    return forbidden, prefixes
+
+
+def _compile_variant(name, provider, variant, banned, forbidden, prefixes):
+    variant = _object(variant, {"litellm_model", "wire_model"})
+    wire = _identifier(variant["wire_model"])
+    litellm = variant["litellm_model"]
+    if litellm:
+        _identifier(litellm)
+    elif litellm != "":
+        _fail("invalid model alias")
+    if (litellm and not any(litellm == prefix + wire for prefix in prefixes[provider])) or (
+            not litellm and prefixes[provider]):
+        _fail("model alias must retain the code-owned adapter prefix and wire identity")
+    if not banned and (provider, wire) in forbidden:
+        _fail("alias cannot enable a forbidden wire model")
+    if provider == "openrouter" and (name.startswith("gpt-5.6-sol")
+                                     or wire.rsplit("/", 1)[-1].startswith("gpt-5.6-sol")):
+        _fail("Cursor Sol is not an OpenRouter model")
+    return ProviderModelSpec(litellm, wire)
+
+
+def _compile_models(rows, adapters, legacy_models):
+    forbidden, prefixes = _legacy_constraints(adapters, legacy_models)
+    models = {}
+    for name, row in _mapping(rows, 4096).items():
+        row = _object(row, {"providers", "vision", "forbidden"})
+        banned, vision = _boolean(row["forbidden"]), _boolean(row["vision"])
+        if name in legacy_models and legacy_models[name].forbidden and not banned:
+            _fail("a code-forbidden model cannot be enabled")
+        variants = row["providers"]
+        if (not isinstance(variants, dict) or len(variants) > len(adapters) or (not variants and not banned)
+                or any(p not in adapters for p in variants)):
+            _fail("invalid model provider variants")
+        values = {provider: _compile_variant(name, provider, variant, banned, forbidden, prefixes)
+                  for provider, variant in variants.items()}
+        models[name] = ModelSpec(name, MappingProxyType(values), banned, vision)
+    return models
+
+
+def _permitted(model, provider):
+    return model is not None and not model.forbidden and provider in model.providers
+
+
+def _check_provider_defaults(defaults, models):
+    for name, row in defaults.items():
+        if not _permitted(models.get(row["default_model"]), name):
+            _fail("default model must be permitted through its provider")
+    priorities = [value["priority"] for value in defaults.values() if value["enabled"]]
+    if len(priorities) != len(set(priorities)):
+        _fail("enabled providers must have unique priorities")
+
+
+def _public_https_url(url):
+    try:
+        parsed = urlsplit(url)
+    except ValueError:
+        _fail("invalid application URL")
+    if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
+            or parsed.query or parsed.fragment or any(c.isspace() for c in url)):
+        _fail("application URL must be public HTTPS without credentials or query")
+
+
+def _compile_applications(rows):
+    apps = {}
+    for name, row in _mapping(rows, 2048).items():
+        row = _object(row, {"title", "url"})
+        if not 6 <= len(name) <= 128:
+            _fail("application ID must contain 6..128 characters")
+        title, url = _text(row["title"], 100), _text(row["url"], 2048)
+        _public_https_url(url)
+        apps[name] = ApplicationSpec(name, title, url)
+    return apps
+
+
+def _candidate_model(item, adapters, models, defaults):
+    """Validate provider/model fields of one candidate and return the resolved model."""
+    if not isinstance(item, dict) or not _CANDIDATE_FIELDS <= set(item) <= _CANDIDATE_FIELDS | {"model"}:
+        _fail("invalid candidate fields")
+    provider, alias = item["provider"], item.get("model")
+    if (not isinstance(provider, str) or provider not in adapters
+            or (alias is not None and not isinstance(alias, str))):
+        _fail("unknown candidate provider or model")
+    if alias is not None:
+        _identifier(alias)
+    else:
+        item.pop("model", None)  # TOML omits null; both forms have one semantic identity.
+    model = models.get(alias or defaults[provider]["default_model"])
+    if not _permitted(model, provider):
+        _fail("candidate model is unavailable or forbidden")
+    return model
+
+
+def _model_parameters(params):
+    if (not isinstance(params, dict) or set(params) - _MODEL_PARAMETER_KEYS
+            or any(v not in _MODEL_PARAMETER_LEVELS for v in params.values())):
+        _fail("model parameters exceed bounded overrides")
+    return params
+
+
+def _compile_candidates(raw, modality, adapters, models, defaults):
+    if not isinstance(raw, list) or not 1 <= len(raw) <= 32:
+        _fail("route must have 1..32 candidates")
+    candidates, seen = [], set()
+    for item in raw:
+        model = _candidate_model(item, adapters, models, defaults)
+        provider, alias = item["provider"], item.get("model")
+        offset = _integer(item["priority_offset"])
+        params = _model_parameters(item["model_parameters"])
+        identity = canonical(item)
+        if identity in seen:
+            _fail("duplicate candidate")
+        seen.add(identity)
+        if modality == "vision" and (not model.vision or adapters[provider].transport != "openai-compatible"):
+            _fail("vision route requires a declared vision model and OpenAI-compatible transport")
+        candidates.append(RouteCandidate(provider, alias, offset, model_parameters=MappingProxyType(dict(params))))
+    priorities = [defaults[c.provider]["priority"] + c.priority_offset for c in candidates
+                  if defaults[c.provider]["enabled"]]
+    if not priorities or len(priorities) != len(set(priorities)):
+        _fail("route needs enabled candidates with unique effective priorities")
+    return candidates
+
+
+def _compile_routes(rows, apps, adapters, models, defaults):
+    if not isinstance(rows, list) or not 1 <= len(rows) <= 4096:
+        _fail("invalid routes collection")
+    routes = {}
+    for row in rows:
+        row = _object(row, {"application", "function", "modality", "candidates"})
+        app, function = _identifier(row["application"]), _identifier(row["function"])
+        modality = row["modality"]
+        if app not in apps or (app, function) in routes or modality not in ("text", "vision"):
+            _fail("unknown/duplicate route or modality")
+        candidates = _compile_candidates(row["candidates"], modality, adapters, models, defaults)
+        routes[(app, function)] = RoutePolicy(app, function, tuple(candidates), modality)
+    return routes
+
+
 def compile_catalog(document, *, adapters=None, legacy_models=None):
     """Validate shape and graph before constructing any runtime registration."""
     if adapters is None or legacy_models is None:
@@ -136,121 +306,11 @@ def compile_catalog(document, *, adapters=None, legacy_models=None):
     document = copy.deepcopy(document)
     if document["schema"] != SCHEMA or type(document["version"]) is not int or document["version"] != 1:
         _fail("unsupported version")
-    provider_rows = _mapping(document["providers"], 32)
-    if set(provider_rows) != set(adapters):
-        _fail("provider adapters must match the code-owned registry")
-    defaults = {}
-    for name, row in provider_rows.items():
-        row = _object(row, {"api_base", "api_key_env", "transport", "attribution_headers",
-                            "enabled", "priority", "default_model"})
-        fixed = asdict(adapters[name])
-        if any(type(row[k]) is not type(fixed[k]) or row[k] != fixed[k]
-               for k in ("api_base", "api_key_env", "transport", "attribution_headers")):
-            _fail("adapter endpoint, credential and transport bindings cannot change")
-        defaults[name] = MappingProxyType({"enabled": _boolean(row["enabled"]),
-                                          "priority": _integer(row["priority"]),
-                                          "default_model": _identifier(row["default_model"])})
-    forbidden = {(p, wire.wire_model) for model in legacy_models.values() if model.forbidden
-                 for p, wire in model.providers.items()}
-    prefixes = {p: {v.litellm_model[:-len(v.wire_model)]
-                    for m in legacy_models.values() for name, v in m.providers.items()
-                    if name == p and v.litellm_model} for p in adapters}
-    models = {}
-    for name, row in _mapping(document["models"], 4096).items():
-        row = _object(row, {"providers", "vision", "forbidden"})
-        banned, vision = _boolean(row["forbidden"]), _boolean(row["vision"])
-        if name in legacy_models and legacy_models[name].forbidden and not banned:
-            _fail("a code-forbidden model cannot be enabled")
-        variants = row["providers"]
-        if (not isinstance(variants, dict) or len(variants) > len(adapters) or (not variants and not banned)
-                or any(p not in adapters for p in variants)):
-            _fail("invalid model provider variants")
-        values = {}
-        for provider, variant in variants.items():
-            variant = _object(variant, {"litellm_model", "wire_model"})
-            wire = _identifier(variant["wire_model"])
-            litellm = variant["litellm_model"]
-            if litellm:
-                _identifier(litellm)
-            elif litellm != "":
-                _fail("invalid model alias")
-            if (litellm and not any(litellm == prefix + wire for prefix in prefixes[provider])) or (
-                    not litellm and prefixes[provider]):
-                _fail("model alias must retain the code-owned adapter prefix and wire identity")
-            if not banned and (provider, wire) in forbidden:
-                _fail("alias cannot enable a forbidden wire model")
-            if provider == "openrouter" and (name.startswith("gpt-5.6-sol")
-                                             or wire.rsplit("/", 1)[-1].startswith("gpt-5.6-sol")):
-                _fail("Cursor Sol is not an OpenRouter model")
-            values[provider] = ProviderModelSpec(litellm, wire)
-        models[name] = ModelSpec(name, MappingProxyType(values), banned, vision)
-    for name, row in defaults.items():
-        model = models.get(row["default_model"])
-        if model is None or model.forbidden or name not in model.providers:
-            _fail("default model must be permitted through its provider")
-    priorities = [value["priority"] for value in defaults.values() if value["enabled"]]
-    if len(priorities) != len(set(priorities)):
-        _fail("enabled providers must have unique priorities")
-    apps = {}
-    for name, row in _mapping(document["applications"], 2048).items():
-        row = _object(row, {"title", "url"})
-        if not 6 <= len(name) <= 128:
-            _fail("application ID must contain 6..128 characters")
-        title, url = _text(row["title"], 100), _text(row["url"], 2048)
-        try:
-            parsed = urlsplit(url)
-        except ValueError:
-            _fail("invalid application URL")
-        if (parsed.scheme != "https" or not parsed.hostname or parsed.username or parsed.password
-                or parsed.query or parsed.fragment or any(c.isspace() for c in url)):
-            _fail("application URL must be public HTTPS without credentials or query")
-        apps[name] = ApplicationSpec(name, title, url)
-    rows = document["routes"]
-    if not isinstance(rows, list) or not 1 <= len(rows) <= 4096:
-        _fail("invalid routes collection")
-    routes = {}
-    for row in rows:
-        row = _object(row, {"application", "function", "modality", "candidates"})
-        app, function = _identifier(row["application"]), _identifier(row["function"])
-        modality = row["modality"]
-        if app not in apps or (app, function) in routes or modality not in ("text", "vision"):
-            _fail("unknown/duplicate route or modality")
-        raw = row["candidates"]
-        if not isinstance(raw, list) or not 1 <= len(raw) <= 32:
-            _fail("route must have 1..32 candidates")
-        candidates, seen = [], set()
-        for item in raw:
-            required = {"provider", "priority_offset", "model_parameters"}
-            if not isinstance(item, dict) or not required <= set(item) <= required | {"model"}:
-                _fail("invalid candidate fields")
-            provider, alias = item["provider"], item.get("model")
-            if (not isinstance(provider, str) or provider not in adapters
-                    or (alias is not None and not isinstance(alias, str))):
-                _fail("unknown candidate provider or model")
-            if alias is not None:
-                _identifier(alias)
-            else:
-                item.pop("model", None)  # TOML omits null; both forms have one semantic identity.
-            model = models.get(alias or defaults[provider]["default_model"])
-            if model is None or model.forbidden or provider not in model.providers:
-                _fail("candidate model is unavailable or forbidden")
-            offset = _integer(item["priority_offset"])
-            params = item["model_parameters"]
-            if (not isinstance(params, dict) or set(params) - {"reasoning_effort", "verbosity"}
-                    or any(v not in ("low", "medium", "high") for v in params.values())):
-                _fail("model parameters exceed bounded overrides")
-            identity = canonical(item)
-            if identity in seen:
-                _fail("duplicate candidate")
-            seen.add(identity)
-            if modality == "vision" and (not model.vision or adapters[provider].transport != "openai-compatible"):
-                _fail("vision route requires a declared vision model and OpenAI-compatible transport")
-            candidates.append(RouteCandidate(provider, alias, offset, model_parameters=MappingProxyType(dict(params))))
-        priorities = [defaults[c.provider]["priority"] + c.priority_offset for c in candidates
-                      if defaults[c.provider]["enabled"]]
-        if not priorities or len(priorities) != len(set(priorities)):
-            _fail("route needs enabled candidates with unique effective priorities")
-        routes[(app, function)] = RoutePolicy(app, function, tuple(candidates), modality)
+    defaults = _compile_provider_defaults(document["providers"], adapters)
+    models = _compile_models(document["models"], adapters, legacy_models)
+    _check_provider_defaults(defaults, models)
+    apps = _compile_applications(document["applications"])
+    routes = _compile_routes(document["routes"], apps, adapters, models, defaults)
     encoded = canonical(document)
     if len(encoded.encode()) > MAX_BYTES:
         _fail("catalog exceeds byte limit")
