@@ -39,6 +39,17 @@ from .types import ResolvedRoute
 
 ALLOWED_HOSTS = {"127.0.0.1", "localhost", "[::1]", "::1"}
 DEFAULT_OLLAMA_UPSTREAM = "http://127.0.0.1:11434"
+UPSTREAM_FORWARD_TIMEOUT_DEFAULT = 120.0
+UPSTREAM_FORWARD_TIMEOUT_BOUNDS = (1.0, 900.0)
+
+
+def upstream_forward_timeout(payload: Any) -> float:
+    """Raw Ollama forward timeout from the request ``timeout`` field, clamped to 1-900 s (SUB-05)."""
+    value = payload.get("timeout") if isinstance(payload, dict) else None
+    if isinstance(value, bool) or not isinstance(value, (int, float)) or not math.isfinite(value) or value <= 0:
+        return UPSTREAM_FORWARD_TIMEOUT_DEFAULT
+    low, high = UPSTREAM_FORWARD_TIMEOUT_BOUNDS
+    return float(min(max(value, low), high))
 DEFAULT_PROXY_PORT = 11435
 # Browser access control (SUB-01): only loopback pages and explicitly listed origins may read
 # responses; routed (possibly paid/cloud) completions can additionally require a bearer token.
@@ -1737,8 +1748,9 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         data = json.dumps(payload).encode("utf-8") if payload is not None else None
         headers = {"Content-Type": "application/json"}
         req = Request(url, data=data, headers=headers, method=method)
+        timeout = upstream_forward_timeout(payload)
         try:
-            with urlopen(req, timeout=120) as resp:
+            with urlopen(req, timeout=timeout) as resp:
                 body = resp.read()
                 self.send_response(resp.status)
                 self._send_cors_headers()
@@ -1756,8 +1768,11 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
             self.wfile.write(body)
-        except URLError as exc:
-            self._error(502, "UPSTREAM_UNAVAILABLE", f"failed to connect to upstream Ollama: {exc.reason}")
+        except (TimeoutError, URLError) as exc:
+            if isinstance(exc, TimeoutError) or isinstance(getattr(exc, "reason", None), TimeoutError):
+                self._error(504, "UPSTREAM_TIMEOUT", f"upstream Ollama did not answer within {timeout:g} s")
+            else:
+                self._error(502, "UPSTREAM_UNAVAILABLE", f"failed to connect to upstream Ollama: {exc.reason}")
 
     def _local_host(self) -> bool:
         host = (self.headers.get("Host") or "").split(":", 1)[0].strip().lower()
