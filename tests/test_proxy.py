@@ -121,7 +121,11 @@ def test_proxy_health_and_cors(proxy_server):
     assert body["status"] == "ok"
     assert body["service"] == "subllm-proxy"
     assert body["version"] == proxy.metadata.version("subactor-subllm")
-    assert "access-control-allow-origin" in [k.lower() for k in headers]
+    lowered = {k.lower(): v for k, v in headers.items()}
+    assert "access-control-allow-origin" not in lowered  # no wildcard; non-browser clients need no CORS
+    assert lowered["vary"] == "Origin"
+    status, _, headers = _request("GET", f"{base_url}/health", headers={"Origin": "http://localhost:8800"})
+    assert status == 200 and dict(headers)["Access-Control-Allow-Origin"] == "http://localhost:8800"
 
 
 def test_proxy_health_uses_unknown_when_distribution_metadata_is_missing(proxy_server, monkeypatch):
@@ -172,7 +176,8 @@ def test_openai_wire_keeps_unknown_or_invalid_cache_unknown(proxy_server, monkey
 
 def test_proxy_options_cors(proxy_server):
     base_url, _ = proxy_server
-    status, _, headers = _request("OPTIONS", f"{base_url}/v1/chat/completions")
+    status, _, headers = _request("OPTIONS", f"{base_url}/v1/chat/completions",
+                                  headers={"Origin": "http://127.0.0.1:7080"})
     assert status == 204
     assert any(k.lower() == "access-control-allow-methods" for k in headers)
 
@@ -861,3 +866,61 @@ def test_proxy_system_one_decide_rejects_missing_questions(proxy_server):
     status, body, _ = _request("POST", f"{base_url}/v1/decide", {"schema": "wellmanifest.system-one-request/v1"})
     assert status == 400
     assert body["error"]["code"] == "INVALID_REQUEST"
+
+
+# SUB-01: browser origin allowlist and optional bearer token for routed models.
+@pytest.mark.parametrize("method,path", [("OPTIONS", "/v1/chat/completions"), ("GET", "/health"),
+                                         ("POST", "/v1/chat/completions"), ("POST", "/api/chat")])
+def test_foreign_origin_is_rejected_without_cors_or_provider_attempt(proxy_server, monkeypatch, method, path):
+    def forbidden(*args, **kwargs):
+        pytest.fail("a foreign origin reached a provider or the raw upstream")
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", forbidden)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_forward_upstream", forbidden)
+    payload = {"model": "glm-5.3", "messages": [{"role": "user", "content": "x"}]} if method == "POST" else None
+    status, body, headers = _request(method, proxy_server[0] + path, payload,
+                                     headers={"Origin": "https://evil.example"})
+    assert status == 403 and body["error"]["code"] == "PROXY-ORIGIN"
+    assert "access-control-allow-origin" not in {k.lower() for k in headers}
+
+
+def test_listed_origin_is_allowed_and_echoed(proxy_server, monkeypatch):
+    monkeypatch.setenv(proxy.PROXY_ALLOWED_ORIGINS_ENV, "https://ui.example.org, https://other.example")
+    status, _, headers = _request("OPTIONS", proxy_server[0] + "/v1/chat/completions",
+                                  headers={"Origin": "https://ui.example.org"})
+    assert status == 204
+    assert dict(headers)["Access-Control-Allow-Origin"] == "https://ui.example.org"
+    assert proxy.proxy_origin_allowed("http://127.0.0.1:7080") and proxy.proxy_origin_allowed("http://[::1]:1")
+    assert not proxy.proxy_origin_allowed("https://evil.example") and not proxy.proxy_origin_allowed("null")
+
+
+@pytest.mark.parametrize("stream", [False, True])
+def test_route_token_is_required_for_routed_models_when_configured(proxy_server, monkeypatch, stream):
+    monkeypatch.setenv(proxy.PROXY_BEARER_ENV, "s3cret")
+    monkeypatch.setattr(proxy, "complete", lambda *a, **kw: pytest.fail("routed without token"))
+    monkeypatch.setattr(proxy, "_complete_model_direct", lambda *a, **kw: pytest.fail("routed without token"))
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_forward_upstream",
+                        lambda *a, **kw: pytest.fail("token failure fell through to raw upstream"))
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *a: True)
+    request = {"model": "glm-5.3", "messages": [{"role": "user", "content": "x"}], "stream": stream}
+    for headers in ({}, {"Authorization": "Bearer wrong"}):
+        status, body, _ = _request("POST", proxy_server[0] + "/v1/chat/completions", request, headers=headers)
+        assert status == 401 and body["error"]["code"] == "PROXY-AUTH"
+
+
+def test_route_token_allows_routed_models_and_keeps_local_forward_open(proxy_server, monkeypatch):
+    monkeypatch.setenv(proxy.PROXY_BEARER_ENV, "s3cret")
+    response = CompletionResponse("ok", "codex-cli", "gpt-5.6-sol", {"input_tokens": 1, "output_tokens": 1})
+    monkeypatch.setattr(proxy, "complete", lambda *a, **kw: response)
+    monkeypatch.setattr(proxy, "_complete_model_direct", lambda *a, **kw: response)
+    status, _, _ = _request("POST", proxy_server[0] + "/v1/chat/completions",
+                            {"model": "glm-5.3", "messages": [{"role": "user", "content": "x"}]},
+                            headers={"Authorization": "Bearer s3cret"})
+    assert status == 200
+    forwarded = []
+    monkeypatch.setattr(proxy.adaptive, "policy", lambda *a, **kw: None)
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *a: True)
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_forward_upstream",
+                        lambda self, method, path, payload: forwarded.append(path) or self._json(200, {"ok": True}))
+    status, _, _ = _request("POST", proxy_server[0] + "/v1/chat/completions",
+                            {"model": "unregistered-local:1b", "messages": [{"role": "user", "content": "x"}]})
+    assert status == 200 and forwarded == ["/v1/chat/completions"]
