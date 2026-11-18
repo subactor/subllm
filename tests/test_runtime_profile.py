@@ -284,3 +284,45 @@ def test_request_parameter_context_resets_and_rejects_unsupported_native_control
     assert not request_parameters_active()
     with pytest.raises(ProfileError, match="Ollama API"), request_parameter_scope({"top_k": 20}):
         pytest.fail("Unsupported parameters must fail before provider dispatch")
+
+
+def test_decision_role_keep_alive_forwarded_and_validated(gateway_servers):
+    servers, seen, _entered, _release = gateway_servers
+    profile = configured(f"http://127.0.0.1:{servers[0].server_port}")
+    profile["roles"]["decision"]["parameters"] = {"keep_alive": 90}
+    client = GatewayClient(profile)
+    client.infer("decision", {"state": {"x": 1}, "questions": [], "keep_alive": 0})
+    assert seen[0]["path"] == "/v1/decide"
+    assert seen[0]["payload"]["keep_alive"] == 0
+    assert seen[0]["payload"]["offline"] is True
+    for bad in (301, True, -1):
+        with pytest.raises(ProfileError):
+            client.infer("decision", {"state": {}, "questions": [], "keep_alive": bad})
+
+
+def test_autonomy_roles_and_context_budget_admission(gateway_servers):
+    from subllm.runtime_profile import capabilities
+
+    servers, seen, _entered, _release = gateway_servers
+    profile = configured(f"http://127.0.0.1:{servers[0].server_port}")
+    profile["roles"]["planner"] = {
+        "model": "qwen3:4b-instruct",
+        "parameters": {"protocol": "ollama", "context_size": 128, "max_tokens": 100},
+    }
+    profile["roles"]["selector"] = {
+        "model": "d1:3b",
+        "parameters": {"protocol": "decision", "keep_alive": 0, "context_size": 128},
+    }
+    profile["roles"]["generator"] = {
+        "model": "qwen3:4b-instruct",
+        "parameters": {"protocol": "ollama", "context_size": 256, "max_tokens": 64},
+    }
+    assert set(capabilities()["autonomy_roles"]) == {"planner", "selector", "generator"}
+    client = GatewayClient(profile)
+    with pytest.raises(ProfileError, match="context_size budget"):
+        client.infer("planner", {"messages": [{"role": "user", "content": "x" * 200}]})
+    assert seen == []
+    client.infer("selector", {"state": {"ok": True}, "questions": []})
+    client.infer("generator", {"messages": [{"role": "user", "content": "hi"}]})
+    assert seen[0]["path"] == "/v1/decide" and seen[0]["payload"]["keep_alive"] == 0
+    assert seen[1]["path"] == "/api/chat" and seen[1]["payload"]["options"]["num_ctx"] == 256

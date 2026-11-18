@@ -1,0 +1,75 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-234",
+  "summary": "Support Ollama parameter scope, decision keep_alive and autonomy role context budgets",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-234/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/runtime_profile.py",
+    "tests/test_runtime_profile.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "c211dd3c67ab87f1da2894d228199d0d365d476d",
+    "outcome": "Support decision role keep_alive forwarding, optional planner/selector/generator autonomy roles, and pre-dispatch context token budget admission in runtime_profile.py while preserving policy-routed ollama_parameter_scope rejection.",
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "runtimeDependencies": [],
+    "nonGoals": [
+      "Do not modify proxy.py or resolver.py under foreign leases or dirty primary state."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extend runtime_profile.py with decision keep_alive parameter bounds, optional planner/selector/generator role entries, and admit_context_budget preflight without weakening ollama_parameter_scope.",
+      "components": [
+        {
+          "name": "runtime-profile",
+          "paths": [
+            "src/subllm/runtime_profile.py",
+            "tests/test_runtime_profile.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "AUTONOMY_ROLES and admit_context_budget in subllm.runtime_profile; decision keep_alive parameter"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert ticket-234 commit via protected PR."
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_runtime_profile.py tests/test_decisions.py tests/test_generation_limits.py"
+        ],
+        "evidence": "Runtime profile, decision, and generation limit unit tests pass."
+      }
+    ]
+  }
+}

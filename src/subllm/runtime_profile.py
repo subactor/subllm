@@ -25,6 +25,7 @@ from urllib.request import HTTPRedirectHandler, ProxyHandler, Request, build_ope
 SCHEMA = "subllm.ai-runtime/v1"
 PROFILE_FILENAME = "ai-runtime.json"
 ROLES = ("llm", "stt", "tts", "decision")
+AUTONOMY_ROLES = ("planner", "selector", "generator")
 ENDPOINTS = {
     "llm": "/v1/chat/completions",
     "stt": "/v1/speech/transcribe",
@@ -101,10 +102,17 @@ PARAMETERS = {
         "format": ["wav"],
         "timeout": [0.1, 600],
     },
-    "decision": {"timeout": [0.1, 300]},
+    "decision": {"timeout": [0.1, 300], "keep_alive": [0, 300]},
+}
+PARAMETERS["planner"] = copy.deepcopy(PARAMETERS["llm"])
+PARAMETERS["generator"] = copy.deepcopy(PARAMETERS["llm"])
+PARAMETERS["selector"] = {
+    **copy.deepcopy(PARAMETERS["llm"]),
+    "protocol": ["openai", "ollama", "decision"],
+    "keep_alive": [0, 300],
 }
 _INTEGER_PARAMETERS = frozenset(
-    {"top_k", "max_tokens", "seed", "context_size", "beam_size", "best_of", "cpu_threads", "speaker"}
+    {"top_k", "max_tokens", "seed", "context_size", "beam_size", "best_of", "cpu_threads", "speaker", "keep_alive"}
 )
 
 
@@ -228,7 +236,11 @@ def validate_profile(value):
     key = gateway["api_key"]
     if not isinstance(key, str) or len(key) > 4096 or any(ord(c) < 32 for c in key):
         raise ProfileError("Invalid gateway credential")
-    if not isinstance(value["roles"], dict) or set(value["roles"]) != set(ROLES):
+    if (
+        not isinstance(value["roles"], dict)
+        or not set(ROLES).issubset(value["roles"])
+        or set(value["roles"]) - (set(ROLES) | set(AUTONOMY_ROLES))
+    ):
         raise ProfileError("All four AI roles must be configured")
     result = copy.deepcopy(value)
     result["gateway"]["url"] = gateway_url(gateway["url"])
@@ -358,6 +370,26 @@ class _NoRedirect(HTTPRedirectHandler):
         raise GatewayError("OQLLM redirects are forbidden")
 
 
+def admit_context_budget(payload, *, context_size: int, reserved_output_tokens: int = 0) -> dict[str, int]:
+    """Estimate UTF-8 input tokens conservatively and reserve output tokens before dispatch."""
+    if type(context_size) is not int or context_size < 1:
+        raise ProfileError("Invalid context_size budget")
+    if type(reserved_output_tokens) is not int or reserved_output_tokens < 0:
+        raise ProfileError("Invalid reserved output token budget")
+    sections = {key: payload[key] for key in ("messages", "state", "questions") if payload.get(key) is not None}
+    serialized = json.dumps(sections, ensure_ascii=False, allow_nan=False).encode("utf-8") if sections else b""
+    input_tokens = max(1, (len(serialized) + 3) // 4) if sections else 0
+    total_tokens = input_tokens + reserved_output_tokens
+    if total_tokens > context_size:
+        raise ProfileError(f"Request exceeds configured context_size budget ({total_tokens} > {context_size})")
+    return {
+        "context_size": context_size,
+        "estimated_input_tokens": input_tokens,
+        "reserved_output_tokens": reserved_output_tokens,
+        "remaining_tokens": context_size - total_tokens,
+    }
+
+
 class GatewayClient:
     def __init__(self, profile, *, application="heyasa"):
         self.profile = validate_profile(profile)
@@ -399,8 +431,10 @@ class GatewayClient:
         return result
 
     def infer(self, role, payload):
-        if role not in ROLES or not isinstance(payload, dict):
+        if role not in (*ROLES, *AUTONOMY_ROLES) or not isinstance(payload, dict):
             raise ProfileError("Invalid AI inference role or request")
+        if role not in self.profile["roles"]:
+            raise ProfileError(f"AI runtime profile does not configure role: {role}")
         config = self.profile["roles"][role]
         parameters = dict(config["parameters"])
         timeout = parameters.pop("timeout", 120)
@@ -409,11 +443,19 @@ class GatewayClient:
             if type(budget) not in (int, float) or not math.isfinite(budget) or budget <= 0:
                 raise ProfileError("Invalid caller inference deadline")
             timeout = min(timeout, budget)
-        if role == "llm" and "max_tokens" in payload:
+        protocol = parameters.pop("protocol", "openai") if role in {"llm", "planner", "selector", "generator"} else None
+        is_decision_role = role == "decision" or (role == "selector" and protocol == "decision")
+        is_llm_role = role in {"llm", "planner", "generator"} or (role == "selector" and not is_decision_role)
+        if is_llm_role and "max_tokens" in payload:
             caller_cap = validate_parameters("llm", {"max_tokens": payload["max_tokens"]})["max_tokens"]
             parameters["max_tokens"] = min(caller_cap, parameters.get("max_tokens", caller_cap))
-        protocol = parameters.pop("protocol", "openai") if role == "llm" else None
-        if role == "llm" and protocol == "ollama":
+        if (is_llm_role or is_decision_role) and "context_size" in parameters:
+            admit_context_budget(
+                payload,
+                context_size=parameters["context_size"],
+                reserved_output_tokens=parameters.get("max_tokens", 0) if is_llm_role else 0,
+            )
+        if is_llm_role and protocol == "ollama":
             names = {"max_tokens": "num_predict", "context_size": "num_ctx"}
             options = {names.get(name, name): value for name, value in parameters.items()}
             request = {
@@ -441,15 +483,24 @@ class GatewayClient:
                     "completion_tokens": result.get("eval_count"),
                 },
             }
-        if role == "llm" and set(parameters) & {"top_k", "context_size", "repeat_penalty"}:
+        if is_llm_role and set(parameters) & {"top_k", "context_size", "repeat_penalty"}:
             raise ProfileError("Use the Ollama protocol for native context/top-k/repetition controls")
+        if is_decision_role:
+            keep_alive = (
+                validate_parameters("decision", {"keep_alive": payload["keep_alive"]})["keep_alive"]
+                if "keep_alive" in payload
+                else parameters.get("keep_alive")
+            )
+            request = {**payload, "model": config["model"], "offline": True, "timeout": timeout}
+            if keep_alive is not None:
+                request["keep_alive"] = keep_alive
+            return self._request(ENDPOINTS["decision"], payload=request, timeout=timeout, role=role)
         request = {**payload, **parameters, "model": config["model"]}
-        if role == "llm":
+        if is_llm_role:
             request["stream"] = False
-        if role == "decision":
-            request["offline"] = True
         request["timeout"] = timeout
-        return self._request(ENDPOINTS[role], payload=request, timeout=timeout, role=role)
+        endpoint = ENDPOINTS["llm"] if is_llm_role else ENDPOINTS[role]
+        return self._request(endpoint, payload=request, timeout=timeout, role=role)
 
     def capabilities(self):
         return self._request("/v1/ai/capabilities")
@@ -460,6 +511,13 @@ def capabilities():
         "schema": "subllm.ai-capabilities/v1",
         "profile_schema": SCHEMA,
         "roles": {role: {"endpoint": ENDPOINTS[role], "parameters": copy.deepcopy(PARAMETERS[role])} for role in ROLES},
+        "autonomy_roles": {
+            role: {
+                "endpoint": ENDPOINTS["decision"] if role == "selector" else ENDPOINTS["llm"],
+                "parameters": copy.deepcopy(PARAMETERS[role]),
+            }
+            for role in AUTONOMY_ROLES
+        },
         "switching": "new-request-snapshot",
         "stream_migration": False,
     }
