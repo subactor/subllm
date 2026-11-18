@@ -852,6 +852,18 @@ def test_proxy_system_one_decide_falls_back_to_subllm_route_when_ollama_unavaila
         ],
     }
     status, body, headers = _request("POST", f"{base_url}/v1/system-one/decide", payload)
+    # SUB-02: without allow_remote_fallback the decision state never leaves the host.
+    assert status == 503 and seen_routes == []
+    assert body["error"]["code"] == "LOCAL_DECISION_UNAVAILABLE"
+    assert body["error"]["reason"] == "ollama_unavailable" and body["error"]["provider"] is None
+    assert headers.get("X-Subactor-Remote-Fallback") == "refused"
+    # A headerless request is not attributed to heyasa even when fallback is allowed.
+    status, body, _ = _request("POST", f"{base_url}/v1/system-one/decide", dict(payload, allow_remote_fallback=True))
+    assert status == 503 and body["error"]["remote_fallback"] == "remote_fallback_route_unspecified"
+    assert seen_routes == []
+    status, body, headers = _request(
+        "POST", f"{base_url}/v1/system-one/decide", dict(payload, allow_remote_fallback=True),
+        headers={"X-Subactor-Application": "heyasa", "X-Subactor-Function": "command"})
     assert status == 200
     assert seen_routes == [("heyasa/command", "heyasa", "command", {"type": "json_object"})]
     assert body["provider"] == "zai"
@@ -924,3 +936,40 @@ def test_route_token_allows_routed_models_and_keeps_local_forward_open(proxy_ser
     status, _, _ = _request("POST", proxy_server[0] + "/v1/chat/completions",
                             {"model": "unregistered-local:1b", "messages": [{"role": "user", "content": "x"}]})
     assert status == 200 and forwarded == ["/v1/chat/completions"]
+
+
+@pytest.mark.parametrize("allow", [False, True])
+def test_local_ollama_500_does_not_reach_cloud_without_explicit_fallback(proxy_server, monkeypatch, allow):
+    """SUB-02: a failing local decision model returns 503 unless remote fallback is explicitly allowed."""
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: True)
+    monkeypatch.setattr(proxy, "get_upstream_ollama_models", lambda *_: [{"name": "d1:3b", "model": "d1:3b"}])
+
+    def ollama_500(*args, **kwargs):
+        raise proxy.HTTPError("http://127.0.0.1:11434/api/chat", 500, "Internal Server Error", None, None)
+
+    monkeypatch.setattr(proxy, "_complete_ollama_system_one", ollama_500)
+    routed = []
+
+    def fake_route(self, clean_model, messages, app, func, timeout, req_id, payload):
+        routed.append((clean_model, app, func))
+        return CompletionResponse(content=json.dumps({"answers": {"operation": "op_0"}}), provider="zai",
+                                  model="glm-5.3-flash", usage={}, finish_reason="stop")
+
+    monkeypatch.setattr(proxy.SubLLMProxyHandler, "_execute_model_or_route", fake_route)
+    payload = {"schema": "wellmanifest.system-one-request/v1", "allow_remote_fallback": allow,
+               "questions": [{"id": "operation", "type": "choice", "question": "Which?",
+                              "options": ["op_0", "NO_MATCH"]}]}
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/decide", payload,
+                               headers={"X-Subactor-Application": "heyasa", "X-Subactor-Function": "command"})
+    if allow:
+        assert status == 200 and body["provider"] == "zai" and routed == [("heyasa/command", "heyasa", "command")]
+    else:
+        assert status == 503 and routed == []
+        assert body["error"] == {**body["error"], "code": "LOCAL_DECISION_UNAVAILABLE", "reason": "HTTPError"}
+
+
+def test_allow_remote_fallback_must_be_boolean(proxy_server):
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/decide", {
+        "allow_remote_fallback": "yes",
+        "questions": [{"id": "q", "type": "choice", "question": "?", "options": ["a", "b"]}]})
+    assert status == 400 and body["error"]["code"] == "INVALID_REQUEST"

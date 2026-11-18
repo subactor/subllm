@@ -1,0 +1,83 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-226",
+  "summary": "SUB-02 decide: no silent remote fallback for local System One decisions",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-226/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "e4f0d70a148bf3d4bde471ef62dfd19f9b883106",
+    "targetBranch": "main",
+    "outcome": "POST /v1/decide and /v1/system-one/decide no longer send decision state to a cloud route when the local System One model fails or Ollama is unavailable: without allow_remote_fallback: true the proxy answers 503 LOCAL_DECISION_UNAVAILABLE (reason, provider: null, X-Subactor-Remote-Fallback: refused) with zero provider attempts. A request without application headers is attributed to subactor-proxy/decide, not heyasa/command, and needs declared headers or an explicit route to fall back remotely. Explicitly requested registered routes are unchanged.",
+    "nonGoals": [
+      "docs/poa-api.md (integration workstream) follows separately.",
+      "SUB-03 local timeout and keep_alive are not changed."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 60,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 1,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "Gate the remote fallback branch of _handle_system_one_decide on an explicit boolean allow_remote_fallback and on a declared application route.",
+      "components": [
+        {
+          "name": "proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [
+        "allow_remote_fallback request field; 503 LOCAL_DECISION_UNAVAILABLE response"
+      ],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy.py"
+        ],
+        "evidence": "all pass, including the Ollama 500 variants"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "./project/governance-check.sh"
+        ],
+        "evidence": "governance-check output"
+      }
+    ]
+  }
+}
