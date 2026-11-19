@@ -1,0 +1,96 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-240",
+  "summary": "AUT-011: forward installed local Ollama tags under an adaptive policy instead of failing as unknown model",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P2",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-240/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_adaptive_forward.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "acceptedBaseSha": "8d62aaad139b1f4ed165b8803d003d6b00cead1c",
+    "targetBranch": "main",
+    "outcome": "With an adaptive (cloud class) policy active, an exact local Ollama tag that is installed upstream and not declared by the policy is forwarded natively to Ollama (keeping format/keep_alive/num_ctx) instead of failing as 'unknown model'. Declared tags still take the adaptive path, missing tags still fail, and behaviour without an adaptive policy is unchanged. Unblocks autonom's local binder/generator on hosts that run the proxy with an adaptive policy (AUT-011).",
+    "nonGoals": [
+      "No change to adaptive class routing for declared models.",
+      "No cloud fallback for local tags."
+    ],
+    "complexity": "S",
+    "estimatedMinutes": 45,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "architecture": {
+      "status": "accepted",
+      "decision": "One handler helper _may_forward_locally replaces the two 'not adaptive.policy() and _is_unmanaged_local_ollama_model' checks from ticket-239; installation is read from the cached upstream tag list.",
+      "components": [
+        {
+          "name": "proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_adaptive_forward.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert the commit."
+    },
+    "runtimeDependencies": [],
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "python -m pytest -q tests/test_proxy_adaptive_forward.py tests/test_proxy.py tests/test_proxy_models.py tests/test_adaptive.py"
+        ],
+        "evidence": "pass"
+      },
+      {
+        "criterion": "AC-02",
+        "commands": [
+          "python -m pytest -q"
+        ],
+        "evidence": "full suite"
+      },
+      {
+        "criterion": "AC-03",
+        "commands": [
+          "autonom run --simulate --for 24h through a proxy built from this branch with the production adaptive policy"
+        ],
+        "evidence": "goal cycles complete (bind succeeds), previously 0 cycles with 'unknown model'"
+      },
+      {
+        "criterion": "AC-04",
+        "commands": [
+          "ruff check --no-respect-gitignore src tests",
+          "./project/governance-check.sh"
+        ],
+        "evidence": "clean"
+      }
+    ]
+  }
+}

@@ -1213,9 +1213,22 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         except ProfileError as error:
             self._error(400, "INVALID_REQUEST", str(error))
 
+    def _may_forward_locally(self, clean_model: str) -> bool:
+        """Unmanaged local tags go to Ollama. Under an adaptive policy only an exact tag that is installed
+        upstream and not declared by the policy (AUT-011): it stays on the host, and the adaptive path
+        would otherwise fail it as an unknown model."""
+        if not _is_unmanaged_local_ollama_model(clean_model):
+            return False
+        policy = adaptive.policy()
+        if not policy:
+            return True
+        if adaptive.requested_class(policy, clean_model) is not None:
+            return False
+        return clean_model in {m.get("name") for m in get_upstream_ollama_models(self.ollama_upstream)}
+
     def _fast_forward_to_ollama(self, clean_model: str, path: str, payload: Mapping[str, Any]) -> bool:
         """Models unknown to SubLLM policy go straight to the local Ollama when it is up."""
-        if (not adaptive.policy() and _is_unmanaged_local_ollama_model(clean_model)
+        if (self._may_forward_locally(clean_model)
                 and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", path, payload)
             return True
@@ -1295,7 +1308,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         clean_model, _ticket = _extract_ticket(str(payload.get("model") or "glm-5.3"), self.headers, payload)
         if not options:
             return self._handle_ollama_chat_with_parameters(payload)
-        if (not adaptive.policy() and _is_unmanaged_local_ollama_model(clean_model)
+        if (self._may_forward_locally(clean_model)
                 and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", "/api/chat", payload)
             return
