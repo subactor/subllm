@@ -28,7 +28,13 @@ from .cli_common import CLI_EXECUTABLES
 from .client_routes import _complete_route, complete
 from .client_types import CompletionResponse, _RetryableAttemptError
 from .credential_env import credential_is_valid, merged_environment
-from .errors import QUALITY_VALIDATOR_ERROR_CODE, CompletionError, InvalidResponseContractError, SubLLMError
+from .errors import (
+    QUALITY_VALIDATOR_ERROR_CODE,
+    CompletionError,
+    InvalidPolicyError,
+    InvalidResponseContractError,
+    SubLLMError,
+)
 from .health import order_with_last_resort, record_failure, record_success
 from .openrouter_routing import apply_parameters
 from .policy import MODELS, PROVIDERS, ROUTES
@@ -917,6 +923,31 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         ) or "no-cache" in {part.strip().lower() for part in self.headers.get("Pragma", "").split(",")}
         return list_proxy_models(self.ollama_upstream, fresh=fresh)
 
+    def _serve_model_catalog(self, path: str) -> None:
+        # Custom model registration is local to the current request context.
+        try:
+            load_policy_config()
+        except InvalidPolicyError:
+            self._error(503, "INVALID_POLICY", "The model catalog policy is unavailable")
+            return
+        models = self._catalog_models()
+        if path == "/v1/models":
+            data = [
+                {
+                    "id": m["id"],
+                    "object": "model",
+                    "created": 1789747200,
+                    "owned_by": m["source"],
+                    "permission": [],
+                }
+                for m in models
+            ]
+            self._json(200, {"object": "list", "data": data})
+            return
+
+        now_iso = datetime.datetime.now(datetime.UTC).isoformat()
+        self._json(200, {"models": [_ollama_tag_entry(m, now_iso) for m in models]})
+
     def do_GET(self) -> None:
         if not self._local_host():
             self._error(421, "PROXY-001", "host is not a local bind")
@@ -941,26 +972,8 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             })
             return
 
-        if path == "/v1/models":
-            models = self._catalog_models()
-            data = [
-                {
-                    "id": m["id"],
-                    "object": "model",
-                    "created": 1789747200,
-                    "owned_by": m["source"],
-                    "permission": [],
-                }
-                for m in models
-            ]
-            self._json(200, {"object": "list", "data": data})
-            return
-
-        if path == "/api/tags":
-            models = self._catalog_models()
-            now_iso = datetime.datetime.now(datetime.UTC).isoformat()
-            ollama_models = [_ollama_tag_entry(m, now_iso) for m in models]
-            self._json(200, {"models": ollama_models})
+        if path in {"/v1/models", "/api/tags"}:
+            self._serve_model_catalog(path)
             return
 
         if path == "/api/version":
