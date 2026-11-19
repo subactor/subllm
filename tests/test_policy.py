@@ -296,6 +296,13 @@ def test_every_registered_route_prefers_its_declared_model_role(application: str
         assert route.provider == route.transport == "codex-cli"
         assert route.model == "gpt-6-sol"
         return
+    if application == "autonom":
+        routes = configured_routes(application, function)
+        assert [(item.provider, item.model) for item in routes] == [
+            ("minis", "qwen3:8b"),
+            ("ollama", "qwen3-coder:30b"),
+        ]
+        return
     if policy.modality == "vision":
         route = configured_routes(application, function)[0]
         assert route.provider == "openrouter"
@@ -407,11 +414,63 @@ def test_complex_task_routes_prefer_gpt_6_luna_for_codex() -> None:
         assert route.wire_model == "gpt-6-luna"
 
     # With codex preferred in provider order, resolve picks gpt-6-luna
-    token_val = "sk-test-mock-token"
     res = resolve(
         "koru-agent",
         "queue-executor",
-        environ={"SUBLLM_PROVIDER_ORDER": "codex,zai", "OPENAI_API_KEY": token_val},
+        environ={"SUBLLM_PROVIDER_ORDER": "codex,zai", "OPENAI_API_KEY": "dummy-key"},
     )
     assert res.provider == "codex"
     assert res.wire_model == "gpt-6-luna"
+
+
+def test_autonom_routes_have_own_identity_and_local_only_candidates() -> None:
+    from subllm.policy import APPLICATIONS
+
+    assert APPLICATIONS["autonom"].title == "Autonom"
+    assert APPLICATIONS["autonom"].url == "https://github.com/uritime/autonom"
+    defaults = configured_routes("doctor-agent", "repair-proposal")
+    heyasa_routes = configured_routes("heyasa", "command")
+    for function in ("decide", "llm-ask"):
+        routes = configured_routes("autonom", function)
+        assert [(item.provider, item.model) for item in routes] == [
+            ("minis", "qwen3:8b"),
+            ("ollama", "qwen3-coder:30b"),
+        ]
+        assert all(
+            item.application == "autonom"
+            and item.application_name == "Autonom"
+            and item.application_url == "https://github.com/uritime/autonom"
+            and item.function == function
+            for item in routes
+        )
+    assert [item.provider for item in defaults[:2]] == ["zai", "zai"]
+    assert heyasa_routes[0].provider == "zai"
+    validate_policy()
+
+
+def test_autonom_routes_fail_closed_without_cloud_fallback(tmp_path: Path) -> None:
+    from subllm.errors import MissingCredentialError
+    from subllm.resolver import available_routes, resolve
+
+    cloud_only_env = {"ZAI_API_KEY": "id.secret", "OLLAMA_API_KEY": ""}
+    for function in ("decide", "llm-ask"):
+        assert available_routes("autonom", function, environ=cloud_only_env) == ()
+        with pytest.raises(MissingCredentialError, match="OLLAMA_API_KEY"):
+            resolve("autonom", function, environ=cloud_only_env)
+
+    repo_toml = Path(__file__).resolve().parents[1] / "subllm.toml"
+    head, tail = repo_toml.read_text(encoding="utf-8").split("[custom_providers.minis]", 1)
+    _, apps_tail = tail.split("[applications.doctor-agent]", 1)
+    policy_path = tmp_path / "subllm.toml"
+    policy_path.write_text(
+        head.replace("[providers.ollama]\nenabled = true", "[providers.ollama]\nenabled = false", 1)
+        + "[applications.doctor-agent]"
+        + apps_tail,
+        encoding="utf-8",
+    )
+    with pytest.raises(InvalidPolicyError, match="no enabled candidate for route: autonom/decide"):
+        configured_routes(
+            "autonom",
+            "decide",
+            environ={"SUBLLM_POLICY_FILE": str(policy_path)},
+        )
