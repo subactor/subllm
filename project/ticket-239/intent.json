@@ -1,0 +1,73 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-239",
+  "summary": "Reject non-object POST JSON payloads and forward hf.co local Ollama tags in proxy",
+  "workstream": "application",
+  "classification": {
+    "kind": "FEATURE",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-239/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "4a4c6267e36797a6238c83f956e0ee71722f8acf",
+    "outcome": "Reject non-object JSON bodies with HTTP 400 INVALID_REQUEST on non-speech POST routes and forward local hf.co GGUF Ollama tags cleanly.",
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "runtimeDependencies": [],
+    "nonGoals": [
+      "Do not alter speech route payload validation semantics or touch modules outside proxy.py and test_proxy.py."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Extract _is_unmanaged_local_ollama_model helper in proxy.py for hf.co/... forwarding and guard non-Mapping JSON bodies in do_POST right after speech dispatch.",
+      "components": [
+        {
+          "name": "local-proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Revert ticket-239 commit via protected PR."
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "pytest -q tests/test_proxy.py tests/test_audio_proxy.py tests/test_proxy_decide.py tests/test_proxy_forward_usage.py"
+        ],
+        "evidence": "Non-object POST JSON payloads return 400 INVALID_REQUEST and local hf.co tags forward cleanly with C901 <= 15."
+      }
+    ]
+  }
+}

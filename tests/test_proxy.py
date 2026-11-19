@@ -977,3 +977,40 @@ def test_allow_remote_fallback_must_be_boolean(proxy_server):
         "allow_remote_fallback": "yes",
         "questions": [{"id": "q", "type": "choice", "question": "?", "options": ["a", "b"]}]})
     assert status == 400 and body["error"]["code"] == "INVALID_REQUEST"
+
+
+@pytest.mark.parametrize("path", ["/api/chat", "/v1/chat/completions", "/v1/decide", "/api/embeddings"])
+@pytest.mark.parametrize("bad_json", [[1, 2], 42, "str"])
+def test_non_object_post_json_payloads_return_400(proxy_server, path, bad_json):
+    status, body, _ = _request("POST", proxy_server[0] + path, bad_json)
+    assert status == 400 and body["error"]["code"] == "INVALID_REQUEST"
+
+
+def test_hf_co_local_ollama_tag_forwards_with_options_while_unknown_route_fails_closed(proxy_server, monkeypatch):
+    forwarded = []
+    monkeypatch.setattr(proxy.adaptive, "policy", lambda *a, **kw: None)
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *a: True)
+    monkeypatch.setattr(
+        proxy.SubLLMProxyHandler, "_forward_upstream",
+        lambda self, method, path, payload: forwarded.append((path, payload["model"]))
+        or self._json(200, {"ok": True}),
+    )
+
+    hf_model = "hf.co/speakleash/Bielik-4.5B-v3.0-Instruct-GGUF:Q8_0"
+    status, body, _ = _request("POST", proxy_server[0] + "/api/chat", {
+        "model": hf_model,
+        "messages": [{"role": "user", "content": "hi"}],
+        "options": {"num_ctx": 4096},
+        "stream": False,
+    })
+    assert status == 200 and body == {"ok": True}
+    assert forwarded == [("/api/chat", hf_model)]
+
+    bad_status, bad_body, _ = _request("POST", proxy_server[0] + "/api/chat", {
+        "model": "missing-app/missing-fn",
+        "messages": [{"role": "user", "content": "hi"}],
+        "options": {"num_ctx": 4096},
+        "stream": False,
+    })
+    assert bad_status == 400 and bad_body["error"]["code"] == "INVALID_REQUEST"
+    assert len(forwarded) == 1

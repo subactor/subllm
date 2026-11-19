@@ -832,6 +832,13 @@ def _is_explicit_route(model: str) -> bool:
     return "/" in model and tuple(model.split("/", 1)) in ROUTES
 
 
+def _is_unmanaged_local_ollama_model(clean_model: str) -> bool:
+    """Allow unmanaged local Ollama tags and gf-style hf.co model paths, excluding explicit app/fn routes."""
+    if clean_model in MODELS or _is_explicit_route(clean_model):
+        return False
+    return "/" not in clean_model or (clean_model.startswith("hf.co/") and ".." not in clean_model)
+
+
 def _decide_route_flags(clean_model: str) -> tuple[bool, bool]:
     """``(is_known_target, prefers_explicit_route)`` for a requested System One model."""
     explicit = _is_explicit_route(clean_model)
@@ -1009,6 +1016,9 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return
         if path in {"/v1/speech/transcribe", "/v1/speech/synthesize"}:
             self._handle_speech(path, payload)
+            return
+        if not isinstance(payload, Mapping):
+            self._error(400, "INVALID_REQUEST", "JSON object payload is required")
             return
         for paths, handler, gated in self._POST_ROUTES:
             if path in paths:
@@ -1205,7 +1215,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
 
     def _fast_forward_to_ollama(self, clean_model: str, path: str, payload: Mapping[str, Any]) -> bool:
         """Models unknown to SubLLM policy go straight to the local Ollama when it is up."""
-        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
+        if (not adaptive.policy() and _is_unmanaged_local_ollama_model(clean_model)
                 and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", path, payload)
             return True
@@ -1285,7 +1295,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
         clean_model, _ticket = _extract_ticket(str(payload.get("model") or "glm-5.3"), self.headers, payload)
         if not options:
             return self._handle_ollama_chat_with_parameters(payload)
-        if (not adaptive.policy() and clean_model not in MODELS and "/" not in clean_model
+        if (not adaptive.policy() and _is_unmanaged_local_ollama_model(clean_model)
                 and is_upstream_ollama_alive(self.ollama_upstream)):
             self._forward_upstream("POST", "/api/chat", payload)
             return
