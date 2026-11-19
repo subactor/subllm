@@ -788,6 +788,11 @@ APPLICATIONS = MappingProxyType(
             title="Heyasa Autonomy",
             url="https://github.com/paxlet-com/heyasa",
         ),
+        "autonom": ApplicationSpec(
+            id="autonom",
+            title="Autonom",
+            url="https://github.com/uritime/autonom",
+        ),
     }
 )
 
@@ -866,6 +871,7 @@ _KORU_EXECUTOR = _KORU + (RouteCandidate(provider="codex-cli", model="gpt-6-luna
 _KORU_DSL = _BOUNDED + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),) + _KORU[len(_DEFAULT):]
 _HEYASA = _DEFAULT + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),)
 _SUPERVISOR_ASSESSMENT = _BOUNDED + (RouteCandidate(provider="codex-cli", model="gpt-6-luna"),)
+_AUTONOM_LOCAL = (RouteCandidate(provider="ollama", model="qwen3-coder:30b"),)
 
 _CODING = (
     # Explicit operator routing can select the CLI without changing API routes.
@@ -1020,6 +1026,8 @@ _ROUTE_VALUES = (
     RoutePolicy("autogrammar-gillm", "invoke", _DEFAULT),
     RoutePolicy("heyasa", "command", _HEYASA),
     RoutePolicy("heyasa", "decision-routing", _HEYASA),
+    RoutePolicy("autonom", "decide", _AUTONOM_LOCAL),
+    RoutePolicy("autonom", "llm-ask", _AUTONOM_LOCAL),
 )
 
 ROUTES = MappingProxyType({(route.application, route.function): route for route in _ROUTE_VALUES})
