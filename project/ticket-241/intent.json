@@ -1,0 +1,73 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-241",
+  "summary": "Restore configured provider models in the HTTP discovery catalog",
+  "workstream": "application",
+  "classification": {
+    "kind": "SERVICE",
+    "priority": "P2",
+    "origin": "health"
+  },
+  "allowedPaths": [
+    "project/ticket-241/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy.py",
+    "tests/test_proxy_operator_catalog.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null,
+  "delivery": {
+    "targetBranch": "main",
+    "acceptedBaseSha": "d5c54fd7d68922a977295425013e1a5dc5095649",
+    "outcome": "OpenAI and Ollama model discovery expose the models configured by the operator on the first request and after a policy update.",
+    "complexity": "S",
+    "estimatedMinutes": 30,
+    "budgets": {
+      "maxImplementationFiles": 2,
+      "maxAffectedComponents": 1,
+      "maxPublicInterfaceChanges": 0,
+      "maxRuntimeDependencies": 0
+    },
+    "runtimeDependencies": [],
+    "nonGoals": [
+      "Model execution and benchmark scheduling are managed independently."
+    ],
+    "architecture": {
+      "status": "accepted",
+      "decision": "Load the operator policy inside the HTTP request context before projecting the existing proxy catalog.",
+      "components": [
+        {
+          "name": "local-proxy",
+          "paths": [
+            "src/subllm/proxy.py",
+            "tests/test_proxy_operator_catalog.py"
+          ]
+        }
+      ],
+      "responsibilityChanges": false,
+      "interfaceChanges": [],
+      "dataChanges": [],
+      "ui": {
+        "impact": "none",
+        "states": [],
+        "evidence": []
+      },
+      "rollback": "Select the previous qualified runtime on each host. Repository rollback uses a reviewed revert."
+    },
+    "validation": [
+      {
+        "criterion": "AC-01",
+        "commands": [
+          "pytest -q tests/test_proxy_operator_catalog.py tests/test_proxy_models.py tests/test_proxy_catalog_cache.py"
+        ],
+        "evidence": "Both HTTP catalog formats expose configured models and reflect policy changes between requests. The invalid-policy fixture returns a structured 503."
+      }
+    ]
+  }
+}
