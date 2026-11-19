@@ -1014,4 +1014,3 @@ def test_hf_co_local_ollama_tag_forwards_with_options_while_unknown_route_fails_
     })
     assert bad_status == 400 and bad_body["error"]["code"] == "INVALID_REQUEST"
     assert len(forwarded) == 1
-
