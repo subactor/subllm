@@ -1,0 +1,25 @@
+{
+  "schema": "new-project.intent/v3",
+  "ticket": "ticket-243",
+  "summary": "Reject invalid probabilities from legacy D1 responses for Planfile GITHUB-373",
+  "workstream": "application",
+  "classification": {
+    "kind": "BUG",
+    "priority": "P1",
+    "origin": "requested"
+  },
+  "allowedPaths": [
+    "project/ticket-243/**",
+    "TODO.md",
+    "project/TICKETS.md",
+    "src/subllm/proxy_decide.py",
+    "tests/test_proxy_decide.py"
+  ],
+  "forbiddenPaths": [
+    "project/ticket-*/user-*.md"
+  ],
+  "stacks": [],
+  "dependsOn": [],
+  "conflictsWith": [],
+  "integrationTicket": null
+}

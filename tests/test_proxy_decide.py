@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import json
+
 import pytest
 
 from subllm import proxy, proxy_decide, proxy_forward, proxy_security
@@ -166,3 +168,25 @@ def test_strict_legacy_decision_rejects_fabricated_defaults_and_preserves_native
     }}, {"questions": QUESTIONS})
     assert d1["decision_source"] == "native_d1"
     assert d1["probability_kind"] == "native_calibrated"
+
+
+@pytest.mark.parametrize("dist", [
+    {"local": 2, "cloud": 0.5, "skip": 0},
+    {"local": -0.1, "cloud": 1, "skip": 0.1},
+    {"local": 0.2, "cloud": 0.5, "skip": 0.3, "other": 0.1},
+    {"local": True, "cloud": 0.5, "skip": 0.1},
+])
+def test_strict_legacy_probability_domain(dist):
+    from subllm.proxy_decide import StrictDecisionError, normalize_system_one_decision
+
+    with pytest.raises(StrictDecisionError):
+        normalize_system_one_decision(QUESTIONS[:1], json.dumps({"probabilities": {"route": dist}}))
+
+
+def test_strict_legacy_endpoint_probabilities_are_valid():
+    from subllm.proxy_decide import normalize_system_one_decision
+
+    dist = {"local": 1, "cloud": 0, "skip": 0}
+    decision = normalize_system_one_decision(QUESTIONS[:1], json.dumps({"probabilities": {"route": dist}}))
+    assert decision["answers"]["route"] == "local"
+    assert decision["probabilities"]["route"] == dist
