@@ -42,6 +42,7 @@ from .policy_config import load_policy_config, resolve_attempt_timeout
 from .provider_order import routing_provider_order
 from .proxy_decide import SYSTEM_ONE_REQUEST_SCHEMA as SYSTEM_ONE_REQUEST_SCHEMA
 from .proxy_decide import SYSTEM_ONE_RESPONSE_SCHEMA as SYSTEM_ONE_RESPONSE_SCHEMA
+from .proxy_decide import StrictDecisionError, normalize_system_one_decision
 from .proxy_decide import _build_ollama_d1_questions as _build_ollama_d1_questions
 from .proxy_decide import _build_system_one_messages as _build_system_one_messages
 from .proxy_decide import _extract_json_object as _extract_json_object
@@ -248,6 +249,10 @@ def _complete_ollama_system_one(
     return _ollama_system_one_response(data, ollama_model)
 
 
+class _NativeDecisionResponse(CompletionResponse):
+    """The local D1 adapter has already validated the native answer in raw."""
+
+
 def _complete_ollama_d1_system_one(
     upstream_url: str,
     ollama_model: str,
@@ -273,8 +278,9 @@ def _complete_ollama_d1_system_one(
     )
     parsed = decide_legacy(native_payload, base_url=upstream_url, timeout_seconds=timeout_seconds,
                            application=application, function=function, request_id=request_id, **keep_alive)
-    return CompletionResponse(
+    return _NativeDecisionResponse(
         content=json.dumps(parsed, ensure_ascii=False),
+        raw=parsed,
         provider="ollama",
         model=parsed["model"],
         usage=parsed["usage"],
@@ -1157,9 +1163,18 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             return None
 
     def _send_decide_result(self, payload: Mapping[str, Any], request: _DecideRequest, response: CompletionResponse,
-                            clean_model: str, ticket: str | None, req_id: str, duration_ms: int) -> None:
-        parsed = _extract_json_object(response.content)
-        probabilities, answers = _normalize_system_one_probabilities(request.questions, parsed)
+                            clean_model: str, ticket: str | None, req_id: str, duration_ms: int,
+                            app: str, func: str) -> None:
+        if isinstance(response, _NativeDecisionResponse):
+            decision = {key: response.raw[key] for key in
+                        ("answers", "probabilities", "decision_source", "probability_kind")}
+        else:
+            try:
+                decision = normalize_system_one_decision(request.questions, response.content)
+            except StrictDecisionError:
+                self._error(502, "INVALID_DECISION_RESPONSE", "Model returned an invalid decision")
+                return
+        _write_proxy_receipt(ticket, app, func, clean_model, response, duration_ms)
         extra_headers = {
             "X-Subactor-Provider": response.provider,
             "X-Subactor-Model": response.model,
@@ -1176,8 +1191,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
                 "model": response.model,
                 "requested_model": clean_model,
                 "wire_format": str(payload.get("wire_format") or "jev-system-one"),
-                "probabilities": probabilities,
-                "answers": answers,
+                **decision,
                 "usage": dict(response.usage),
                 "duration_ms": duration_ms,
             },
@@ -1215,8 +1229,7 @@ class SubLLMProxyHandler(BaseHTTPRequestHandler):
             if response is None:
                 return
         duration_ms = round((time.monotonic() - t0) * 1000)
-        _write_proxy_receipt(ticket, app, func, clean_model, response, duration_ms)
-        self._send_decide_result(payload, request, response, clean_model, ticket, req_id, duration_ms)
+        self._send_decide_result(payload, request, response, clean_model, ticket, req_id, duration_ms, app, func)
 
     def _handle_openai_chat_completions(self, payload: Mapping[str, Any]) -> None:
         from .runtime_profile import ProfileError, request_parameter_scope
