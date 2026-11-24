@@ -571,13 +571,43 @@ def test_proxy_system_one_decide_uses_local_qwen3_5_ollama_when_available(proxy_
     assert headers.get("X-Subactor-Model") == "qwen3.5:0.8b"
     assert headers.get("X-Subactor-Ticket") == "ticket-149"
 
-    probs = body["probabilities"]
-    assert probs["uri_choice"]["heyasa://local/audio/control/set-volume?level=30"] > probs["uri_choice"]["heyasa://local/system/query/status"]
-    assert abs(sum(probs["uri_choice"].values()) - 1.0) < 1e-4
-    assert abs(sum(probs["risk_score"].values()) - 1.0) < 1e-4
-    assert abs(sum(probs["execution_allowed"].values()) - 1.0) < 1e-4
+    assert body["probabilities"] == {"uri_choice": None, "risk_score": None, "execution_allowed": None}
+    assert body["decision_source"] == "legacy_json"
+    assert body["probability_kind"] == "uncalibrated_label"
+    assert body["answers"]["risk_score"] == 1
     assert body["answers"]["uri_choice"] == "heyasa://local/audio/control/set-volume?level=30"
     assert body["answers"]["execution_allowed"] is True
+
+
+@pytest.mark.parametrize("content", ["", "{}", '{"answers":{"route":"unknown"}}',
+                                     '{"probabilities":{"route":{"run":0.5,"wait":0.5}}}'])
+def test_decide_rejects_unusable_model_output_before_receipt(proxy_server, monkeypatch, content):
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: True)
+    monkeypatch.setattr(proxy, "_select_local_system_one_ollama_model", lambda *_: "qwen")
+    monkeypatch.setattr(proxy, "_complete_ollama_system_one",
+                        lambda *args, **kwargs: CompletionResponse(content, "ollama", "qwen"))
+    receipts = []
+    monkeypatch.setattr(proxy, "_write_proxy_receipt", lambda *args: receipts.append(args))
+    question = {"id": "route", "type": "choice", "options": ["run", "wait"]}
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/decide", {"questions": [question]})
+    assert status == 502
+    assert body["error"]["code"] == "INVALID_DECISION_RESPONSE"
+    assert receipts == []
+
+
+def test_decide_preserves_a_validated_native_answer(proxy_server, monkeypatch):
+    from subllm import decisions
+
+    monkeypatch.setattr(proxy, "is_upstream_ollama_alive", lambda *_: True)
+    monkeypatch.setattr(proxy, "_select_local_system_one_ollama_model", lambda *_: "d1:3b")
+    native = {"answers": {"risk": 2.25}, "probabilities": {"risk": {"1": 0.25, "2": 0.25, "3": 0.5}},
+              "decision_source": "native_d1", "probability_kind": "native_calibrated"}
+    monkeypatch.setattr(decisions, "decide_legacy",
+                        lambda *args, **kwargs: dict(native, model="d1:3b", usage={}))
+    question = {"id": "risk", "type": "score", "options": ["1", "2", "3"]}
+    status, body, _ = _request("POST", proxy_server[0] + "/v1/decide", {"questions": [question]})
+    assert status == 200
+    assert {key: body[key] for key in native} == native
 
 
 def test_system_one_model_selection_prefers_d1_and_keeps_qwen_fallback(monkeypatch):

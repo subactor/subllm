@@ -210,11 +210,15 @@ Tickets for this system live here. Do not open wellmanifest tickets for SubLLM w
 | **ticket-231** | [`README.md`](./ticket-231/README.md) | - | - | - | - | - |
 | **ticket-232** | [`README.md`](./ticket-232/README.md) | - | - | - | - | - |
 | **ticket-233** | [`README.md`](./ticket-233/README.md) | - | - | - | - | - |
+| **ticket-234** | [`README.md`](./ticket-234/README.md) | - | - | - | - | - |
 | **ticket-235** | [`README.md`](./ticket-235/README.md) | - | - | - | - | - |
 | **ticket-236** | [`README.md`](./ticket-236/README.md) | - | - | - | - | - |
+| **ticket-237** | [`README.md`](./ticket-237/README.md) | - | - | - | - | - |
 | **ticket-238** | [`README.md`](./ticket-238/README.md) | - | - | - | - | - |
+| **ticket-239** | [`README.md`](./ticket-239/README.md) | - | - | - | - | - |
 | **ticket-240** | [`README.md`](./ticket-240/README.md) | - | - | - | - | - |
 | **ticket-241** | [`README.md`](./ticket-241/README.md) | - | - | - | - | - |
+| **ticket-242** | [`README.md`](./ticket-242/README.md) | - | - | - | - | - |
 <!-- AUTO:TICKET_INDEX:END -->
 
 | ticket-163 | Index-compatible cache dependency metadata (GitHub #20 continuation) | IN_PROGRESS / PUBLICATION | governance |
