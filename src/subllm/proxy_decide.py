@@ -391,15 +391,13 @@ def _strict_explicit_dist(
         return None
     if not isinstance(candidate, Mapping):
         raise StrictDecisionError(f"probabilities for {q_id!r} must be a mapping")
+    if set(candidate).difference(option_keys):
+        raise StrictDecisionError(f"unknown probability option for {q_id!r}")
     dist: dict[str, float] = {}
     for opt in option_keys:
         val = candidate.get(opt)
-        if val is None and opt.lower() in ("true", "false"):
-            val = candidate.get(opt.lower() == "true")
-        if val is None or isinstance(val, bool) or not isinstance(val, (int, float)) or not math.isfinite(val):
+        if isinstance(val, bool) or not isinstance(val, (int, float)) or not 0 <= val <= 1:
             raise StrictDecisionError(f"invalid probability for {q_id!r}/{opt!r}")
-        if val < 0:
-            raise StrictDecisionError(f"negative probability for {q_id!r}/{opt!r}")
         dist[opt] = float(val)
     total = sum(dist.values())
     if total <= 0:
