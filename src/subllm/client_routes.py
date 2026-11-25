@@ -1,7 +1,9 @@
 from __future__ import annotations
 
+import json
 import math
 import os
+import re
 import time
 from collections.abc import Mapping, Sequence
 from copy import deepcopy
@@ -97,6 +99,28 @@ def _complete_native(
         raise CompletionError(message) from None
     return CompletionResponse(content, route.provider, route.wire_model, usage, finish_reason)
 
+_JSON_FENCE = re.compile(r"\A```(?:json)?[ \t]*\r?\n(?P<body>.*?)\s*```\Z", re.DOTALL | re.IGNORECASE)
+
+
+def _unfence_cli_json(content: str, response_format: Mapping[str, Any] | None) -> str:
+    """CLI transports lack a native JSON mode; unwrap exactly one whole markdown fence.
+
+    A valid body is returned bare so every later parser sees plain JSON. Anything
+    else is left unchanged for the normal quality gate to judge.
+    """
+    if (response_format or {}).get("type") not in {"json_object", "json_schema"}:
+        return content
+    match = _JSON_FENCE.match(content.strip())
+    if match is None:
+        return content
+    body = match.group("body").strip()
+    try:
+        json.loads(body)
+    except ValueError:
+        return content
+    return body
+
+
 def _invoke_route(
     route: ResolvedRoute,
     messages: Sequence[Mapping[str, Any]],
@@ -135,6 +159,7 @@ def _invoke_route(
             if outcome is None:
                 raise
             raise _RetryableAttemptError(str(exc), outcome=outcome, diagnostic_code=code) from exc
+        content = _unfence_cli_json(content, response_format)
         return CompletionResponse(content, route.provider, route.wire_model, usage, "stop")
     if route.transport in NATIVE_API_TRANSPORTS:
         return _complete_native(route, messages, timeout_seconds=timeout_seconds, response_format=response_format)
