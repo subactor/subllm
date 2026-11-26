@@ -7,6 +7,7 @@ import logging
 import os
 import re
 import sqlite3
+import threading
 from collections.abc import Mapping
 from contextlib import closing
 from datetime import UTC, datetime
@@ -19,6 +20,38 @@ from .request_scope import request_environment
 LOG = logging.getLogger(__name__)
 _IDENT = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.:/-]{0,127}\Z")
 FILTERS = {"application", "provider", "status", "since", "until", "before", "limit", "search", "source"}
+_INITIALIZED_JOURNALS: set[tuple[int, int]] = set()
+_INITIALIZED_GUARD = threading.Lock()
+_MAX_INITIALIZED_JOURNALS = 1024
+
+
+def _reset_initialized_journals() -> None:
+    global _INITIALIZED_JOURNALS, _INITIALIZED_GUARD
+    _INITIALIZED_JOURNALS = set()
+    _INITIALIZED_GUARD = threading.Lock()
+
+
+if hasattr(os, "register_at_fork"):
+    os.register_at_fork(after_in_child=_reset_initialized_journals)
+
+
+def _is_journal_initialized(key: tuple[int, int]) -> bool:
+    with _INITIALIZED_GUARD:
+        return key in _INITIALIZED_JOURNALS
+
+
+def _mark_initialized_journal(key: tuple[int, int]) -> None:
+    with _INITIALIZED_GUARD:
+        if len(_INITIALIZED_JOURNALS) >= _MAX_INITIALIZED_JOURNALS:
+            _INITIALIZED_JOURNALS.clear()
+        _INITIALIZED_JOURNALS.add(key)
+
+
+def _discard_initialized_journal(key: tuple[int, int]) -> None:
+    with _INITIALIZED_GUARD:
+        _INITIALIZED_JOURNALS.discard(key)
+
+
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS attempts (
  id INTEGER PRIMARY KEY, timestamp TEXT NOT NULL, request_id TEXT NOT NULL,
@@ -68,6 +101,36 @@ def archive_reference(value: Any) -> dict[str, str] | None:
     return {"id": value["id"], "day": day}
 
 
+def _ensure_journal_schema(db: sqlite3.Connection) -> None:
+    for statement in _SCHEMA.split(";"):
+        if statement.strip():
+            db.execute(statement)
+    columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
+    if "event_key" not in columns:
+        db.execute("ALTER TABLE attempts ADD COLUMN event_key TEXT")
+    for column in ("archive_id", "archive_day"):
+        if column not in columns:
+            db.execute(f"ALTER TABLE attempts ADD COLUMN {column} TEXT")
+    db.execute("CREATE UNIQUE INDEX IF NOT EXISTS attempts_event ON attempts(event_key)")
+
+
+def _insert_attempt(db: sqlite3.Connection, row_values: tuple[Any, ...]) -> sqlite3.Cursor:
+    return db.execute(
+        "INSERT OR IGNORE INTO attempts(timestamp,request_id,application,function,provider,model,status,"
+        "diagnostic_code,duration_ms,input_tokens,output_tokens,event_key,archive_id,archive_day) "
+        "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+        row_values,
+    )
+
+
+def _initialize_and_insert(db: sqlite3.Connection, row_values: tuple[Any, ...]) -> sqlite3.Cursor:
+    db.execute("PRAGMA journal_mode=WAL").fetchone()
+    db.execute("PRAGMA synchronous=NORMAL")
+    db.execute("BEGIN IMMEDIATE")
+    _ensure_journal_schema(db)
+    return _insert_attempt(db, row_values)
+
+
 def record_attempt(
     *,
     request_id: str,
@@ -104,41 +167,46 @@ def record_attempt(
             pass
         else:
             os.close(fd)
+        stat_result = path.stat()
+        journal_key = (stat_result.st_dev, stat_result.st_ino)
+        row_values = (
+            datetime.now(UTC).isoformat(timespec="milliseconds"),
+            hashlib.sha256(request_id.encode()).hexdigest()[:24],
+            identifier(application),
+            identifier(function),
+            identifier(provider),
+            identifier(model),
+            "success" if status == "success" else "error",
+            identifier(diagnostic_code) if diagnostic_code else None,
+            max(0, int(duration_ms)),
+            _count(usage, "input_tokens", "prompt_tokens"),
+            _count(usage, "output_tokens", "completion_tokens"),
+            hashlib.sha256(event_key.encode()).hexdigest() if event_key else None,
+            reference["id"] if reference else None,
+            reference["day"] if reference else None,
+        )
+        initialized_now = False
         with _sqlite_write_slot(path, True, budget_seconds=0.5) as timeout, \
                 closing(sqlite3.connect(path, timeout=timeout)) as db, db:
-            db.execute("PRAGMA journal_mode=WAL").fetchone()
-            db.execute("BEGIN IMMEDIATE")
-            for statement in _SCHEMA.split(";"):
-                if statement.strip():
-                    db.execute(statement)
-            columns = {row[1] for row in db.execute("PRAGMA table_info(attempts)")}
-            if "event_key" not in columns:
-                db.execute("ALTER TABLE attempts ADD COLUMN event_key TEXT")
-            for column in ("archive_id", "archive_day"):
-                if column not in columns:
-                    db.execute(f"ALTER TABLE attempts ADD COLUMN {column} TEXT")
-            db.execute("CREATE UNIQUE INDEX IF NOT EXISTS attempts_event ON attempts(event_key)")
-            cursor = db.execute(
-                "INSERT OR IGNORE INTO attempts(timestamp,request_id,application,function,provider,model,status,"
-                "diagnostic_code,duration_ms,input_tokens,output_tokens,event_key,archive_id,archive_day) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                (
-                    datetime.now(UTC).isoformat(timespec="milliseconds"),
-                    hashlib.sha256(request_id.encode()).hexdigest()[:24],
-                    identifier(application),
-                    identifier(function),
-                    identifier(provider),
-                    identifier(model),
-                    "success" if status == "success" else "error",
-                    identifier(diagnostic_code) if diagnostic_code else None,
-                    max(0, int(duration_ms)),
-                    _count(usage, "input_tokens", "prompt_tokens"),
-                    _count(usage, "output_tokens", "completion_tokens"),
-                    hashlib.sha256(event_key.encode()).hexdigest() if event_key else None,
-                    reference["id"] if reference else None,
-                    reference["day"] if reference else None,
-                ),
-            )
+            if _is_journal_initialized(journal_key):
+                db.execute("PRAGMA synchronous=NORMAL")
+                try:
+                    db.execute("BEGIN IMMEDIATE")
+                    cursor = _insert_attempt(db, row_values)
+                except sqlite3.OperationalError as exc:
+                    message = str(exc).lower()
+                    if "no such table" in message or "has no column named" in message:
+                        db.rollback()
+                        _discard_initialized_journal(journal_key)
+                        cursor = _initialize_and_insert(db, row_values)
+                        initialized_now = True
+                    else:
+                        raise
+            else:
+                cursor = _initialize_and_insert(db, row_values)
+                initialized_now = True
+        if initialized_now:
+            _mark_initialized_journal(journal_key)
         inserted = cursor.rowcount == 1
         if inserted:
             observe_journal(identity, "stored", JournalReference(

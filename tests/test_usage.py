@@ -780,3 +780,69 @@ def test_usage_admission_does_not_inherit_a_parent_writer_after_fork(paused_usag
     paused_usage_writer.thread.join(15)
     assert query_usage({})["summary"]["attempts"] == 2
 
+
+def test_usage_journal_skips_redundant_wal_ddl_after_first_write(monkeypatch):
+    assert record(request_id="first-init", strict=True) is True
+    with closing(sqlite3.connect(journal_path())) as db:
+        assert db.execute("PRAGMA journal_mode").fetchone()[0] == "wal"
+
+    executed: list[str] = []
+    real_connect = sqlite3.connect
+
+    class _RecordingConn:
+        def __init__(self, inner: sqlite3.Connection):
+            self._inner = inner
+
+        def execute(self, sql: str, *args, **kwargs):
+            executed.append(sql)
+            return self._inner.execute(sql, *args, **kwargs)
+
+        def __enter__(self):
+            self._inner.__enter__()
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return self._inner.__exit__(exc_type, exc, tb)
+
+        def close(self):
+            self._inner.close()
+
+        def __getattr__(self, name: str):
+            return getattr(self._inner, name)
+
+    with monkeypatch.context() as mp:
+        mp.setattr(
+            "subllm.usage.sqlite3",
+            SimpleNamespace(**(vars(sqlite3) | {"connect": lambda *a, **kw: _RecordingConn(real_connect(*a, **kw))})),
+        )
+        assert record(request_id="second-fast-path", strict=True) is True
+    assert "PRAGMA synchronous=NORMAL" in executed
+    assert not any("journal_mode" in stmt.lower() for stmt in executed)
+    assert not any("create table" in stmt.lower() for stmt in executed)
+    assert not any("table_info" in stmt.lower() for stmt in executed)
+    assert query_usage({})["summary"]["attempts"] == 2
+
+
+def test_usage_journal_self_heals_if_table_dropped_on_same_inode():
+    assert record(request_id="before-drop", strict=True) is True
+    with closing(sqlite3.connect(journal_path())) as db, db:
+        db.execute("DROP TABLE attempts")
+    assert record(request_id="after-drop", strict=True) is True
+    assert query_usage({})["summary"]["attempts"] == 1
+
+
+def test_usage_journal_parallel_burst_persists_all_attempts_within_budget():
+    total = 0
+    for wave in range(4):
+        barrier = threading.Barrier(8)
+
+        def write_one(idx: int, wave_id: int = wave, gate: threading.Barrier = barrier) -> bool:
+            gate.wait(timeout=10)
+            return record(request_id=f"wave-{wave_id}-item-{idx}", strict=True)
+
+        with ThreadPoolExecutor(max_workers=8) as pool:
+            results = list(pool.map(write_one, range(8)))
+        assert results == [True] * 8
+        total += len(results)
+    assert query_usage({"limit": 100})["summary"]["attempts"] == total == 32
+
